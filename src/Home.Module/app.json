@@ -1,0 +1,11 @@
+{
+  "id": "home",
+  "name": "主页",
+  "description": "汇总常用应用、最近使用、设备状态和快捷操作",
+  "version": "1.0.0",
+  "entryAssembly": "Home.Module.dll",
+  "entryType": "Home.Module.HomeApplicationModule",
+  "icon": "home",
+  "category": "系统",
+  "order": 0
+}

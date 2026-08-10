@@ -1,0 +1,11 @@
+{
+  "id": "network-accelerator",
+  "name": "网络加速",
+  "description": "基于 sing-box 管理多配置订阅、TUN、规则代理与节点切换",
+  "version": "1.1.0",
+  "entryAssembly": "NetworkAccelerator.Module.dll",
+  "entryType": "NetworkAccelerator.Module.NetworkAcceleratorApplicationModule",
+  "icon": "network",
+  "category": "网络",
+  "order": 30
+}

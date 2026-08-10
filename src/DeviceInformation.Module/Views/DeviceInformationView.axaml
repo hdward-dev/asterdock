@@ -1,0 +1,176 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:DeviceInformation.Module.Controls"
+             x:Class="DeviceInformation.Module.Views.DeviceInformationView"
+             x:CompileBindings="False"
+             Background="{DynamicResource AppPageBrush}">
+  <UserControl.Styles>
+    <Style Selector="Border.card">
+      <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="12"/>
+    </Style>
+    <Style Selector="Border.metric-card">
+      <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="12"/>
+      <Setter Property="Padding" Value="18"/>
+      <Setter Property="Margin" Value="0,0,12,0"/>
+    </Style>
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="#1267E8"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Padding" Value="16,8"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="ProgressBar.metric-progress">
+      <Setter Property="Height" Value="4"/>
+      <Setter Property="CornerRadius" Value="2"/>
+      <Setter Property="Background" Value="#E8ECF2"/>
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="72,*">
+    <Border Background="{DynamicResource AppChromeBrush}"
+            BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1">
+      <Grid Margin="26,0" ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+          <Border Width="38" Height="38" CornerRadius="10" Background="#EAF2FF">
+            <PathIcon Data="M4,5 H20 V17 H4 Z M8,21 H16 M12,17 V21 M7,9 H17 M7,12 H14"
+                      Width="21" Height="21" Foreground="#1267E8"/>
+          </Border>
+          <StackPanel Margin="12,0,0,0">
+            <TextBlock Text="设备信息" FontSize="23" FontWeight="SemiBold"/>
+            <TextBlock Text="硬件状态与实时资源使用率" Foreground="{DynamicResource AppMutedBrush}" Margin="0,2,0,0"/>
+          </StackPanel>
+        </StackPanel>
+        <Button Grid.Column="1" Classes="primary" Click="OpenWidget_Click">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <PathIcon Data="M5,5 H19 V16 H5 Z M8,19 H16 M12,16 V19" Width="16" Height="16"/>
+            <TextBlock Text="打开桌面监控窗" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+      </Grid>
+    </Border>
+
+    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Margin="24" Spacing="16">
+        <Border Classes="card" Padding="18,14">
+          <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+            <Border Width="9" Height="9" CornerRadius="5" Background="#22A447"/>
+            <StackPanel Grid.Column="1" Margin="10,0,0,0">
+              <TextBlock Text="{Binding DeviceName}" FontSize="17" FontWeight="SemiBold"/>
+              <TextBlock Text="{Binding DeviceModel}" Foreground="{DynamicResource AppMutedBrush}" Margin="0,2,0,0"/>
+            </StackPanel>
+            <TextBlock Grid.Column="2" Text="{Binding StatusText}" Foreground="#258247" VerticalAlignment="Center"/>
+          </Grid>
+        </Border>
+
+        <UniformGrid Columns="4" Rows="1">
+          <Border Classes="metric-card">
+            <Grid RowDefinitions="Auto,Auto,42,Auto">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="CPU" FontSize="15" FontWeight="SemiBold"/>
+                <TextBlock Grid.Column="1" Text="{Binding CpuTemperatureText}" Foreground="{DynamicResource AppMutedBrush}"/>
+              </Grid>
+              <TextBlock Grid.Row="1" Text="{Binding CpuUsageText}" FontSize="30" FontWeight="SemiBold" Foreground="#1267E8" Margin="0,8,0,0"/>
+              <controls:Sparkline Grid.Row="2" Values="{Binding CpuHistoryValues}" Stroke="#1267E8" Margin="0,6,0,5"/>
+              <ProgressBar Grid.Row="3" Classes="metric-progress" Value="{Binding CpuUsage}" Foreground="#1267E8"/>
+            </Grid>
+          </Border>
+
+          <Border Classes="metric-card">
+            <Grid RowDefinitions="Auto,Auto,42,Auto">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="GPU" FontSize="15" FontWeight="SemiBold"/>
+                <TextBlock Grid.Column="1" Text="{Binding GpuTemperatureText}" Foreground="{DynamicResource AppMutedBrush}"/>
+              </Grid>
+              <TextBlock Grid.Row="1" Text="{Binding GpuUsageText}" FontSize="30" FontWeight="SemiBold" Foreground="#7C4DDE" Margin="0,8,0,0"/>
+              <controls:Sparkline Grid.Row="2" Values="{Binding GpuHistoryValues}" Stroke="#7C4DDE" Margin="0,6,0,5"/>
+              <ProgressBar Grid.Row="3" Classes="metric-progress" Value="{Binding GpuUsage}" Foreground="#7C4DDE"/>
+            </Grid>
+          </Border>
+
+          <Border Classes="metric-card">
+            <Grid RowDefinitions="Auto,Auto,*,Auto">
+              <TextBlock Text="内存" FontSize="15" FontWeight="SemiBold"/>
+              <TextBlock Grid.Row="1" Text="{Binding MemoryUsageText}" FontSize="30" FontWeight="SemiBold" Foreground="#00A3BF" Margin="0,8,0,0"/>
+              <TextBlock Grid.Row="2" Text="{Binding MemoryText}" Foreground="{DynamicResource AppMutedBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+              <ProgressBar Grid.Row="3" Classes="metric-progress" Value="{Binding MemoryUsage}" Foreground="#00A3BF"/>
+            </Grid>
+          </Border>
+
+          <Border Classes="metric-card" Margin="0">
+            <Grid RowDefinitions="Auto,Auto,*,Auto">
+              <TextBlock Text="系统磁盘" FontSize="15" FontWeight="SemiBold"/>
+              <TextBlock Grid.Row="1" Text="{Binding DiskUsageText}" FontSize="30" FontWeight="SemiBold" Foreground="#D97706" Margin="0,8,0,0"/>
+              <TextBlock Grid.Row="2" Text="{Binding SystemDrive}" Foreground="{DynamicResource AppMutedBrush}" VerticalAlignment="Center"/>
+              <ProgressBar Grid.Row="3" Classes="metric-progress" Value="{Binding DiskUsage}" Foreground="#D97706"/>
+            </Grid>
+          </Border>
+        </UniformGrid>
+
+        <Grid ColumnDefinitions="1.25*,12,0.75*">
+          <Border Classes="card" Padding="20">
+            <Grid RowDefinitions="Auto,14,Auto,Auto,Auto,Auto,Auto,Auto">
+              <TextBlock Text="硬件信息" FontSize="18" FontWeight="SemiBold"/>
+              <Border Grid.Row="2" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
+                <Grid ColumnDefinitions="116,*">
+                  <TextBlock Text="处理器" Foreground="{DynamicResource AppMutedBrush}"/>
+                  <TextBlock Grid.Column="1" Text="{Binding ProcessorName}" TextWrapping="Wrap"/>
+                </Grid>
+              </Border>
+              <Border Grid.Row="3" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
+                <Grid ColumnDefinitions="116,*">
+                  <TextBlock Text="图形处理器" Foreground="{DynamicResource AppMutedBrush}"/>
+                  <TextBlock Grid.Column="1" Text="{Binding GraphicsName}" TextWrapping="Wrap"/>
+                </Grid>
+              </Border>
+              <Border Grid.Row="4" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
+                <Grid ColumnDefinitions="116,*">
+                  <TextBlock Text="物理内存" Foreground="{DynamicResource AppMutedBrush}"/>
+                  <TextBlock Grid.Column="1" Text="{Binding TotalMemoryText}"/>
+                </Grid>
+              </Border>
+              <Border Grid.Row="5" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
+                <Grid ColumnDefinitions="116,*">
+                  <TextBlock Text="操作系统" Foreground="{DynamicResource AppMutedBrush}"/>
+                  <TextBlock Grid.Column="1" Text="{Binding OperatingSystem}" TextWrapping="Wrap"/>
+                </Grid>
+              </Border>
+              <Border Grid.Row="6" Padding="0,10,0,0">
+                <Grid ColumnDefinitions="116,*">
+                  <TextBlock Text="系统架构" Foreground="{DynamicResource AppMutedBrush}"/>
+                  <TextBlock Grid.Column="1" Text="{Binding Architecture}"/>
+                </Grid>
+              </Border>
+            </Grid>
+          </Border>
+
+          <Border Grid.Column="2" Classes="card" Padding="20">
+            <StackPanel Spacing="16">
+              <TextBlock Text="网络速度" FontSize="18" FontWeight="SemiBold"/>
+              <Border Background="#EEF5FF" CornerRadius="9" Padding="16">
+                <StackPanel>
+                  <TextBlock Text="下载" Foreground="{DynamicResource AppMutedBrush}"/>
+                  <TextBlock Text="{Binding DownloadText}" FontSize="22" FontWeight="SemiBold" Foreground="#1267E8" Margin="0,5,0,0"/>
+                </StackPanel>
+              </Border>
+              <Border Background="#F5F0FF" CornerRadius="9" Padding="16">
+                <StackPanel>
+                  <TextBlock Text="上传" Foreground="{DynamicResource AppMutedBrush}"/>
+                  <TextBlock Text="{Binding UploadText}" FontSize="22" FontWeight="SemiBold" Foreground="#7C4DDE" Margin="0,5,0,0"/>
+                </StackPanel>
+              </Border>
+              <TextBlock Text="数据每秒自动刷新。部分温度和 GPU 使用率取决于设备驱动是否提供读取接口。"
+                         Foreground="{DynamicResource AppMutedBrush}" TextWrapping="Wrap" FontSize="12"/>
+            </StackPanel>
+          </Border>
+        </Grid>
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

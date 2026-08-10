@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>NetworkAccelerator.Module</RootNamespace>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <ElevatedHostProject>$(MSBuildProjectDirectory)\..\AsterDock.NetworkElevatedHost\AsterDock.NetworkElevatedHost.csproj</ElevatedHostProject>
+    <ElevatedHostOutput>$(MSBuildProjectDirectory)\..\AsterDock.NetworkElevatedHost\bin\$(Configuration)\net10.0</ElevatedHostOutput>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AsterDock.Contracts\AsterDock.Contracts.csproj" />
+    <ProjectReference Include="..\NetworkAccelerator.Core\NetworkAccelerator.Core.csproj" />
+    <PackageReference Include="Avalonia" Version="12.1.0" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="app.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="BuildNetworkElevatedHost" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
+    <MSBuild Projects="$(ElevatedHostProject)" Targets="Restore;Build" Properties="Configuration=$(Configuration)"
+             RemoveProperties="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
+    <ItemGroup>
+      <ElevatedHostFiles Include="$(ElevatedHostOutput)\AsterDock.NetworkElevatedHost.*" />
+      <LegacyElevatedHostFiles Include="$(OutDir)ApplicationHub.NetworkElevatedHost.*" />
+    </ItemGroup>
+    <Delete Files="@(LegacyElevatedHostFiles)" />
+    <Copy SourceFiles="@(ElevatedHostFiles)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

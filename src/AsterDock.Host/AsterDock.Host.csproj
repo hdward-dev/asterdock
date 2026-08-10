@@ -1,0 +1,93 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>AsterDock.Host</RootNamespace>
+    <AssemblyName>AsterDock.Host</AssemblyName>
+    <UseAppHost>true</UseAppHost>
+    <RuntimeIdentifiers>win-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <BundledModuleProject>$(MSBuildProjectDirectory)\..\InvoicePrinter.Module\InvoicePrinter.Module.csproj</BundledModuleProject>
+    <BundledModuleOutput>$(MSBuildProjectDirectory)\..\InvoicePrinter.Module\bin\$(Configuration)\net10.0</BundledModuleOutput>
+    <BundledDeviceModuleProject>$(MSBuildProjectDirectory)\..\DeviceInformation.Module\DeviceInformation.Module.csproj</BundledDeviceModuleProject>
+    <BundledDeviceModuleOutput>$(MSBuildProjectDirectory)\..\DeviceInformation.Module\bin\$(Configuration)\net10.0</BundledDeviceModuleOutput>
+    <BundledHomeModuleProject>$(MSBuildProjectDirectory)\..\Home.Module\Home.Module.csproj</BundledHomeModuleProject>
+    <BundledHomeModuleOutput>$(MSBuildProjectDirectory)\..\Home.Module\bin\$(Configuration)\net10.0</BundledHomeModuleOutput>
+    <BundledNetworkModuleProject>$(MSBuildProjectDirectory)\..\NetworkAccelerator.Module\NetworkAccelerator.Module.csproj</BundledNetworkModuleProject>
+    <BundledNetworkModuleOutput>$(MSBuildProjectDirectory)\..\NetworkAccelerator.Module\bin\$(Configuration)\net10.0</BundledNetworkModuleOutput>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AsterDock.Contracts\AsterDock.Contracts.csproj" />
+    <ProjectReference Include="..\DeviceInformation.Core\DeviceInformation.Core.csproj" />
+    <PackageReference Include="Avalonia" Version="12.1.0" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+
+  <Target Name="BuildBundledApplications" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
+    <MSBuild Projects="$(BundledModuleProject);$(BundledDeviceModuleProject);$(BundledHomeModuleProject);$(BundledNetworkModuleProject)"
+             Targets="Build" Properties="Configuration=$(Configuration)"
+             RemoveProperties="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
+    <ItemGroup>
+      <BundledModuleFiles Include="$(BundledModuleOutput)\**\*" />
+      <BundledDeviceModuleFiles Include="$(BundledDeviceModuleOutput)\**\*" />
+      <BundledHomeModuleFiles Include="$(BundledHomeModuleOutput)\**\*" />
+      <BundledNetworkModuleFiles Include="$(BundledNetworkModuleOutput)\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(BundledModuleFiles)"
+          DestinationFiles="@(BundledModuleFiles->'$(OutDir)Apps\InvoicePrinter\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\InvoicePrinter.Module\app.json"
+          DestinationFolder="$(OutDir)Apps\InvoicePrinter" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(BundledDeviceModuleFiles)"
+          DestinationFiles="@(BundledDeviceModuleFiles->'$(OutDir)Apps\DeviceInformation\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\DeviceInformation.Module\app.json"
+          DestinationFolder="$(OutDir)Apps\DeviceInformation" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(BundledHomeModuleFiles)"
+          DestinationFiles="@(BundledHomeModuleFiles->'$(OutDir)Apps\Home\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\Home.Module\app.json"
+          DestinationFolder="$(OutDir)Apps\Home" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(BundledNetworkModuleFiles)"
+          DestinationFiles="@(BundledNetworkModuleFiles->'$(OutDir)Apps\NetworkAccelerator\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\NetworkAccelerator.Module\app.json"
+          DestinationFolder="$(OutDir)Apps\NetworkAccelerator" SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="PublishBundledApplications" AfterTargets="Publish" Condition="'$(DesignTimeBuild)' != 'true'">
+    <MSBuild Projects="$(BundledModuleProject);$(BundledDeviceModuleProject);$(BundledHomeModuleProject);$(BundledNetworkModuleProject)"
+             Targets="Build" Properties="Configuration=$(Configuration)"
+             RemoveProperties="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
+    <ItemGroup>
+      <PublishedModuleFiles Include="$(BundledModuleOutput)\**\*" />
+      <PublishedDeviceModuleFiles Include="$(BundledDeviceModuleOutput)\**\*" />
+      <PublishedHomeModuleFiles Include="$(BundledHomeModuleOutput)\**\*" />
+      <PublishedNetworkModuleFiles Include="$(BundledNetworkModuleOutput)\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(PublishedModuleFiles)"
+          DestinationFiles="@(PublishedModuleFiles->'$(PublishDir)Apps\InvoicePrinter\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\InvoicePrinter.Module\app.json"
+          DestinationFolder="$(PublishDir)Apps\InvoicePrinter" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(PublishedDeviceModuleFiles)"
+          DestinationFiles="@(PublishedDeviceModuleFiles->'$(PublishDir)Apps\DeviceInformation\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\DeviceInformation.Module\app.json"
+          DestinationFolder="$(PublishDir)Apps\DeviceInformation" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(PublishedHomeModuleFiles)"
+          DestinationFiles="@(PublishedHomeModuleFiles->'$(PublishDir)Apps\Home\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\Home.Module\app.json"
+          DestinationFolder="$(PublishDir)Apps\Home" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(PublishedNetworkModuleFiles)"
+          DestinationFiles="@(PublishedNetworkModuleFiles->'$(PublishDir)Apps\NetworkAccelerator\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\NetworkAccelerator.Module\app.json"
+          DestinationFolder="$(PublishDir)Apps\NetworkAccelerator" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

@@ -1,0 +1,11 @@
+{
+  "id": "invoice-printer",
+  "name": "发票打印助手",
+  "description": "导入发票并按 A4 每页两张直接打印",
+  "version": "1.0.0",
+  "entryAssembly": "InvoicePrinter.Module.dll",
+  "entryType": "InvoicePrinter.Module.InvoicePrinterApplicationModule",
+  "icon": "printer",
+  "category": "工具",
+  "order": 10
+}

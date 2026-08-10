@@ -1,0 +1,18 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="InvoicePrinter.Module.Views.PrinterSelectionWindow" x:CompileBindings="False"
+        Title="打印" Width="540" Height="360" CanResize="False" WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="Auto,*,Auto" Margin="24">
+    <StackPanel Spacing="6"><TextBlock Text="打印发票" FontSize="22" FontWeight="SemiBold"/><TextBlock Text="选择要使用的打印机" Foreground="#667085"/></StackPanel>
+    <StackPanel Grid.Row="1" Margin="0,24,0,0" Spacing="16">
+      <TextBlock Text="打印机" FontWeight="SemiBold"/>
+      <ComboBox x:Name="PrinterComboBox" ItemsSource="{Binding Printers}" DisplayMemberBinding="{Binding DisplayName}" MinHeight="40"/>
+      <ProgressBar x:Name="LoadingProgress" IsIndeterminate="True" Height="3"/>
+      <Border Background="#F2F6FC" CornerRadius="8" Padding="14"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="A4 · 纵向 · 每页 2 张"/><TextBlock Grid.Column="1" x:Name="PageCountText" FontWeight="SemiBold"/></Grid></Border>
+      <TextBlock x:Name="StatusText" Foreground="#667085"/>
+    </StackPanel>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+      <Button Content="取消" Width="96" Click="Cancel_Click"/>
+      <Button x:Name="PrintButton" Content="打印" Width="112" IsEnabled="False" Click="Print_Click"/>
+    </StackPanel>
+  </Grid>
+</Window>

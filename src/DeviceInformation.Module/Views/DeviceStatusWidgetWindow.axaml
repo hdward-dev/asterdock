@@ -1,0 +1,93 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:DeviceInformation.Module.Controls"
+        x:Class="DeviceInformation.Module.Views.DeviceStatusWidgetWindow"
+        x:CompileBindings="False"
+        Title="设备状态"
+        Width="392" Height="252"
+        MinWidth="392" MinHeight="252" MaxWidth="392" MaxHeight="252"
+        CanResize="False" ShowInTaskbar="False" Topmost="True"
+        WindowDecorations="None" Background="Transparent">
+  <Window.Styles>
+    <Style Selector="Button.widget-icon">
+      <Setter Property="Width" Value="30"/>
+      <Setter Property="Height" Value="30"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="CornerRadius" Value="7"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+    <Style Selector="Button.widget-icon:pointerover"><Setter Property="Background" Value="#1A64748B"/></Style>
+    <Style Selector="ProgressBar.widget-progress">
+      <Setter Property="Height" Value="3"/>
+      <Setter Property="CornerRadius" Value="2"/>
+      <Setter Property="Background" Value="#2864748B"/>
+    </Style>
+  </Window.Styles>
+
+  <Border CornerRadius="16" Background="#E8F8FAFD"
+          BorderBrush="#BFFFFFFF" BorderThickness="1">
+    <Grid Margin="18,14" RowDefinitions="34,1,52,1,52,1,48,1,*">
+      <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+        <TextBlock Text="设备状态" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/>
+        <Border Grid.Column="1" Width="8" Height="8" CornerRadius="4" Background="#22A447" Margin="9,0,0,0" VerticalAlignment="Center"/>
+        <Button x:Name="PinButton" Grid.Column="3" Classes="widget-icon" ToolTip.Tip="取消置顶" Click="Pin_Click">
+          <PathIcon Data="M14,4 L20,10 L16,12 L14,17 L11,14 L6,19 L5,18 L10,13 L7,10 L12,8 Z" Width="16" Height="16"/>
+        </Button>
+        <Button Grid.Column="4" Classes="widget-icon" ToolTip.Tip="更多">
+          <Button.Flyout>
+            <MenuFlyout Placement="BottomEdgeAlignedRight">
+              <MenuItem Header="关闭悬浮窗" Click="CloseWidget_Click"/>
+            </MenuFlyout>
+          </Button.Flyout>
+          <PathIcon Data="M5,12 A1.5,1.5 0 1 0 5,12.1 M12,12 A1.5,1.5 0 1 0 12,12.1 M19,12 A1.5,1.5 0 1 0 19,12.1" Width="18" Height="18"/>
+        </Button>
+      </Grid>
+
+      <Border Grid.Row="1" Background="#2664748B"/>
+
+      <Grid Grid.Row="2" RowDefinitions="*,4" ColumnDefinitions="56,64,52,*,76" VerticalAlignment="Center">
+        <TextBlock Grid.RowSpan="2" Text="CPU" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
+        <TextBlock Grid.Column="1" Text="{Binding CpuUsageText}" FontSize="19" FontWeight="SemiBold"
+                   Foreground="#1267E8" VerticalAlignment="Center"/>
+        <TextBlock Grid.Column="2" Text="{Binding CpuTemperatureText}" Foreground="#475569" VerticalAlignment="Center"/>
+        <ProgressBar Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" Classes="widget-progress"
+                     Value="{Binding CpuUsage}" Foreground="#1267E8" Margin="0,0,12,0"/>
+        <controls:Sparkline Grid.Column="4" Grid.RowSpan="2" Values="{Binding CpuHistoryValues}"
+                            Stroke="#1267E8" Height="28" VerticalAlignment="Center"/>
+      </Grid>
+
+      <Border Grid.Row="3" Background="#2664748B"/>
+
+      <Grid Grid.Row="4" RowDefinitions="*,4" ColumnDefinitions="56,64,52,*,76" VerticalAlignment="Center">
+        <TextBlock Grid.RowSpan="2" Text="GPU" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
+        <TextBlock Grid.Column="1" Text="{Binding GpuUsageText}" FontSize="19" FontWeight="SemiBold"
+                   Foreground="#7C4DDE" VerticalAlignment="Center"/>
+        <TextBlock Grid.Column="2" Text="{Binding GpuTemperatureText}" Foreground="#475569" VerticalAlignment="Center"/>
+        <ProgressBar Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" Classes="widget-progress"
+                     Value="{Binding GpuUsage}" Foreground="#7C4DDE" Margin="0,0,12,0"/>
+        <controls:Sparkline Grid.Column="4" Grid.RowSpan="2" Values="{Binding GpuHistoryValues}"
+                            Stroke="#7C4DDE" Height="28" VerticalAlignment="Center"/>
+      </Grid>
+
+      <Border Grid.Row="5" Background="#2664748B"/>
+
+      <Grid Grid.Row="6" RowDefinitions="*,4" ColumnDefinitions="56,64,*" VerticalAlignment="Center">
+        <TextBlock Grid.RowSpan="2" Text="内存" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
+        <TextBlock Grid.Column="1" Text="{Binding MemoryUsageText}" FontSize="19" FontWeight="SemiBold"
+                   Foreground="#00A3BF" VerticalAlignment="Center"/>
+        <TextBlock Grid.Column="2" Text="{Binding MemoryText}" Foreground="#475569" FontSize="12"
+                   HorizontalAlignment="Right" VerticalAlignment="Center"/>
+        <ProgressBar Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Classes="widget-progress"
+                     Value="{Binding MemoryUsage}" Foreground="#00A3BF"/>
+      </Grid>
+
+      <Border Grid.Row="7" Background="#2664748B"/>
+
+      <Grid Grid.Row="8" ColumnDefinitions="*,*" VerticalAlignment="Center">
+        <TextBlock Text="{Binding DownloadText}" FontSize="15" Foreground="#1267E8"/>
+        <TextBlock Grid.Column="1" Text="{Binding UploadText}" FontSize="15" Foreground="#7C4DDE" HorizontalAlignment="Right"/>
+      </Grid>
+    </Grid>
+  </Border>
+</Window>

@@ -1,0 +1,11 @@
+{
+  "id": "device-information",
+  "name": "设备信息",
+  "description": "查看当前设备的硬件信息、资源使用率和桌面实时状态",
+  "version": "1.0.0",
+  "entryAssembly": "DeviceInformation.Module.dll",
+  "entryType": "DeviceInformation.Module.DeviceInformationApplicationModule",
+  "icon": "monitor",
+  "category": "工具",
+  "order": 20
+}

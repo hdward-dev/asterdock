@@ -1,0 +1,167 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:models="using:InvoicePrinter.Module.Models"
+             x:Class="InvoicePrinter.Module.Views.InvoicePrinterView"
+             x:CompileBindings="False"
+             Background="{DynamicResource AppPageBrush}"
+             DragDrop.AllowDrop="True" DragDrop.Drop="OnDrop">
+  <UserControl.Styles>
+    <Style Selector="Border.card">
+      <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="10"/>
+    </Style>
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="#1267E8"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="Padding" Value="18,0"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="ListBox.invoice-list ListBoxItem">
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Margin" Value="0"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="MinHeight" Value="0"/>
+    </Style>
+    <Style Selector="TabItem">
+      <Setter Property="Padding" Value="16,9"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="TabItem:selected"><Setter Property="Foreground" Value="#1267E8"/></Style>
+    <Style Selector="Button.icon-button">
+      <Setter Property="Width" Value="34"/>
+      <Setter Property="Height" Value="34"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+    <Style Selector="Button.icon-button:pointerover"><Setter Property="Background" Value="#E7EBF1"/></Style>
+  </UserControl.Styles>
+
+  <Grid ColumnDefinitions="*,16,1.08*" RowDefinitions="68,*">
+    <Border Grid.ColumnSpan="3" Background="{DynamicResource AppChromeBrush}"
+            BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1">
+      <StackPanel Orientation="Horizontal" Margin="26,0" VerticalAlignment="Center">
+        <TextBlock Text="发票打印助手" FontSize="24" FontWeight="SemiBold"/>
+        <Border Background="#E9F7ED" CornerRadius="7" Padding="10,5" Margin="12,0,0,0">
+          <TextBlock Text="●  就绪" Foreground="#258247"/>
+        </Border>
+      </StackPanel>
+    </Border>
+
+    <TabControl Grid.Row="1" Margin="18" Background="Transparent">
+      <TabItem Header="发票文件">
+        <Border Classes="card" Margin="0,12,0,0" Padding="14">
+          <Grid RowDefinitions="38,132,6,*">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock x:Name="ImportedTitle" Text="已导入 0 张发票" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+              <Button Grid.Column="1" Content="清空" ToolTip.Tip="移除全部发票" Background="Transparent" BorderThickness="0" Click="Clear_Click"/>
+            </Grid>
+
+            <Border Grid.Row="1" BorderBrush="#76A7F5" BorderThickness="1" CornerRadius="9" Background="#FBFDFF">
+              <Grid ColumnDefinitions="*,Auto" Margin="20,0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                  <PathIcon Data="M12,3 L5,10 H9 V16 H15 V10 H19 Z M5,19 H19 V21 H5 Z" Width="32" Height="32" Foreground="#1267E8"/>
+                  <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="拖入发票文件" FontSize="18" FontWeight="SemiBold" Foreground="#1267E8"/>
+                    <TextBlock Text="支持 PDF、PNG、JPG、BMP、TIFF" Margin="0,5,0,0" Foreground="#667085"/>
+                  </StackPanel>
+                </StackPanel>
+                <Button Grid.Column="1" Padding="16,8" Click="BrowseFiles_Click" VerticalAlignment="Center">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <PathIcon Data="M3,6 H10 L12,8 H21 V20 H3 Z" Width="16" Height="16"/>
+                    <TextBlock Text="浏览文件"/>
+                  </StackPanel>
+                </Button>
+              </Grid>
+            </Border>
+
+            <ProgressBar x:Name="ImportProgress" Grid.Row="2" IsIndeterminate="True" IsVisible="False" Height="3"/>
+            <Grid Grid.Row="3">
+              <TextBlock x:Name="EmptyState" Text="尚未导入发票" Foreground="#98A2B3" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              <ListBox x:Name="InvoiceList" Classes="invoice-list" ItemsSource="{Binding Pages}" Background="Transparent" BorderThickness="0" SelectionMode="Single">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="models:InvoicePageItem">
+                    <Border Height="56" BorderBrush="#E2E7EF" BorderThickness="1" CornerRadius="8" Margin="0,0,0,6" Padding="8,5">
+                      <Grid ColumnDefinitions="44,*,30,34">
+                        <Image Source="{Binding Preview}" Stretch="Uniform"/>
+                        <TextBlock Grid.Column="1" Text="{Binding DisplayName}" Margin="10,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Grid.Column="2" Text="✓" Foreground="#24A148" FontSize="18" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        <Button Grid.Column="3" Tag="{Binding}" Background="Transparent" BorderThickness="0" ToolTip.Tip="移除" Click="Remove_Click">
+                          <PathIcon Data="M6,6 L18,18 M18,6 L6,18" Width="13" Height="13"/>
+                        </Button>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </Grid>
+          </Grid>
+        </Border>
+      </TabItem>
+
+      <TabItem Header="打印设置">
+        <Border Classes="card" Margin="0,12,0,0" Padding="22">
+          <StackPanel Spacing="18">
+            <TextBlock Text="页面布局" FontSize="18" FontWeight="SemiBold"/>
+            <Grid ColumnDefinitions="150,*" RowDefinitions="42,42,42,42,42" RowSpacing="10">
+              <TextBlock Text="每页发票" VerticalAlignment="Center" Foreground="#667085"/>
+              <ComboBox Grid.Column="1" SelectedIndex="0"><ComboBoxItem Content="2 张"/></ComboBox>
+              <TextBlock Grid.Row="1" Text="纸张大小" VerticalAlignment="Center" Foreground="#667085"/>
+              <ComboBox Grid.Row="1" Grid.Column="1" SelectedIndex="0"><ComboBoxItem Content="A4（210 × 297 mm）"/></ComboBox>
+              <TextBlock Grid.Row="2" Text="页面方向" VerticalAlignment="Center" Foreground="#667085"/>
+              <ComboBox Grid.Row="2" Grid.Column="1" SelectedIndex="0"><ComboBoxItem Content="纵向"/></ComboBox>
+              <TextBlock Grid.Row="3" Text="安全边距" VerticalAlignment="Center" Foreground="#667085"/>
+              <NumericUpDown x:Name="MarginInput" Grid.Row="3" Grid.Column="1" Value="10" Minimum="5" Maximum="30" Increment="1" FormatString="0 mm" ShowButtonSpinner="True"/>
+              <TextBlock Grid.Row="4" Text="裁切分隔线" VerticalAlignment="Center" Foreground="#667085"/>
+              <ToggleSwitch x:Name="DividerToggle" Grid.Row="4" Grid.Column="1" IsChecked="True" OnContent="显示" OffContent="隐藏"/>
+            </Grid>
+            <Border Background="#F2F6FC" CornerRadius="8" Padding="14">
+              <TextBlock Text="当前默认使用 A4 纵向，每页两张发票，并保留 10 mm 安全边距。" Foreground="#526174" TextWrapping="Wrap"/>
+            </Border>
+          </StackPanel>
+        </Border>
+      </TabItem>
+    </TabControl>
+
+    <Border Grid.Row="1" Grid.Column="2" Classes="card" Margin="0,18,18,18">
+      <Grid RowDefinitions="56,*,70">
+        <Grid Margin="16,0" ColumnDefinitions="*,Auto,70,Auto">
+          <TextBlock Text="打印预览" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+          <Button x:Name="PreviousPageButton" Grid.Column="1" Classes="icon-button" ToolTip.Tip="上一页" Click="PreviousPage_Click">
+            <Path Data="M15,5 L8,12 L15,19" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" Width="14" Height="14" Stretch="Uniform"/>
+          </Button>
+          <TextBlock x:Name="PageIndicator" Grid.Column="2" Text="0 / 0" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          <Button x:Name="NextPageButton" Grid.Column="3" Classes="icon-button" ToolTip.Tip="下一页" Click="NextPage_Click">
+            <Path Data="M9,5 L16,12 L9,19" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" Width="14" Height="14" Stretch="Uniform"/>
+          </Button>
+        </Grid>
+        <Border Grid.Row="1" Background="{DynamicResource AppPreviewBrush}" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,1">
+          <Viewbox Stretch="Uniform" Margin="18">
+            <Border Width="595" Height="842" Background="White" BorderBrush="#CAD2DE" BorderThickness="1" Padding="28">
+              <Grid RowDefinitions="*,16,*">
+                <Image x:Name="PreviewTop" Stretch="Uniform" Margin="0,0,0,4"/>
+                <Line Grid.Row="1" StartPoint="0,8" EndPoint="539,8" Stroke="#98A2B3" StrokeThickness="1" StrokeDashArray="6,4"/>
+                <Image x:Name="PreviewBottom" Grid.Row="2" Stretch="Uniform" Margin="0,4,0,0"/>
+              </Grid>
+            </Border>
+          </Viewbox>
+        </Border>
+        <Grid Grid.Row="2" Margin="16,0" ColumnDefinitions="*,Auto">
+          <TextBlock x:Name="PageSummary" Text="共 0 页" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+          <Button Grid.Column="1" Classes="primary" MinWidth="112" Height="40" Click="Print_Click">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <PathIcon Data="M6,3 H18 V8 H20 A2,2 0 0 1 22,10 V17 H18 V22 H6 V17 H2 V10 A2,2 0 0 1 4,8 H6 Z M8,15 V20 H16 V15 Z M8,5 V8 H16 V5 Z" Width="16" Height="16"/>
+              <TextBlock Text="打印" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+        </Grid>
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

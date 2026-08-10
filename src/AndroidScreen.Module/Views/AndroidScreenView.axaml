@@ -1,0 +1,62 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="AndroidScreen.Module.Views.AndroidScreenView"
+             x:CompileBindings="False"
+             Background="{DynamicResource AppPageBrush}">
+  <UserControl.Styles>
+    <Style Selector="Border.card">
+      <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="12"/>
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="64,*">
+    <Border Background="{DynamicResource AppChromeBrush}" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1">
+      <StackPanel Margin="26,0" VerticalAlignment="Center">
+        <TextBlock Text="Android 投屏" FontSize="23" FontWeight="SemiBold"/>
+        <TextBlock Text="使用 scrcpy 镜像并控制 Android 设备" FontSize="12.5" Foreground="{DynamicResource AppMutedBrush}"/>
+      </StackPanel>
+    </Border>
+
+    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Margin="24" Spacing="14" MaxWidth="860">
+        <Border Classes="card" Padding="24">
+          <StackPanel Spacing="18">
+            <StackPanel Spacing="4">
+              <TextBlock Text="投屏与控制" FontSize="22" FontWeight="SemiBold"/>
+              <TextBlock Text="默认通过 USB 连接；scrcpy 窗口支持鼠标、键盘和剪贴板控制。" Foreground="{DynamicResource AppMutedBrush}"/>
+            </StackPanel>
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+              <StackPanel Spacing="6">
+                <TextBlock Text="无线设备地址（可选）" FontWeight="SemiBold"/>
+                <TextBox Text="{Binding NetworkAddress, Mode=TwoWay}"
+                         PlaceholderText="例如 192.168.1.20 或 192.168.1.20:5555"/>
+                <TextBlock Text="填写地址后以 scrcpy 的 TCP/IP 模式连接；留空则等待 USB 设备。" FontSize="12" Foreground="{DynamicResource AppMutedBrush}" TextWrapping="Wrap"/>
+              </StackPanel>
+              <StackPanel Grid.Column="1" Spacing="8" VerticalAlignment="Center">
+                <Button Content="{Binding LaunchButtonText}" Classes="accent"
+                        MinWidth="132" Height="44" IsEnabled="{Binding !IsBusy}" Click="Toggle_Click"/>
+                <Button Content="安装 scrcpy" IsVisible="{Binding IsScrcpyMissing}" IsEnabled="{Binding !IsBusy}"
+                        HorizontalAlignment="Center" Click="Install_Click"/>
+              </StackPanel>
+            </Grid>
+            <Border Background="{DynamicResource AppSubtleBrush}" CornerRadius="8" Padding="14,11">
+              <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" Foreground="{DynamicResource AppMutedBrush}"/>
+            </Border>
+          </StackPanel>
+        </Border>
+
+        <Border Classes="card" Padding="24">
+          <StackPanel Spacing="10">
+            <TextBlock Text="使用前准备" FontSize="17" FontWeight="SemiBold"/>
+            <TextBlock Text="1. 在 Android 开发者选项中开启“USB 调试”，首次连接时在手机上允许本机的调试授权。"/>
+            <TextBlock Text="2. 在本页点击“安装 scrcpy”，应用会从官方 GitHub Release 下载并校验适用于当前平台的版本。"/>
+            <TextBlock Text="3. 无线模式需要设备与电脑处于同一网络，且已通过 ADB 配置好 TCP/IP 调试。"/>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

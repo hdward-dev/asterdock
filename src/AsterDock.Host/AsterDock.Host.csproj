@@ -14,6 +14,8 @@
     <BundledHomeModuleOutput>$(MSBuildProjectDirectory)\..\Home.Module\bin\$(Configuration)\net10.0</BundledHomeModuleOutput>
     <BundledNetworkModuleProject>$(MSBuildProjectDirectory)\..\NetworkAccelerator.Module\NetworkAccelerator.Module.csproj</BundledNetworkModuleProject>
     <BundledNetworkModuleOutput>$(MSBuildProjectDirectory)\..\NetworkAccelerator.Module\bin\$(Configuration)\net10.0</BundledNetworkModuleOutput>
+    <BundledAndroidScreenModuleProject>$(MSBuildProjectDirectory)\..\AndroidScreen.Module\AndroidScreen.Module.csproj</BundledAndroidScreenModuleProject>
+    <BundledAndroidScreenModuleOutput>$(MSBuildProjectDirectory)\..\AndroidScreen.Module\bin\$(Configuration)\net10.0</BundledAndroidScreenModuleOutput>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\AsterDock.Contracts\AsterDock.Contracts.csproj" />
@@ -25,6 +27,8 @@
     <ProjectReference Include="..\Home.Module\Home.Module.csproj" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
     <ProjectReference Include="..\NetworkAccelerator.Module\NetworkAccelerator.Module.csproj" ReferenceOutputAssembly="false" Private="false"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
+    <ProjectReference Include="..\AndroidScreen.Module\AndroidScreen.Module.csproj" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
     <PackageReference Include="Avalonia" Version="12.1.0" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
@@ -41,6 +45,7 @@
       <BundledDeviceModuleFiles Include="$(BundledDeviceModuleOutput)\**\*" />
       <BundledHomeModuleFiles Include="$(BundledHomeModuleOutput)\**\*" />
       <BundledNetworkModuleFiles Include="$(BundledNetworkModuleOutput)\**\*" />
+      <BundledAndroidScreenModuleFiles Include="$(BundledAndroidScreenModuleOutput)\**\*" />
     </ItemGroup>
     <Copy SourceFiles="@(BundledModuleFiles)"
           DestinationFiles="@(BundledModuleFiles->'$(OutDir)Apps\InvoicePrinter\%(RecursiveDir)%(Filename)%(Extension)')"
@@ -62,6 +67,11 @@
           SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\NetworkAccelerator.Module\app.json"
           DestinationFolder="$(OutDir)Apps\NetworkAccelerator" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(BundledAndroidScreenModuleFiles)"
+          DestinationFiles="@(BundledAndroidScreenModuleFiles->'$(OutDir)Apps\AndroidScreen\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\AndroidScreen.Module\app.json"
+          DestinationFolder="$(OutDir)Apps\AndroidScreen" SkipUnchangedFiles="true" />
   </Target>
 
   <Target Name="PublishBundledApplications" AfterTargets="Publish" Condition="'$(DesignTimeBuild)' != 'true'">
@@ -70,6 +80,7 @@
       <PublishedDeviceModuleFiles Include="$(BundledDeviceModuleOutput)\**\*" />
       <PublishedHomeModuleFiles Include="$(BundledHomeModuleOutput)\**\*" />
       <PublishedNetworkModuleFiles Include="$(BundledNetworkModuleOutput)\**\*" />
+      <PublishedAndroidScreenModuleFiles Include="$(BundledAndroidScreenModuleOutput)\**\*" />
     </ItemGroup>
     <Copy SourceFiles="@(PublishedModuleFiles)"
           DestinationFiles="@(PublishedModuleFiles->'$(PublishDir)Apps\InvoicePrinter\%(RecursiveDir)%(Filename)%(Extension)')"
@@ -91,5 +102,10 @@
           SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\NetworkAccelerator.Module\app.json"
           DestinationFolder="$(PublishDir)Apps\NetworkAccelerator" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(PublishedAndroidScreenModuleFiles)"
+          DestinationFiles="@(PublishedAndroidScreenModuleFiles->'$(PublishDir)Apps\AndroidScreen\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\AndroidScreen.Module\app.json"
+          DestinationFolder="$(PublishDir)Apps\AndroidScreen" SkipUnchangedFiles="true" />
   </Target>
 </Project>

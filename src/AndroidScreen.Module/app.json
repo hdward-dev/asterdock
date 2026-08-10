@@ -1,0 +1,11 @@
+{
+  "id": "android-screen",
+  "name": "Android 投屏",
+  "description": "通过 scrcpy 投屏并控制已启用 USB 调试的 Android 设备",
+  "version": "1.0.0",
+  "entryAssembly": "AndroidScreen.Module.dll",
+  "entryType": "AndroidScreen.Module.AndroidScreenApplicationModule",
+  "icon": "monitor",
+  "category": "工具",
+  "order": 40
+}

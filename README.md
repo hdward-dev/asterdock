@@ -1,11 +1,12 @@
 # AsterDock（星栈）
 
-基于 .NET 10 与 Avalonia 12 的 Windows/macOS 跨平台应用容器。外壳只负责窗口、导航和模块加载，当前内置主页、发票打印助手、设备信息与网络加速四个独立应用模块。
+基于 .NET 10 与 Avalonia 12 的 Windows/macOS 跨平台应用容器。外壳只负责窗口、导航和模块加载，当前内置主页、发票打印助手、设备信息、网络加速与 Android 投屏五个独立应用模块。
 
 - 发票打印助手：PDF/图片导入、A4 每页两张预览、虚线分隔及直接打印。
 - 设备信息：CPU、GPU、内存、磁盘与网络状态，支持桌面右上角透明常驻监控窗。
 - 网络加速：使用 sing-box JSON 订阅，支持规则/全局/直连、TUN 模式、节点切换与延迟测试。
 - 主页：常用应用、最近使用、设备概览和容器快捷操作。
+- Android 投屏：通过 scrcpy 投屏并控制已开启 USB 调试的 Android 设备，支持 USB 与 TCP/IP 连接，并可从官方 Release 自动下载核心。
 
 容器提供系统托盘入口。关闭主窗口时程序隐藏到托盘；通过托盘可以重新打开星栈、显示或隐藏设备监控窗，选择“退出”才会结束进程。
 
@@ -28,6 +29,7 @@ asterdock/
 │  ├─ AsterDock.Contracts/  # 容器与应用之间的稳定契约
 │  ├─ AsterDock.Host/       # Avalonia 容器外壳与模块加载器
 │  ├─ AsterDock.NetworkElevatedHost/ # Windows TUN 最小权限辅助进程
+│  ├─ AndroidScreen.Module/      # 基于 scrcpy 的 Android 投屏与控制
 │  ├─ DeviceInformation.Module/  # 设备信息 UI 与透明悬浮窗
 │  ├─ DeviceInformation.Core/    # 容器共享的跨平台硬件采集实现
 │  ├─ Home.Module/               # 默认主页与容器工作台

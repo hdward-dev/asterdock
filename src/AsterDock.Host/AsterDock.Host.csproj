@@ -18,6 +18,14 @@
   <ItemGroup>
     <ProjectReference Include="..\AsterDock.Contracts\AsterDock.Contracts.csproj" />
     <ProjectReference Include="..\DeviceInformation.Core\DeviceInformation.Core.csproj" />
+    <ProjectReference Include="..\InvoicePrinter.Module\InvoicePrinter.Module.csproj" ReferenceOutputAssembly="false" Private="false"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
+    <ProjectReference Include="..\DeviceInformation.Module\DeviceInformation.Module.csproj" ReferenceOutputAssembly="false" Private="false"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
+    <ProjectReference Include="..\Home.Module\Home.Module.csproj" ReferenceOutputAssembly="false" Private="false"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
+    <ProjectReference Include="..\NetworkAccelerator.Module\NetworkAccelerator.Module.csproj" ReferenceOutputAssembly="false" Private="false"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
     <PackageReference Include="Avalonia" Version="12.1.0" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
@@ -28,9 +36,6 @@
   </ItemGroup>
 
   <Target Name="BuildBundledApplications" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
-    <MSBuild Projects="$(BundledModuleProject);$(BundledDeviceModuleProject);$(BundledHomeModuleProject);$(BundledNetworkModuleProject)"
-             Targets="Build" Properties="Configuration=$(Configuration)"
-             RemoveProperties="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
     <ItemGroup>
       <BundledModuleFiles Include="$(BundledModuleOutput)\**\*" />
       <BundledDeviceModuleFiles Include="$(BundledDeviceModuleOutput)\**\*" />
@@ -60,9 +65,6 @@
   </Target>
 
   <Target Name="PublishBundledApplications" AfterTargets="Publish" Condition="'$(DesignTimeBuild)' != 'true'">
-    <MSBuild Projects="$(BundledModuleProject);$(BundledDeviceModuleProject);$(BundledHomeModuleProject);$(BundledNetworkModuleProject)"
-             Targets="Build" Properties="Configuration=$(Configuration)"
-             RemoveProperties="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
     <ItemGroup>
       <PublishedModuleFiles Include="$(BundledModuleOutput)\**\*" />
       <PublishedDeviceModuleFiles Include="$(BundledDeviceModuleOutput)\**\*" />

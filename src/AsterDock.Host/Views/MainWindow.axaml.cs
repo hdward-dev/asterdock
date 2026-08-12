@@ -15,6 +15,10 @@ namespace AsterDock.Host.Views;
 
 public partial class MainWindow : Window, IApplicationShell
 {
+    private const double CollapsedCapsuleWidth = 124;
+    private const double HostBackCapsuleWidth = 176;
+    private const double ExpandedCapsuleWidth = 218;
+    private const double ExpandedBackCapsuleWidth = 261;
     private enum SettingsSection
     {
         Applications,
@@ -27,6 +31,9 @@ public partial class MainWindow : Window, IApplicationShell
     private bool _appSwitcherShortcutTriggered;
     private bool _allowClose;
     private bool _applicationsLoaded;
+    private int _capsuleAnimationVersion;
+    private int _appInfoAnimationVersion;
+    private LoadedApplication? _currentApplication;
     private readonly Dictionary<string, DateTimeOffset> _recentApplications = new(StringComparer.OrdinalIgnoreCase);
 
     public ObservableCollection<LoadedApplication> Applications { get; } = [];
@@ -49,6 +56,7 @@ public partial class MainWindow : Window, IApplicationShell
         Closing += MainWindow_Closing;
         Closed += (_, _) =>
         {
+            DetachApplicationNavigation();
             _catalog.Dispose();
             _systemMetrics.Dispose();
         };
@@ -59,6 +67,8 @@ public partial class MainWindow : Window, IApplicationShell
 
     private void LoadApplications(bool activateFirst = true)
     {
+        DetachApplicationNavigation();
+        _currentApplication = null;
         ApplicationContent.Content = null;
         var bundledAppsDirectory = Path.Combine(AppContext.BaseDirectory, "Apps");
         var packageCacheDirectory = Path.Combine(ApplicationPaths.ProductDataDirectory, "AppCache");
@@ -93,8 +103,11 @@ public partial class MainWindow : Window, IApplicationShell
         try
         {
             SettingsPanel.IsVisible = false;
+            HideAppInfo();
             ApplicationContent.Content = application.GetOrCreateView(this, _systemMetrics);
             EmptyState.IsVisible = false;
+            SetCurrentApplication(application);
+            UpdateCapsuleState();
             WindowTitleText.Text = $"星栈  ·  {application.Name}";
             Title = $"星栈 · {application.Name}";
             _recentApplications[application.Manifest.Id] = DateTimeOffset.Now;
@@ -104,6 +117,9 @@ public partial class MainWindow : Window, IApplicationShell
         {
             ApplicationContent.Content = null;
             EmptyState.IsVisible = true;
+            DetachApplicationNavigation();
+            _currentApplication = null;
+            UpdateCapsuleState();
             EmptyMessage.Text = $"{application.Name} 加载失败：{exception.GetBaseException().Message}";
         }
     }
@@ -183,6 +199,138 @@ public partial class MainWindow : Window, IApplicationShell
 
     private void ApplicationSwitcherMenuItem_Click(object? sender, RoutedEventArgs e) => PostAfterInput(ShowAppSwitcher);
 
+    private void CapsuleMore_Click(object? sender, RoutedEventArgs e) => PostAfterInput(ShowAppInfo);
+
+    private void CapsuleBack_Click(object? sender, RoutedEventArgs e)
+    {
+        if (SettingsPanel.IsVisible)
+        {
+            if (_currentApplication is not null) PostAfterInput(() => OpenApplication(_currentApplication));
+            return;
+        }
+
+        _currentApplication?.Navigation?.GoBack();
+    }
+
+    private void CapsuleHome_Click(object? sender, RoutedEventArgs e)
+    {
+        var home = Applications.FirstOrDefault(application =>
+            string.Equals(application.Manifest.Id, "home", StringComparison.OrdinalIgnoreCase));
+        if (home is not null) PostAfterInput(() => OpenApplication(home));
+    }
+
+    private async void ShowAppInfo()
+    {
+        if (_currentApplication is null ||
+            string.Equals(_currentApplication.Manifest.Id, "home", StringComparison.OrdinalIgnoreCase)) return;
+        AppInfoIcon.Data = _currentApplication.IconGeometry;
+        AppInfoName.Text = _currentApplication.Name;
+        AppInfoDescription.Text = _currentApplication.Description;
+        AppInfoVersion.Text = _currentApplication.Version;
+        AppInfoCategory.Text = _currentApplication.Category;
+        var recentApplications = _recentApplications
+            .Where(item => !string.Equals(item.Key, _currentApplication.Manifest.Id, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(item => item.Value)
+            .Select(item => Applications.FirstOrDefault(application =>
+                string.Equals(application.Manifest.Id, item.Key, StringComparison.OrdinalIgnoreCase)))
+            .Where(application => application is not null)
+            .Cast<LoadedApplication>()
+            .Take(4)
+            .ToList();
+        AppInfoRecentApplications.ItemsSource = recentApplications;
+        AppInfoRecentApplications.IsVisible = recentApplications.Count > 0;
+        AppInfoRecentEmpty.IsVisible = recentApplications.Count == 0;
+        var animationVersion = ++_appInfoAnimationVersion;
+        AppInfoOverlay.IsVisible = true;
+        await Task.Delay(20);
+        if (animationVersion != _appInfoAnimationVersion) return;
+        AppInfoOverlay.Opacity = 1;
+        if (AppInfoDrawer.RenderTransform is TranslateTransform transform) transform.X = 0;
+    }
+
+    private async void HideAppInfo()
+    {
+        if (!AppInfoOverlay.IsVisible) return;
+        var animationVersion = ++_appInfoAnimationVersion;
+        AppInfoOverlay.Opacity = 0;
+        if (AppInfoDrawer.RenderTransform is TranslateTransform transform) transform.X = 380;
+        await Task.Delay(230);
+        if (animationVersion == _appInfoAnimationVersion) AppInfoOverlay.IsVisible = false;
+    }
+
+    private void CloseAppInfo_Click(object? sender, RoutedEventArgs e) => PostAfterInput(HideAppInfo);
+
+    private void AppInfoRecentApplication_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: LoadedApplication application }) return;
+        HideAppInfo();
+        PostAfterInput(() => OpenApplication(application));
+    }
+
+    private void AppInfoOverlay_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        PostAfterInput(HideAppInfo);
+        e.Handled = true;
+    }
+
+    private void AppInfoDrawer_PointerPressed(object? sender, PointerPressedEventArgs e) => e.Handled = true;
+
+    private void SetCurrentApplication(LoadedApplication application)
+    {
+        if (ReferenceEquals(_currentApplication, application)) return;
+        DetachApplicationNavigation();
+        _currentApplication = application;
+        if (_currentApplication.Navigation is not null)
+            _currentApplication.Navigation.NavigationStateChanged += ApplicationNavigation_StateChanged;
+    }
+
+    private void DetachApplicationNavigation()
+    {
+        if (_currentApplication?.Navigation is not null)
+            _currentApplication.Navigation.NavigationStateChanged -= ApplicationNavigation_StateChanged;
+    }
+
+    private void ApplicationNavigation_StateChanged(object? sender, EventArgs e) =>
+        Dispatcher.UIThread.Post(UpdateCapsuleState);
+
+    private void UpdateCapsuleState()
+    {
+        var hostCanGoBack = SettingsPanel.IsVisible;
+        var isHome = _currentApplication is null ||
+                     string.Equals(_currentApplication.Manifest.Id, "home", StringComparison.OrdinalIgnoreCase);
+        var applicationCanGoBack = !hostCanGoBack && _currentApplication?.Navigation?.CanGoBack == true;
+
+        CapsuleBackButton.IsVisible = hostCanGoBack || applicationCanGoBack;
+        CapsuleBackSeparator.IsVisible = applicationCanGoBack;
+        CapsuleInfoButton.IsVisible = !hostCanGoBack && !isHome;
+        CapsuleInfoHomeSeparator.IsVisible = !hostCanGoBack && !isHome;
+        CapsuleHomeButton.IsVisible = !hostCanGoBack && !isHome;
+
+        var visible = hostCanGoBack || !isHome;
+        var width = hostCanGoBack
+            ? HostBackCapsuleWidth
+            : applicationCanGoBack ? ExpandedBackCapsuleWidth : ExpandedCapsuleWidth;
+        SetMiniAppCapsuleVisible(visible, width);
+    }
+
+    private async void SetMiniAppCapsuleVisible(bool visible, double expandedWidth = ExpandedCapsuleWidth)
+    {
+        var animationVersion = ++_capsuleAnimationVersion;
+        if (visible)
+        {
+            MiniAppCapsule.IsVisible = true;
+            WindowControlCapsule.Width = expandedWidth;
+            await Task.Delay(35);
+            if (animationVersion == _capsuleAnimationVersion) MiniAppCapsule.Opacity = 1;
+            return;
+        }
+
+        MiniAppCapsule.Opacity = 0;
+        WindowControlCapsule.Width = CollapsedCapsuleWidth;
+        await Task.Delay(250);
+        if (animationVersion == _capsuleAnimationVersion) MiniAppCapsule.IsVisible = false;
+    }
+
     private void OpenLoadedApplication_Click(object? sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: LoadedApplication application }) return;
@@ -192,9 +340,11 @@ public partial class MainWindow : Window, IApplicationShell
     private void ShowSettings()
     {
         HideAppSwitcher();
+        HideAppInfo();
         ApplicationContent.Content = null;
         EmptyState.IsVisible = false;
         SettingsPanel.IsVisible = true;
+        UpdateCapsuleState();
         ShowSettingsSection(SettingsSection.Applications);
         WindowTitleText.Text = "星栈  ·  设置";
         Title = "星栈 · 设置";
@@ -228,6 +378,13 @@ public partial class MainWindow : Window, IApplicationShell
         {
             _appSwitcherShortcutTriggered = true;
             ShowAppSwitcher();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Escape && AppInfoOverlay.IsVisible)
+        {
+            PostAfterInput(HideAppInfo);
             e.Handled = true;
             return;
         }

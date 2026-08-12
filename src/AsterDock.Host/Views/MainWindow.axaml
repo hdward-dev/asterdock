@@ -8,10 +8,10 @@
   <Window.Styles>
     <Style Selector="Button.caption">
       <Setter Property="Width" Value="40"/>
-      <Setter Property="Height" Value="32"/>
+      <Setter Property="Height" Value="26"/>
       <Setter Property="VerticalAlignment" Value="Center"/>
       <Setter Property="Padding" Value="0"/>
-      <Setter Property="CornerRadius" Value="5"/>
+      <Setter Property="CornerRadius" Value="10"/>
       <Setter Property="Background" Value="Transparent"/>
       <Setter Property="BorderThickness" Value="0"/>
     </Style>
@@ -61,6 +61,27 @@
       <Setter Property="VerticalContentAlignment" Value="Center"/>
     </Style>
     <Style Selector="Button.app-tile:pointerover"><Setter Property="Background" Value="{DynamicResource AppPreviewBrush}"/></Style>
+    <Style Selector="Button.recent-app">
+      <Setter Property="Width" Value="68"/>
+      <Setter Property="Height" Value="82"/>
+      <Setter Property="Padding" Value="5"/>
+      <Setter Property="CornerRadius" Value="12"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+    <Style Selector="Button.recent-app:pointerover"><Setter Property="Background" Value="{DynamicResource AppAccentSurfaceBrush}"/></Style>
+    <Style Selector="Button.capsule-action">
+      <Setter Property="Width" Value="42"/>
+      <Setter Property="Height" Value="28"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="CornerRadius" Value="8"/>
+    </Style>
+    <Style Selector="Button.capsule-action:pointerover"><Setter Property="Background" Value="{DynamicResource AppSubtleBrush}"/></Style>
+    <Style Selector="Button.capsule-action:pressed /template/ ContentPresenter">
+      <Setter Property="CornerRadius" Value="{Binding CornerRadius, RelativeSource={RelativeSource AncestorType=Button}}"/>
+    </Style>
   </Window.Styles>
 
   <Grid x:Name="WindowRootGrid" RowDefinitions="40,*">
@@ -93,22 +114,66 @@
           <TextBlock x:Name="WindowTitleText" Text="星栈" Margin="5,0,0,0" FontSize="12.5"
                      Foreground="{DynamicResource AppStrongTextBrush}" VerticalAlignment="Center"/>
         </StackPanel>
-        <StackPanel Grid.Column="1" Orientation="Horizontal">
-          <Button Classes="caption" ToolTip.Tip="最小化" Click="Minimize_Click">
-            <Border Width="14" Height="1.5" Margin="0,7,0,0" VerticalAlignment="Center"
-                    Background="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
-          </Button>
-          <Button x:Name="MaximizeButton" Classes="caption" ToolTip.Tip="最大化" Click="Maximize_Click">
-            <Path x:Name="MaximizeIcon" Data="M6,6 L18,6 L18,18 L6,18 Z"
-                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                  StrokeThickness="1.25" Width="13" Height="13" Stretch="Uniform"/>
-          </Button>
-          <Button Classes="caption close" ToolTip.Tip="关闭" Click="Close_Click">
-            <Path Data="M6,6 L18,18 M18,6 L6,18"
-                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                  StrokeThickness="1.25" Width="13" Height="13" Stretch="Uniform"/>
-          </Button>
-        </StackPanel>
+        <Border x:Name="WindowControlCapsule" Grid.Column="1" Width="124" Height="32" Margin="0,0,4,0" Padding="2"
+                VerticalAlignment="Center" CornerRadius="12"
+                Background="{DynamicResource AppSurfaceBrush}"
+                BorderBrush="{DynamicResource AppInputBorderBrush}" BorderThickness="1"
+                ClipToBounds="True">
+          <Border.Transitions>
+            <Transitions>
+              <DoubleTransition Property="Width" Duration="0:0:0.24"/>
+            </Transitions>
+          </Border.Transitions>
+          <Grid ColumnDefinitions="*,Auto">
+            <Border x:Name="MiniAppCapsule" IsVisible="False" Opacity="0" Margin="0,0,5,0"
+                    HorizontalAlignment="Right" VerticalAlignment="Stretch" CornerRadius="9" Background="{DynamicResource AppSubtleBrush}"
+                    BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="1">
+              <Border.Transitions>
+                <Transitions>
+                  <DoubleTransition Property="Opacity" Duration="0:0:0.16"/>
+                </Transitions>
+              </Border.Transitions>
+              <StackPanel Orientation="Horizontal">
+                <Button x:Name="CapsuleBackButton" Classes="capsule-action" IsVisible="False"
+                        ToolTip.Tip="返回" Click="CapsuleBack_Click">
+                  <Path Data="M19,12 H5 M5,12 L11,6 M5,12 L11,18" Width="18" Height="18" Stretch="Uniform"
+                        Stroke="{DynamicResource AppStrongTextBrush}" StrokeThickness="1.8"/>
+                </Button>
+                <Border x:Name="CapsuleBackSeparator" IsVisible="False" Width="1" Height="17"
+                        VerticalAlignment="Center" Background="{DynamicResource AppBorderBrush}"/>
+                <Button x:Name="CapsuleInfoButton" Classes="capsule-action" ToolTip.Tip="微应用信息" Click="CapsuleMore_Click">
+                  <PathIcon Data="M6,12 A1.6,1.6 0 1 0 6,12.1 Z M12,12 A1.6,1.6 0 1 0 12,12.1 Z M18,12 A1.6,1.6 0 1 0 18,12.1 Z"
+                            Width="19" Height="19" Foreground="{DynamicResource AppStrongTextBrush}"/>
+                </Button>
+                <Border x:Name="CapsuleInfoHomeSeparator" Width="1" Height="17" VerticalAlignment="Center"
+                        Background="{DynamicResource AppBorderBrush}"/>
+                <Button x:Name="CapsuleHomeButton" Classes="capsule-action" ToolTip.Tip="返回主页" Click="CapsuleHome_Click">
+                  <Border Width="17" Height="17" CornerRadius="9" BorderBrush="{DynamicResource AppStrongTextBrush}" BorderThickness="1.4">
+                    <Border Width="5" Height="5" CornerRadius="3" Background="{DynamicResource AppStrongTextBrush}"
+                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                  </Border>
+                </Button>
+              </StackPanel>
+            </Border>
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+              <Button Classes="caption" ToolTip.Tip="最小化" Click="Minimize_Click">
+                <Border Width="14" Height="1.5" Margin="0,7,0,0" VerticalAlignment="Center"
+                        Background="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+              </Button>
+              <Button x:Name="MaximizeButton" Classes="caption" ToolTip.Tip="最大化" Click="Maximize_Click">
+                <Path x:Name="MaximizeIcon" Data="M6,6 L18,6 L18,18 L6,18 Z"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                      StrokeThickness="1.25" Width="13" Height="13" Stretch="Uniform"/>
+              </Button>
+              <Button Classes="caption close" ToolTip.Tip="关闭" Click="Close_Click">
+                <Path Data="M6,6 L18,18 M18,6 L6,18"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                      StrokeThickness="1.25" Width="13" Height="13" Stretch="Uniform"/>
+              </Button>
+            </StackPanel>
+          </Grid>
+        </Border>
+
       </Grid>
     </Border>
 
@@ -256,6 +321,7 @@
           <TextBlock Text="没有可用的应用" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"/>
           <TextBlock x:Name="EmptyMessage" Text="请把应用包放入 Apps 目录后重新启动" Foreground="{DynamicResource AppMutedBrush}"/>
         </StackPanel>
+
       </Grid>
     </Grid>
 
@@ -324,6 +390,93 @@
               </ItemsControl>
             </ScrollViewer>
           </Grid>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <Grid x:Name="AppInfoOverlay" Grid.RowSpan="2" IsVisible="False" Opacity="0"
+          Background="#330B1220" PointerPressed="AppInfoOverlay_PointerPressed">
+      <Grid.Transitions>
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.18"/>
+        </Transitions>
+      </Grid.Transitions>
+      <Border x:Name="AppInfoDrawer" Width="360" Margin="0,8,8,8" Padding="24"
+              HorizontalAlignment="Right" VerticalAlignment="Stretch"
+              CornerRadius="18" Background="{DynamicResource AppSurfaceBrush}"
+              BorderBrush="{DynamicResource AppInputBorderBrush}" BorderThickness="1"
+              BoxShadow="-12 0 36 0 #38000000"
+              PointerPressed="AppInfoDrawer_PointerPressed">
+        <Border.RenderTransform>
+          <TranslateTransform X="380">
+            <TranslateTransform.Transitions>
+              <Transitions>
+                <DoubleTransition Property="X" Duration="0:0:0.22"/>
+              </Transitions>
+            </TranslateTransform.Transitions>
+          </TranslateTransform>
+        </Border.RenderTransform>
+        <Grid RowDefinitions="Auto,Auto,*,Auto">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Text="微应用信息" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
+            <Button Grid.Column="1" Width="34" Height="34" Padding="0" CornerRadius="17"
+                    Background="Transparent" BorderThickness="0" ToolTip.Tip="关闭" Click="CloseAppInfo_Click">
+              <Path Data="M6,6 L18,18 M18,6 L6,18" Width="13" Height="13" Stretch="Uniform"
+                    Stroke="{DynamicResource AppStrongTextBrush}" StrokeThickness="1.5"/>
+            </Button>
+          </Grid>
+
+          <StackPanel Grid.Row="1" Margin="0,28,0,24" Spacing="12" HorizontalAlignment="Center">
+            <Border Width="78" Height="78" CornerRadius="20" Background="{DynamicResource AppAccentBrush}"
+                    BoxShadow="0 8 20 0 #28000000">
+              <PathIcon x:Name="AppInfoIcon" Foreground="{DynamicResource AppOnAccentBrush}" Width="36" Height="36"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <TextBlock x:Name="AppInfoName" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+            <TextBlock x:Name="AppInfoDescription" MaxWidth="286" TextAlignment="Center" TextWrapping="Wrap"
+                       Foreground="{DynamicResource AppMutedBrush}"/>
+          </StackPanel>
+
+          <StackPanel Grid.Row="2" Spacing="10">
+            <Border Padding="14,12" CornerRadius="10" Background="{DynamicResource AppSubtleBrush}">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="版本" Foreground="{DynamicResource AppMutedBrush}"/>
+                <TextBlock x:Name="AppInfoVersion" Grid.Column="1" FontWeight="SemiBold"/>
+              </Grid>
+            </Border>
+            <Border Padding="14,12" CornerRadius="10" Background="{DynamicResource AppSubtleBrush}">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="分类" Foreground="{DynamicResource AppMutedBrush}"/>
+                <TextBlock x:Name="AppInfoCategory" Grid.Column="1" FontWeight="SemiBold"/>
+              </Grid>
+            </Border>
+          </StackPanel>
+
+          <StackPanel Grid.Row="3" Spacing="10">
+            <TextBlock Text="最近打开" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource AppMutedBrush}"/>
+            <ItemsControl x:Name="AppInfoRecentApplications">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="10"/></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="modules:LoadedApplication">
+                  <Button Classes="recent-app" Tag="{Binding}" ToolTip.Tip="{Binding Name}" Click="AppInfoRecentApplication_Click">
+                    <StackPanel Spacing="7" HorizontalAlignment="Center">
+                      <Border Width="48" Height="48" CornerRadius="12" Background="{DynamicResource AppSubtleBrush}">
+                        <PathIcon Data="{Binding IconGeometry}" Width="23" Height="23"
+                                  Foreground="{DynamicResource AppAccentBrush}"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                      </Border>
+                      <TextBlock Text="{Binding Name}" Width="58" FontSize="11.5" TextAlignment="Center"
+                                 TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+                    </StackPanel>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock x:Name="AppInfoRecentEmpty" Text="暂无其他最近打开的应用" FontSize="12"
+                       Foreground="{DynamicResource AppMutedBrush}" IsVisible="False"/>
+          </StackPanel>
         </Grid>
       </Border>
     </Grid>

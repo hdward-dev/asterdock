@@ -316,6 +316,29 @@ var storage = TopLevel.GetTopLevel(this)?.StorageProvider;
         BorderThickness="1"/>
 ```
 
+### 7.5 微应用内部导航
+
+微应用存在详情页、编辑页等内部页面时，可以选择实现 `IApplicationNavigationProvider`。宿主会在右上角子胶囊中自动显示返回按钮：
+
+```csharp
+public bool CanGoBack => _navigationStack.Count > 1;
+public event EventHandler? NavigationStateChanged;
+
+public void GoBack()
+{
+    if (!CanGoBack) return;
+    _navigationStack.Pop();
+    NavigationStateChanged?.Invoke(this, EventArgs.Empty);
+}
+```
+
+要求：
+
+- 内部页面层级发生变化后触发 `NavigationStateChanged`。
+- `GoBack()` 只处理微应用内部导航，不得切换宿主应用。
+- 无内部页面时 `CanGoBack` 返回 `false`。
+- 模块释放后不得继续触发导航事件。
+
 ## 8. 生命周期与资源释放
 
 应用被替换、重新加载或容器关闭时会调用 `Dispose()`。容器会在模块释放时关闭通过 `IWindowService` 创建的窗口。应用仍必须释放：

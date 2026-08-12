@@ -27,6 +27,7 @@ public sealed class LoadedApplication : IDisposable
     public string Description => Manifest.Description;
     public string Version => Manifest.Version;
     public string Category => Manifest.Category;
+    public IApplicationNavigationProvider? Navigation => _module as IApplicationNavigationProvider;
     public Geometry IconGeometry => _iconGeometry ??= Geometry.Parse(Manifest.Icon switch
     {
         "printer" => "M6,3 H18 V8 H20 A2,2 0 0 1 22,10 V17 H18 V22 H6 V17 H2 V10 A2,2 0 0 1 4,8 H6 Z M8,15 V20 H16 V15 Z M8,5 V8 H16 V5 Z",

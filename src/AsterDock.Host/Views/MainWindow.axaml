@@ -20,6 +20,10 @@
       <Setter Property="Background" Value="{DynamicResource AppDangerBrush}"/>
       <Setter Property="Foreground" Value="White"/>
     </Style>
+    <Style Selector="Button.caption.close">
+      <Setter Property="Width" Value="38"/>
+      <Setter Property="Margin" Value="2,0,0,0"/>
+    </Style>
     <Style Selector="Border.settings-card">
       <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>

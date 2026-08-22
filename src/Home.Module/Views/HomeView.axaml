@@ -23,9 +23,14 @@
       <Setter Property="Margin" Value="0,0,12,12"/>
       <Setter Property="Background" Value="Transparent"/>
       <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="CornerRadius" Value="12"/>
+      <Setter Property="ClipToBounds" Value="True"/>
       <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
       <Setter Property="VerticalContentAlignment" Value="Stretch"/>
       <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    </Style>
+    <Style Selector="Button.app-card /template/ ContentPresenter">
+      <Setter Property="CornerRadius" Value="12"/>
     </Style>
     <Style Selector="Button.app-card:pointerover Border.tile-surface">
       <Setter Property="BorderBrush" Value="#8CB5F5"/>

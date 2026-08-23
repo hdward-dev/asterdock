@@ -1,5 +1,6 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:semi="https://irihi.tech/semi"
              x:Class="AsterDock.Host.App"
              RequestedThemeVariant="Default">
   <TrayIcon.Icons>
@@ -16,61 +17,9 @@
       </TrayIcon>
     </TrayIcons>
   </TrayIcon.Icons>
-  <Application.Resources>
-    <ResourceDictionary>
-      <ResourceDictionary.ThemeDictionaries>
-        <ResourceDictionary x:Key="Light">
-          <SolidColorBrush x:Key="AppPageBrush" Color="#F5F7FA"/>
-          <SolidColorBrush x:Key="AppSurfaceBrush" Color="#FFFFFF"/>
-          <SolidColorBrush x:Key="AppChromeBrush" Color="#F8FAFD"/>
-          <SolidColorBrush x:Key="AppBorderBrush" Color="#E2E7EF"/>
-          <SolidColorBrush x:Key="AppMutedBrush" Color="#667085"/>
-          <SolidColorBrush x:Key="AppPreviewBrush" Color="#E9EDF3"/>
-          <SolidColorBrush x:Key="AppStrongTextBrush" Color="#344054"/>
-          <SolidColorBrush x:Key="AppAccentBrush" Color="#1267E8"/>
-          <SolidColorBrush x:Key="AppOnAccentBrush" Color="#FFFFFF"/>
-          <SolidColorBrush x:Key="AppAccentSurfaceBrush" Color="#E8F0FE"/>
-          <SolidColorBrush x:Key="AppSelectionBrush" Color="#EEF5FF"/>
-          <SolidColorBrush x:Key="AppSubtleBrush" Color="#F2F4F7"/>
-          <SolidColorBrush x:Key="AppInputBrush" Color="#FFFFFF"/>
-          <SolidColorBrush x:Key="AppInputBorderBrush" Color="#C9D2E0"/>
-          <SolidColorBrush x:Key="AppInputHoverBorderBrush" Color="#8FA0B8"/>
-          <SolidColorBrush x:Key="AppFocusBrush" Color="#176FEA"/>
-          <SolidColorBrush x:Key="AppPositiveBrush" Color="#16883F"/>
-          <SolidColorBrush x:Key="AppPositiveSurfaceBrush" Color="#E8F5EC"/>
-          <SolidColorBrush x:Key="AppWarningBrush" Color="#B54708"/>
-          <SolidColorBrush x:Key="AppDangerBrush" Color="#C42B1C"/>
-          <SolidColorBrush x:Key="AppControlBorderBrush" Color="#98A2B3"/>
-          <SolidColorBrush x:Key="AppCaptionHoverBrush" Color="#E7EBF1"/>
-        </ResourceDictionary>
-        <ResourceDictionary x:Key="Dark">
-          <SolidColorBrush x:Key="AppPageBrush" Color="#111318"/>
-          <SolidColorBrush x:Key="AppSurfaceBrush" Color="#1B1F26"/>
-          <SolidColorBrush x:Key="AppChromeBrush" Color="#161A20"/>
-          <SolidColorBrush x:Key="AppBorderBrush" Color="#303641"/>
-          <SolidColorBrush x:Key="AppMutedBrush" Color="#AEB7C4"/>
-          <SolidColorBrush x:Key="AppPreviewBrush" Color="#0D0F13"/>
-          <SolidColorBrush x:Key="AppStrongTextBrush" Color="#E7EBF1"/>
-          <SolidColorBrush x:Key="AppAccentBrush" Color="#6EA8FF"/>
-          <SolidColorBrush x:Key="AppOnAccentBrush" Color="#0B1A2C"/>
-          <SolidColorBrush x:Key="AppAccentSurfaceBrush" Color="#1B3555"/>
-          <SolidColorBrush x:Key="AppSelectionBrush" Color="#1A3557"/>
-          <SolidColorBrush x:Key="AppSubtleBrush" Color="#272C34"/>
-          <SolidColorBrush x:Key="AppInputBrush" Color="#232831"/>
-          <SolidColorBrush x:Key="AppInputBorderBrush" Color="#46505E"/>
-          <SolidColorBrush x:Key="AppInputHoverBorderBrush" Color="#707B89"/>
-          <SolidColorBrush x:Key="AppFocusBrush" Color="#78AEFF"/>
-          <SolidColorBrush x:Key="AppPositiveBrush" Color="#63D38A"/>
-          <SolidColorBrush x:Key="AppPositiveSurfaceBrush" Color="#193B28"/>
-          <SolidColorBrush x:Key="AppWarningBrush" Color="#F2B45F"/>
-          <SolidColorBrush x:Key="AppDangerBrush" Color="#FF7B72"/>
-          <SolidColorBrush x:Key="AppControlBorderBrush" Color="#7E8998"/>
-          <SolidColorBrush x:Key="AppCaptionHoverBrush" Color="#2A3038"/>
-        </ResourceDictionary>
-      </ResourceDictionary.ThemeDictionaries>
-    </ResourceDictionary>
-  </Application.Resources>
   <Application.Styles>
-    <FluentTheme DensityStyle="Compact"/>
+    <semi:SemiTheme Locale="zh-CN"/>
+    <semi:UrsaSemiTheme Locale="zh-CN"/>
+    <StyleInclude Source="avares://AsterDock.UI/Themes/AsterDockTheme.axaml"/>
   </Application.Styles>
 </Application>

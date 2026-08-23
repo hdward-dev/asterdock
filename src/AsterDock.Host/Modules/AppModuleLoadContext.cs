@@ -32,5 +32,9 @@ internal sealed class AppModuleLoadContext : AssemblyLoadContext
 
     private static bool IsSharedAssembly(string? name) =>
         string.Equals(name, typeof(IApplicationModule).Assembly.GetName().Name, StringComparison.OrdinalIgnoreCase) ||
-        name?.StartsWith("Avalonia", StringComparison.OrdinalIgnoreCase) == true;
+        string.Equals(name, "AsterDock.UI", StringComparison.OrdinalIgnoreCase) ||
+        name?.StartsWith("Avalonia", StringComparison.OrdinalIgnoreCase) == true ||
+        name?.StartsWith("Irihi.", StringComparison.OrdinalIgnoreCase) == true ||
+        name?.StartsWith("Ursa", StringComparison.OrdinalIgnoreCase) == true ||
+        name?.StartsWith("Semi.", StringComparison.OrdinalIgnoreCase) == true;
 }

@@ -5,20 +5,6 @@
         Title="配置管理" Width="760" Height="440" MinWidth="680" MinHeight="400"
         WindowStartupLocation="CenterOwner" Background="{DynamicResource AppPageBrush}">
   <Window.Styles>
-    <Style Selector="Button.caption">
-      <Setter Property="Width" Value="40"/>
-      <Setter Property="Height" Value="32"/>
-      <Setter Property="Padding" Value="0"/>
-      <Setter Property="CornerRadius" Value="5"/>
-      <Setter Property="Background" Value="Transparent"/>
-      <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="VerticalAlignment" Value="Center"/>
-    </Style>
-    <Style Selector="Button.caption:pointerover"><Setter Property="Background" Value="{DynamicResource AppCaptionHoverBrush}"/></Style>
-    <Style Selector="Button.close:pointerover">
-      <Setter Property="Background" Value="{DynamicResource AppDangerBrush}"/>
-      <Setter Property="Foreground" Value="White"/>
-    </Style>
     <Style Selector="TextBox.modernInput">
       <Setter Property="Height" Value="42"/>
       <Setter Property="Padding" Value="12,0"/>
@@ -52,16 +38,16 @@
           <TextBlock Text="网络加速 · 配置管理" FontSize="12.5" Foreground="{DynamicResource AppStrongTextBrush}" VerticalAlignment="Center"/>
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal">
-          <Button Classes="caption" ToolTip.Tip="最小化" Click="Minimize_Click">
+          <Button Classes="ad-caption" ToolTip.Tip="最小化" Click="Minimize_Click">
             <Border Width="14" Height="1.5" Margin="0,7,0,0" VerticalAlignment="Center"
                     Background="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
           </Button>
-          <Button x:Name="MaximizeButton" Classes="caption" ToolTip.Tip="最大化" Click="Maximize_Click">
+          <Button x:Name="MaximizeButton" Classes="ad-caption" ToolTip.Tip="最大化" Click="Maximize_Click">
             <Path x:Name="MaximizeIcon" Data="M6,6 L18,6 L18,18 L6,18 Z"
                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                   StrokeThickness="1.25" Width="13" Height="13" Stretch="Uniform"/>
           </Button>
-          <Button Classes="caption close" ToolTip.Tip="关闭" Click="CloseTitleBar_Click">
+          <Button Classes="ad-caption close" ToolTip.Tip="关闭" Click="CloseTitleBar_Click">
             <Path Data="M6,6 L18,18 M18,6 L6,18"
                   Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                   StrokeThickness="1.25" Width="13" Height="13" Stretch="Uniform"/>

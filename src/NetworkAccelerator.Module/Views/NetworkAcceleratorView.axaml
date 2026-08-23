@@ -8,12 +8,6 @@
       <Setter Property="HorizontalContentAlignment" Value="Center"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
     </Style>
-    <Style Selector="Border.card">
-      <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
-      <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
-      <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="CornerRadius" Value="12"/>
-    </Style>
     <Style Selector="Button.mode">
       <Setter Property="Height" Value="40"/>
       <Setter Property="Padding" Value="20,0"/>

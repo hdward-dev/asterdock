@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>SerialDebugger.Module</RootNamespace>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AsterDock.Contracts\AsterDock.Contracts.csproj" />
+    <ProjectReference Include="..\AsterDock.UI\AsterDock.UI.csproj" Private="false" />
+    <PackageReference Include="Avalonia" Version="12.1.0" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
+    <PackageReference Include="System.IO.Ports" Version="10.0.0" />
+    <PackageReference Include="System.Management" Version="10.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="app.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

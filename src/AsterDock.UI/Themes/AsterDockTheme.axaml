@@ -1,0 +1,290 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:AsterDock.UI.Controls">
+  <Styles.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="AppPageBrush" Color="#F5F7FA"/>
+          <SolidColorBrush x:Key="AppSurfaceBrush" Color="#FFFFFF"/>
+          <SolidColorBrush x:Key="AppChromeBrush" Color="#F8FAFD"/>
+          <SolidColorBrush x:Key="AppBorderBrush" Color="#E2E7EF"/>
+          <SolidColorBrush x:Key="AppMutedBrush" Color="#667085"/>
+          <SolidColorBrush x:Key="AppPreviewBrush" Color="#E9EDF3"/>
+          <SolidColorBrush x:Key="AppStrongTextBrush" Color="#344054"/>
+          <SolidColorBrush x:Key="AppAccentBrush" Color="#1267E8"/>
+          <SolidColorBrush x:Key="AppOnAccentBrush" Color="#FFFFFF"/>
+          <SolidColorBrush x:Key="AppAccentSurfaceBrush" Color="#E8F0FE"/>
+          <SolidColorBrush x:Key="AppSelectionBrush" Color="#EEF5FF"/>
+          <SolidColorBrush x:Key="AppSubtleBrush" Color="#F2F4F7"/>
+          <SolidColorBrush x:Key="AppInputBrush" Color="#FFFFFF"/>
+          <SolidColorBrush x:Key="AppInputBorderBrush" Color="#C9D2E0"/>
+          <SolidColorBrush x:Key="AppInputHoverBorderBrush" Color="#8FA0B8"/>
+          <SolidColorBrush x:Key="AppFocusBrush" Color="#176FEA"/>
+          <SolidColorBrush x:Key="AppPositiveBrush" Color="#16883F"/>
+          <SolidColorBrush x:Key="AppPositiveSurfaceBrush" Color="#E8F5EC"/>
+          <SolidColorBrush x:Key="AppWarningBrush" Color="#B54708"/>
+          <SolidColorBrush x:Key="AppDangerBrush" Color="#C42B1C"/>
+          <SolidColorBrush x:Key="AppControlBorderBrush" Color="#98A2B3"/>
+          <SolidColorBrush x:Key="AppCaptionHoverBrush" Color="#E7EBF1"/>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="AppPageBrush" Color="#111318"/>
+          <SolidColorBrush x:Key="AppSurfaceBrush" Color="#1B1F26"/>
+          <SolidColorBrush x:Key="AppChromeBrush" Color="#161A20"/>
+          <SolidColorBrush x:Key="AppBorderBrush" Color="#303641"/>
+          <SolidColorBrush x:Key="AppMutedBrush" Color="#AEB7C4"/>
+          <SolidColorBrush x:Key="AppPreviewBrush" Color="#0D0F13"/>
+          <SolidColorBrush x:Key="AppStrongTextBrush" Color="#E7EBF1"/>
+          <SolidColorBrush x:Key="AppAccentBrush" Color="#6EA8FF"/>
+          <SolidColorBrush x:Key="AppOnAccentBrush" Color="#0B1A2C"/>
+          <SolidColorBrush x:Key="AppAccentSurfaceBrush" Color="#1B3555"/>
+          <SolidColorBrush x:Key="AppSelectionBrush" Color="#1A3557"/>
+          <SolidColorBrush x:Key="AppSubtleBrush" Color="#272C34"/>
+          <SolidColorBrush x:Key="AppInputBrush" Color="#232831"/>
+          <SolidColorBrush x:Key="AppInputBorderBrush" Color="#46505E"/>
+          <SolidColorBrush x:Key="AppInputHoverBorderBrush" Color="#707B89"/>
+          <SolidColorBrush x:Key="AppFocusBrush" Color="#78AEFF"/>
+          <SolidColorBrush x:Key="AppPositiveBrush" Color="#63D38A"/>
+          <SolidColorBrush x:Key="AppPositiveSurfaceBrush" Color="#193B28"/>
+          <SolidColorBrush x:Key="AppWarningBrush" Color="#F2B45F"/>
+          <SolidColorBrush x:Key="AppDangerBrush" Color="#FF7B72"/>
+          <SolidColorBrush x:Key="AppControlBorderBrush" Color="#7E8998"/>
+          <SolidColorBrush x:Key="AppCaptionHoverBrush" Color="#2A3038"/>
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+
+      <ControlTheme x:Key="{x:Type controls:PageHeader}" TargetType="controls:PageHeader">
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Background="{DynamicResource AppChromeBrush}"
+                    BorderBrush="{DynamicResource AppBorderBrush}"
+                    BorderThickness="0,0,0,1">
+              <Grid Height="64" Margin="26,0" ColumnDefinitions="Auto,*">
+                <StackPanel VerticalAlignment="Center" Spacing="1">
+                  <TextBlock Text="{TemplateBinding Title}" FontSize="23" FontWeight="SemiBold"
+                             Foreground="{DynamicResource AppStrongTextBrush}"/>
+                  <TextBlock Text="{TemplateBinding Subtitle}" FontSize="12"
+                             Foreground="{DynamicResource AppMutedBrush}"/>
+                </StackPanel>
+                <ContentPresenter Grid.Column="1"
+                                  Content="{TemplateBinding Content}"
+                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                  HorizontalAlignment="Stretch"
+                                  VerticalAlignment="Center"/>
+              </Grid>
+            </Border>
+          </ControlTemplate>
+        </Setter>
+      </ControlTheme>
+    </ResourceDictionary>
+  </Styles.Resources>
+
+  <Style Selector="Border.ad-card">
+    <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="12"/>
+  </Style>
+  <Style Selector="Border.card">
+    <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="12"/>
+  </Style>
+  <Style Selector="Border.ad-workspace-card">
+    <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="11"/>
+  </Style>
+  <Style Selector="Border.ad-section-card">
+    <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="8"/>
+  </Style>
+  <Style Selector="Button.ad-icon">
+    <Setter Property="Width" Value="34"/>
+    <Setter Property="Height" Value="34"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="CornerRadius" Value="7"/>
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.icon-button">
+    <Setter Property="Width" Value="34"/>
+    <Setter Property="Height" Value="34"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="CornerRadius" Value="7"/>
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.ad-icon:pointerover">
+    <Setter Property="Background" Value="{DynamicResource AppCaptionHoverBrush}"/>
+  </Style>
+  <Style Selector="Button.icon-button:pointerover">
+    <Setter Property="Background" Value="{DynamicResource AppCaptionHoverBrush}"/>
+  </Style>
+  <Style Selector="Button.ad-caption">
+    <Setter Property="Width" Value="40"/>
+    <Setter Property="Height" Value="26"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="CornerRadius" Value="10"/>
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Focusable" Value="False"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.ad-caption /template/ ContentPresenter">
+    <Setter Property="CornerRadius" Value="10"/>
+    <Setter Property="Margin" Value="2"/>
+    <Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.ad-caption:pointerover">
+    <Setter Property="Background" Value="{DynamicResource AppSubtleBrush}"/>
+  </Style>
+  <Style Selector="Button.ad-caption:pointerover /template/ ContentPresenter">
+    <Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
+  </Style>
+  <Style Selector="Button.ad-caption:pressed">
+    <Setter Property="Background" Value="{DynamicResource AppCaptionHoverBrush}"/>
+  </Style>
+  <Style Selector="Button.ad-caption:pressed /template/ ContentPresenter">
+    <Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
+  </Style>
+  <Style Selector="Button.ad-caption.selected">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppAccentBrush}"/>
+  </Style>
+  <Style Selector="Button.ad-caption.selected /template/ ContentPresenter">
+    <Setter Property="BoxShadow" Value="0 2 6 0 #401267E8"/>
+  </Style>
+  <Style Selector="Button.ad-caption.close">
+    <Setter Property="Width" Value="38"/>
+    <Setter Property="Margin" Value="2,0,0,0"/>
+  </Style>
+  <Style Selector="Button.ad-caption.close:pointerover">
+    <Setter Property="Background" Value="{DynamicResource AppDangerBrush}"/>
+    <Setter Property="Foreground" Value="White"/>
+  </Style>
+  <Style Selector="Button.ad-primary">
+    <Setter Property="Background" Value="{DynamicResource AppAccentBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Padding" Value="16,8"/>
+    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.primary">
+    <Setter Property="Background" Value="{DynamicResource AppAccentBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Padding" Value="16,8"/>
+    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.ad-accent">
+    <Setter Property="Background" Value="{DynamicResource AppAccentBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Padding" Value="16,8"/>
+    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.accent">
+    <Setter Property="Background" Value="{DynamicResource AppAccentBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Padding" Value="16,8"/>
+    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Border.ad-segmented">
+    <Setter Property="Background" Value="{DynamicResource AppSubtleBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="9"/>
+    <Setter Property="Padding" Value="2"/>
+  </Style>
+  <Style Selector="Button.ad-segment-item">
+    <Setter Property="Height" Value="32"/>
+    <Setter Property="MinWidth" Value="54"/>
+    <Setter Property="Padding" Value="12,0"/>
+    <Setter Property="CornerRadius" Value="6"/>
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+    <Setter Property="FontSize" Value="13"/>
+  </Style>
+  <Style Selector="Button.ad-segment-item /template/ ContentPresenter">
+    <Setter Property="Padding" Value="12,0"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="CornerRadius" Value="6"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.ad-segment-item.selected">
+    <Setter Property="Background" Value="{DynamicResource AppAccentBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+  <Style Selector="Button.ad-section-header">
+    <Setter Property="Height" Value="36"/>
+    <Setter Property="Padding" Value="10,0"/>
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.ad-section-header /template/ ContentPresenter">
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="ComboBox.ad-compact">
+    <Setter Property="Height" Value="34"/>
+    <Setter Property="Padding" Value="10,0"/>
+    <Setter Property="CornerRadius" Value="7"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="TextBox.ad-compact">
+    <Setter Property="Height" Value="34"/>
+    <Setter Property="Padding" Value="10,0"/>
+    <Setter Property="CornerRadius" Value="7"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Border.ad-status-badge">
+    <Setter Property="Background" Value="{DynamicResource AppSubtleBrush}"/>
+    <Setter Property="CornerRadius" Value="12"/>
+    <Setter Property="Padding" Value="9,4"/>
+  </Style>
+  <Style Selector="Border.ad-status-badge.connected">
+    <Setter Property="Background" Value="{DynamicResource AppPositiveSurfaceBrush}"/>
+  </Style>
+  <Style Selector="TextBlock.ad-status-text">
+    <Setter Property="Foreground" Value="{DynamicResource AppMutedBrush}"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="TextBlock.ad-status-text.connected">
+    <Setter Property="Foreground" Value="{DynamicResource AppPositiveBrush}"/>
+  </Style>
+</Styles>

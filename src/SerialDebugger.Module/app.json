@@ -1,0 +1,11 @@
+{
+  "id": "serial-debugger",
+  "name": "串口调试助手",
+  "description": "多串口平铺收发、循环发送、联动操作与设备联调",
+  "version": "1.0.0",
+  "entryAssembly": "SerialDebugger.Module.dll",
+  "entryType": "SerialDebugger.Module.SerialDebuggerApplicationModule",
+  "icon": "serial",
+  "category": "开发工具",
+  "order": 25
+}

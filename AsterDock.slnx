@@ -3,6 +3,7 @@
     <Project Path="src/AsterDock.Contracts/AsterDock.Contracts.csproj" />
     <Project Path="src/AsterDock.Host/AsterDock.Host.csproj" />
     <Project Path="src/AsterDock.NetworkElevatedHost/AsterDock.NetworkElevatedHost.csproj" />
+    <Project Path="src/AsterDock.UI/AsterDock.UI.csproj" />
     <Project Path="src/AndroidScreen.Module/AndroidScreen.Module.csproj" />
     <Project Path="src/DeviceInformation.Core/DeviceInformation.Core.csproj" />
     <Project Path="src/DeviceInformation.Module/DeviceInformation.Module.csproj" />
@@ -11,5 +12,6 @@
     <Project Path="src/InvoicePrinter.Module/InvoicePrinter.Module.csproj" />
     <Project Path="src/NetworkAccelerator.Core/NetworkAccelerator.Core.csproj" />
     <Project Path="src/NetworkAccelerator.Module/NetworkAccelerator.Module.csproj" />
+    <Project Path="src/SerialDebugger.Module/SerialDebugger.Module.csproj" />
   </Folder>
 </Solution>

@@ -6,7 +6,7 @@
 
 - 容器外壳只负责窗口、应用发现、导航、安装和加载。
 - 应用必须独立成 .NET 类库，不能引用 `AsterDock.Host`。
-- 应用只能通过 `AsterDock.Contracts` 与容器建立编译期关系。
+- 应用通过 `AsterDock.Contracts` 与容器交互；内置应用可额外引用 `AsterDock.UI` 复用统一设计系统，但不能引用 `AsterDock.Host`。
 - 应用主界面必须是 Avalonia `Control`，推荐使用 `UserControl`。
 - 应用必须释放自身创建的资源、后台任务和事件订阅。
 - 应用应同时兼容 Windows 和 macOS；平台专用功能必须显式保护。
@@ -48,6 +48,7 @@ MyApplication.Module/     Avalonia UI 和容器入口
 
   <ItemGroup>
     <ProjectReference Include="..\AsterDock.Contracts\AsterDock.Contracts.csproj" />
+    <ProjectReference Include="..\AsterDock.UI\AsterDock.UI.csproj" Private="false" />
     <PackageReference Include="Avalonia" Version="12.1.0" />
   </ItemGroup>
 
@@ -61,6 +62,7 @@ MyApplication.Module/     Avalonia UI 和容器入口
 
 - 不得引用 `AsterDock.Host`。
 - Avalonia 版本必须与容器保持一致。
+- 引用 `AsterDock.UI` 时使用 `Private="false"`，由宿主提供共享程序集和 Semi/Ursa 主题。
 - 使用原生库时，必须把对应平台文件放入 `runtimes/<RID>/native/`。
 - 不要把其他版本的 `AsterDock.Contracts.dll` 当作私有 API 使用。
 
@@ -131,7 +133,7 @@ public sealed class MyApplicationModule : IApplicationModule, IApplicationContex
 | `version` | 是 | 建议使用语义化版本，例如 `1.2.0` |
 | `entryAssembly` | 是 | 入口程序集文件名，必须位于应用根目录内 |
 | `entryType` | 是 | 实现 `IApplicationModule` 的完整类型名 |
-| `icon` | 否 | 图标类型；当前支持 `home`、`printer`、`monitor`、`network`，其他值使用默认应用图标 |
+| `icon` | 否 | 图标类型；当前支持 `home`、`printer`、`monitor`、`network`、`serial`，其他值使用默认应用图标 |
 | `category` | 否 | 悬浮应用选择器中的分类，默认是“工具” |
 | `order` | 否 | 显示顺序，数字越小越靠前 |
 
@@ -161,6 +163,33 @@ MyApplication/
 
 - 主视图使用 `UserControl`，不要替换容器的主窗口。
 - 应用需要打开普通窗口或模态窗口时，优先使用 `IApplicationContext.Windows`，不要自行修改 `ApplicationLifetime.MainWindow`。
+- 优先使用 `AsterDock.UI` 的共享控件和 `ad-*` 语义样式，避免在页面内重复定义卡片、按钮、输入框和状态样式。
+- 使用 `DynamicResource` 引用 `App*` 设计令牌，以自动适配亮色与暗色主题。
+- 页面内样式只处理业务专属控件，例如终端日志、波形或设备预览。
+
+常用设计系统入口：
+
+```xml
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:ui="using:AsterDock.UI.Controls">
+  <Grid RowDefinitions="64,*">
+    <ui:PageHeader Title="应用名称" Subtitle="页面说明" />
+    <Border Grid.Row="1" Classes="ad-card">
+      <StackPanel>
+        <Border Classes="ad-segmented">
+          <StackPanel Orientation="Horizontal">
+            <Button Classes="ad-segment-item selected" Content="选项一" />
+            <Button Classes="ad-segment-item" Content="选项二" />
+          </StackPanel>
+        </Border>
+        <Button Classes="ad-primary" Content="主要操作" />
+      </StackPanel>
+    </Border>
+  </Grid>
+</UserControl>
+```
+
+当前公共样式包括 `ad-card`、`ad-workspace-card`、`ad-section-card`、`ad-icon`、`ad-primary`、`ad-accent`、`ad-segmented`、`ad-segment-item`、`ad-section-header`、`ad-compact`、`ad-status-badge` 和 `ad-status-text`。
 
 ### 7.1 窗口服务
 
@@ -466,7 +495,7 @@ dotnet build src/MyApplication.Module/MyApplication.Module.csproj
 ## 14. 发布检查清单
 
 - [ ] 目标框架是 `net10.0`
-- [ ] 仅引用 `AsterDock.Contracts`，未引用 Host
+- [ ] 仅引用 `AsterDock.Contracts` 和可选的 `AsterDock.UI`，未引用 Host
 - [ ] Avalonia 版本与容器一致
 - [ ] 入口类实现 `IApplicationModule`
 - [ ] 需要窗口或数据目录时实现 `IApplicationContextAware`
@@ -491,6 +520,8 @@ dotnet build src/MyApplication.Module/MyApplication.Module.csproj
 
 当前标准参考应用：
 
+- `src/AsterDock.UI`（共享主题、设计令牌和公共控件）
+- `src/SerialDebugger.Module`（统一设计系统与多卡片工作区示例）
 - `src/InvoicePrinter.Module`
 - `src/InvoicePrinter.Module/app.json`
 - `src/InvoicePrinter.Module/InvoicePrinterApplicationModule.cs`

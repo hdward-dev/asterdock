@@ -16,9 +16,12 @@
     <BundledNetworkModuleOutput>$(MSBuildProjectDirectory)\..\NetworkAccelerator.Module\bin\$(Configuration)\net10.0</BundledNetworkModuleOutput>
     <BundledAndroidScreenModuleProject>$(MSBuildProjectDirectory)\..\AndroidScreen.Module\AndroidScreen.Module.csproj</BundledAndroidScreenModuleProject>
     <BundledAndroidScreenModuleOutput>$(MSBuildProjectDirectory)\..\AndroidScreen.Module\bin\$(Configuration)\net10.0</BundledAndroidScreenModuleOutput>
+    <BundledSerialDebuggerModuleProject>$(MSBuildProjectDirectory)\..\SerialDebugger.Module\SerialDebugger.Module.csproj</BundledSerialDebuggerModuleProject>
+    <BundledSerialDebuggerModuleOutput>$(MSBuildProjectDirectory)\..\SerialDebugger.Module\bin\$(Configuration)\net10.0</BundledSerialDebuggerModuleOutput>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\AsterDock.Contracts\AsterDock.Contracts.csproj" />
+    <ProjectReference Include="..\AsterDock.UI\AsterDock.UI.csproj" />
     <ProjectReference Include="..\DeviceInformation.Core\DeviceInformation.Core.csproj" />
     <ProjectReference Include="..\InvoicePrinter.Module\InvoicePrinter.Module.csproj" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
@@ -30,9 +33,10 @@
                       GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
     <ProjectReference Include="..\AndroidScreen.Module\AndroidScreen.Module.csproj" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
+    <ProjectReference Include="..\SerialDebugger.Module\SerialDebugger.Module.csproj" ReferenceOutputAssembly="false" Private="false"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
     <PackageReference Include="Avalonia" Version="12.1.0" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.0" />
   </ItemGroup>
   <ItemGroup>
@@ -46,6 +50,7 @@
       <BundledHomeModuleFiles Include="$(BundledHomeModuleOutput)\**\*" />
       <BundledNetworkModuleFiles Include="$(BundledNetworkModuleOutput)\**\*" />
       <BundledAndroidScreenModuleFiles Include="$(BundledAndroidScreenModuleOutput)\**\*" />
+      <BundledSerialDebuggerModuleFiles Include="$(BundledSerialDebuggerModuleOutput)\**\*" />
     </ItemGroup>
     <Copy SourceFiles="@(BundledModuleFiles)"
           DestinationFiles="@(BundledModuleFiles->'$(OutDir)Apps\InvoicePrinter\%(RecursiveDir)%(Filename)%(Extension)')"
@@ -72,6 +77,11 @@
           SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\AndroidScreen.Module\app.json"
           DestinationFolder="$(OutDir)Apps\AndroidScreen" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(BundledSerialDebuggerModuleFiles)"
+          DestinationFiles="@(BundledSerialDebuggerModuleFiles->'$(OutDir)Apps\SerialDebugger\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\SerialDebugger.Module\app.json"
+          DestinationFolder="$(OutDir)Apps\SerialDebugger" SkipUnchangedFiles="true" />
   </Target>
 
   <Target Name="PublishBundledApplications" AfterTargets="Publish" Condition="'$(DesignTimeBuild)' != 'true'">
@@ -81,6 +91,7 @@
       <PublishedHomeModuleFiles Include="$(BundledHomeModuleOutput)\**\*" />
       <PublishedNetworkModuleFiles Include="$(BundledNetworkModuleOutput)\**\*" />
       <PublishedAndroidScreenModuleFiles Include="$(BundledAndroidScreenModuleOutput)\**\*" />
+      <PublishedSerialDebuggerModuleFiles Include="$(BundledSerialDebuggerModuleOutput)\**\*" />
     </ItemGroup>
     <Copy SourceFiles="@(PublishedModuleFiles)"
           DestinationFiles="@(PublishedModuleFiles->'$(PublishDir)Apps\InvoicePrinter\%(RecursiveDir)%(Filename)%(Extension)')"
@@ -107,5 +118,10 @@
           SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\AndroidScreen.Module\app.json"
           DestinationFolder="$(PublishDir)Apps\AndroidScreen" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(PublishedSerialDebuggerModuleFiles)"
+          DestinationFiles="@(PublishedSerialDebuggerModuleFiles->'$(PublishDir)Apps\SerialDebugger\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\SerialDebugger.Module\app.json"
+          DestinationFolder="$(PublishDir)Apps\SerialDebugger" SkipUnchangedFiles="true" />
   </Target>
 </Project>

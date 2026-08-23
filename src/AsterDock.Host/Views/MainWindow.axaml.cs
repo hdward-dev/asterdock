@@ -223,6 +223,7 @@ public partial class MainWindow : Window, IApplicationShell
     {
         if (_currentApplication is null ||
             string.Equals(_currentApplication.Manifest.Id, "home", StringComparison.OrdinalIgnoreCase)) return;
+        CapsuleInfoButton.Classes.Set("selected", true);
         AppInfoIcon.Data = _currentApplication.IconGeometry;
         AppInfoName.Text = _currentApplication.Name;
         AppInfoDescription.Text = _currentApplication.Description;
@@ -250,6 +251,7 @@ public partial class MainWindow : Window, IApplicationShell
 
     private async void HideAppInfo()
     {
+        CapsuleInfoButton.Classes.Set("selected", false);
         if (!AppInfoOverlay.IsVisible) return;
         var animationVersion = ++_appInfoAnimationVersion;
         AppInfoOverlay.Opacity = 0;
@@ -555,7 +557,10 @@ public partial class MainWindow : Window, IApplicationShell
 
     private void UpdateMaximizeGlyph()
     {
-        MaximizeIcon.Data = Geometry.Parse(WindowState == WindowState.Maximized
+        var isMaximized = WindowState == WindowState.Maximized;
+        MaximizeButton.Classes.Set("selected", isMaximized);
+        ToolTip.SetTip(MaximizeButton, isMaximized ? "还原" : "最大化");
+        MaximizeIcon.Data = Geometry.Parse(isMaximized
             ? "M5,8 L16,8 L16,19 L5,19 Z M8,5 L19,5 L19,16"
             : "M6,6 L18,6 L18,18 L6,18 Z");
     }

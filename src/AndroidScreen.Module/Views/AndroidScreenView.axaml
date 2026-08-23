@@ -3,15 +3,6 @@
              x:Class="AndroidScreen.Module.Views.AndroidScreenView"
              x:CompileBindings="False"
              Background="{DynamicResource AppPageBrush}">
-  <UserControl.Styles>
-    <Style Selector="Border.card">
-      <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
-      <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
-      <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="CornerRadius" Value="12"/>
-    </Style>
-  </UserControl.Styles>
-
   <Grid RowDefinitions="64,*">
     <Border Background="{DynamicResource AppChromeBrush}" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1">
       <StackPanel Margin="26,0" VerticalAlignment="Center">

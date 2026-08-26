@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -30,6 +31,9 @@ public partial class InvoicePrinterView : UserControl
         InitializeComponent();
         _windowService = windowService;
         DataContext = this;
+        InvoicesPerPageComboBox.SelectionChanged += PrintLayoutSetting_Changed;
+        FullPageStandaloneToggle.PropertyChanged += ToggleSetting_PropertyChanged;
+        DividerToggle.PropertyChanged += ToggleSetting_PropertyChanged;
         RefreshPreview();
     }
 
@@ -115,7 +119,7 @@ public partial class InvoicePrinterView : UserControl
 
     private void NextPage_Click(object? sender, RoutedEventArgs e)
     {
-        if ((_currentPage + 1) * 2 >= Pages.Count) return;
+        if (_currentPage + 1 >= CreatePrintSheets().Count) return;
         _currentPage++;
         RefreshPreview();
     }
@@ -131,9 +135,21 @@ public partial class InvoicePrinterView : UserControl
         if (TopLevel.GetTopLevel(this) is not Window owner) return;
         var output = Path.Combine(Path.GetTempPath(), $"发票打印-{DateTime.Now:yyyyMMdd-HHmmss}.pdf");
         var margin = (float)(MarginInput.Value ?? 10);
-        _pdfService.Save(Pages.Select(item => item.Page).ToList(), output, margin, DividerToggle.IsChecked == true);
-        var pageCount = (int)Math.Ceiling(Pages.Count / 2d);
-        var dialog = new PrinterSelectionWindow(_systemPrint, output, pageCount);
+        var invoicesPerPage = GetInvoicesPerPage();
+        var keepFullPageInvoicesSeparate = FullPageStandaloneToggle.IsChecked == true;
+        var pageCount = _pdfService.Save(
+            Pages.Select(item => item.Page).ToList(),
+            output,
+            margin,
+            DividerToggle.IsChecked == true,
+            invoicesPerPage,
+            keepFullPageInvoicesSeparate);
+        var dialog = new PrinterSelectionWindow(
+            _systemPrint,
+            output,
+            pageCount,
+            invoicesPerPage,
+            keepFullPageInvoicesSeparate);
         if (_windowService is not null) await _windowService.ShowDialogAsync<bool>(dialog);
         else await dialog.ShowDialog<bool>(owner);
         if (Pages.Count > 0) await RunRecognitionAsync();
@@ -176,11 +192,19 @@ public partial class InvoicePrinterView : UserControl
 
     private void RefreshPreview()
     {
-        var count = (int)Math.Ceiling(Pages.Count / 2d);
+        var sheets = CreatePrintSheets();
+        var count = sheets.Count;
         _currentPage = Math.Clamp(_currentPage, 0, Math.Max(0, count - 1));
-        var index = _currentPage * 2;
-        PreviewTop.Source = Pages.ElementAtOrDefault(index)?.Preview;
-        PreviewBottom.Source = Pages.ElementAtOrDefault(index + 1)?.Preview;
+        var sheet = sheets.ElementAtOrDefault(_currentPage);
+        PreviewTop.Source = sheet is null ? null : Pages[sheet.FirstInvoiceIndex].Preview;
+        PreviewBottom.Source = sheet?.SecondInvoiceIndex is int secondInvoiceIndex
+            ? Pages[secondInvoiceIndex].Preview
+            : null;
+        var usesFullPage = sheet?.UsesFullPage == true;
+        Grid.SetRowSpan(PreviewTop, usesFullPage ? 3 : 1);
+        PreviewTop.Margin = usesFullPage ? new Avalonia.Thickness(0) : new Avalonia.Thickness(0, 0, 0, 4);
+        PreviewBottom.IsVisible = sheet?.SecondInvoiceIndex is not null;
+        PreviewDivider.IsVisible = sheet?.SecondInvoiceIndex is not null && DividerToggle.IsChecked == true;
         ImportedTitle.Text = $"已导入 {Pages.Count} 张发票";
         PageIndicator.Text = count == 0 ? "0 / 0" : $"{_currentPage + 1} / {count}";
         PageSummary.Text = $"共 {count} 页";
@@ -188,6 +212,35 @@ public partial class InvoicePrinterView : UserControl
         NextPageButton.IsEnabled = _currentPage + 1 < count;
         EmptyState.IsVisible = Pages.Count == 0;
         InvoiceList.IsVisible = Pages.Count > 0;
+    }
+
+    private IReadOnlyList<InvoicePrinter.Core.Models.InvoicePrintSheet> CreatePrintSheets() =>
+        InvoicePrintLayout.CreateSheets(
+            Pages.Select(item => item.Page).ToList(),
+            GetInvoicesPerPage(),
+            FullPageStandaloneToggle.IsChecked == true);
+
+    private int GetInvoicesPerPage() => InvoicesPerPageComboBox.SelectedIndex == 0 ? 1 : 2;
+
+    private void PrintLayoutSetting_Changed(object? sender, RoutedEventArgs e) => UpdatePrintLayoutSettings();
+
+    private void UpdatePrintLayoutSettings()
+    {
+        _currentPage = 0;
+        var invoicesPerPage = GetInvoicesPerPage();
+        FullPageStandaloneToggle.IsEnabled = invoicesPerPage == 2;
+        LayoutSummaryText.Text = invoicesPerPage == 1
+            ? "A4 纵向，每页 1 张发票，并保留所设置的安全边距。"
+            : FullPageStandaloneToggle.IsChecked == true
+                ? "A4 纵向，每页最多 2 张，长发票单独成页。"
+                : "A4 纵向，每页 2 张发票；所有发票均参与合并排版。";
+        RefreshPreview();
+    }
+
+    private void ToggleSetting_PropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.Property == ToggleSwitch.IsCheckedProperty)
+            UpdatePrintLayoutSettings();
     }
 
     private async Task ShowErrorAsync(string message)

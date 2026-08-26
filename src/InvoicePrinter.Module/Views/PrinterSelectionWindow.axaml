@@ -7,7 +7,7 @@
       <TextBlock Text="打印机" FontWeight="SemiBold"/>
       <ComboBox x:Name="PrinterComboBox" ItemsSource="{Binding Printers}" DisplayMemberBinding="{Binding DisplayName}" MinHeight="40"/>
       <ProgressBar x:Name="LoadingProgress" IsIndeterminate="True" Height="3"/>
-      <Border Background="#F2F6FC" CornerRadius="8" Padding="14"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="A4 · 纵向 · 每页 2 张"/><TextBlock Grid.Column="1" x:Name="PageCountText" FontWeight="SemiBold"/></Grid></Border>
+      <Border Background="#F2F6FC" CornerRadius="8" Padding="14"><Grid ColumnDefinitions="*,Auto"><TextBlock x:Name="LayoutText" Text="A4 · 纵向 · 每页最多 2 张"/><TextBlock Grid.Column="1" x:Name="PageCountText" FontWeight="SemiBold"/></Grid></Border>
       <TextBlock x:Name="StatusText" Foreground="#667085"/>
     </StackPanel>
     <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">

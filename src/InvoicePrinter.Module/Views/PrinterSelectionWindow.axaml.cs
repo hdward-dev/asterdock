@@ -18,9 +18,19 @@ public partial class PrinterSelectionWindow : Window
         InitializeComponent(); DataContext = this; _service = new SystemPrintService(); _pdfPath = string.Empty;
     }
 
-    public PrinterSelectionWindow(SystemPrintService service, string pdfPath, int pageCount) : this()
+    public PrinterSelectionWindow(
+        SystemPrintService service,
+        string pdfPath,
+        int pageCount,
+        int invoicesPerPage,
+        bool keepFullPageInvoicesSeparate) : this()
     {
         _service = service; _pdfPath = pdfPath;
+        LayoutText.Text = invoicesPerPage == 1
+            ? "A4 · 纵向 · 每页 1 张"
+            : keepFullPageInvoicesSeparate
+                ? "A4 · 纵向 · 每页最多 2 张"
+                : "A4 · 纵向 · 每页 2 张";
         PageCountText.Text = $"共 {pageCount} 页"; Opened += LoadPrintersAsync;
     }
 

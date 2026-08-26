@@ -85,9 +85,12 @@
         <Border Classes="card" Margin="0,12,0,0" Padding="22">
           <StackPanel Spacing="18">
             <TextBlock Text="页面布局" FontSize="18" FontWeight="SemiBold"/>
-            <Grid ColumnDefinitions="150,*" RowDefinitions="42,42,42,42,42" RowSpacing="10">
+            <Grid ColumnDefinitions="180,*" RowDefinitions="42,42,42,42,42,42" RowSpacing="10">
               <TextBlock Text="每页发票" VerticalAlignment="Center" Foreground="#667085"/>
-              <ComboBox Grid.Column="1" SelectedIndex="0"><ComboBoxItem Content="2 张"/></ComboBox>
+              <ComboBox x:Name="InvoicesPerPageComboBox" Grid.Column="1" SelectedIndex="1">
+                <ComboBoxItem Content="1 张"/>
+                <ComboBoxItem Content="2 张"/>
+              </ComboBox>
               <TextBlock Grid.Row="1" Text="纸张大小" VerticalAlignment="Center" Foreground="#667085"/>
               <ComboBox Grid.Row="1" Grid.Column="1" SelectedIndex="0"><ComboBoxItem Content="A4（210 × 297 mm）"/></ComboBox>
               <TextBlock Grid.Row="2" Text="页面方向" VerticalAlignment="Center" Foreground="#667085"/>
@@ -96,9 +99,12 @@
               <NumericUpDown x:Name="MarginInput" Grid.Row="3" Grid.Column="1" Value="10" Minimum="5" Maximum="30" Increment="1" FormatString="0 mm" ShowButtonSpinner="True"/>
               <TextBlock Grid.Row="4" Text="裁切分隔线" VerticalAlignment="Center" Foreground="#667085"/>
               <ToggleSwitch x:Name="DividerToggle" Grid.Row="4" Grid.Column="1" IsChecked="True" OnContent="显示" OffContent="隐藏"/>
+              <TextBlock Grid.Row="5" Text="长发票单独成页" VerticalAlignment="Center" Foreground="#667085"/>
+              <ToggleSwitch x:Name="FullPageStandaloneToggle" Grid.Row="5" Grid.Column="1" IsChecked="True"
+                            OnContent="启用" OffContent="关闭"/>
             </Grid>
             <Border Background="#F2F6FC" CornerRadius="8" Padding="14">
-              <TextBlock Text="当前默认使用 A4 纵向，每页两张发票，并保留 10 mm 安全边距。" Foreground="#526174" TextWrapping="Wrap"/>
+              <TextBlock x:Name="LayoutSummaryText" Text="A4 纵向，每页最多 2 张，长发票单独成页。" Foreground="#526174" TextWrapping="Wrap"/>
             </Border>
           </StackPanel>
         </Border>
@@ -120,9 +126,9 @@
         <Border Grid.Row="1" Background="{DynamicResource AppPreviewBrush}" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,1">
           <Viewbox Stretch="Uniform" Margin="18">
             <Border Width="595" Height="842" Background="White" BorderBrush="#CAD2DE" BorderThickness="1" Padding="28">
-              <Grid RowDefinitions="*,16,*">
+              <Grid x:Name="PreviewPageGrid" RowDefinitions="*,16,*">
                 <Image x:Name="PreviewTop" Stretch="Uniform" Margin="0,0,0,4"/>
-                <Line Grid.Row="1" StartPoint="0,8" EndPoint="539,8" Stroke="#98A2B3" StrokeThickness="1" StrokeDashArray="6,4"/>
+                <Line x:Name="PreviewDivider" Grid.Row="1" StartPoint="0,8" EndPoint="539,8" Stroke="#98A2B3" StrokeThickness="1" StrokeDashArray="6,4"/>
                 <Image x:Name="PreviewBottom" Grid.Row="2" Stretch="Uniform" Margin="0,4,0,0"/>
               </Grid>
             </Border>

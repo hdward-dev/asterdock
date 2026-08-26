@@ -28,7 +28,7 @@ public partial class RecognitionResultWindow : Window
         var file = await storage.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             Title = "导出识别结果",
-            DefaultFileName = $"小票识别-{DateTime.Now:yyyyMMdd-HHmmss}.csv",
+            SuggestedFileName = $"小票识别-{DateTime.Now:yyyyMMdd-HHmmss}.csv",
             FileTypeChoices =
             [
                 new FilePickerFileType("CSV 文件") { Patterns = ["*.csv"] }

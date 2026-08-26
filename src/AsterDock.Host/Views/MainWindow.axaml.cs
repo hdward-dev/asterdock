@@ -509,13 +509,6 @@ public partial class MainWindow : Window, IApplicationShell
 
     private void ConfigureWindowChrome()
     {
-        if (OperatingSystem.IsMacOS())
-        {
-            CustomTitleBar.IsVisible = false;
-            WindowRootGrid.RowDefinitions[0].Height = new GridLength(0);
-            return;
-        }
-
         WindowDecorations = WindowDecorations.BorderOnly;
         ExtendClientAreaToDecorationsHint = true;
         ExtendClientAreaTitleBarHeightHint = 40;

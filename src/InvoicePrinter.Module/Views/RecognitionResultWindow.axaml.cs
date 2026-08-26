@@ -12,11 +12,15 @@ public partial class RecognitionResultWindow : Window
 {
     public ObservableCollection<RecognitionRow> Rows { get; } = [];
 
-    public RecognitionResultWindow(IReadOnlyList<InvoiceRecognition> recognitions)
+    public RecognitionResultWindow()
     {
         InitializeComponent();
-        foreach (var recognition in recognitions) Rows.Add(ToRow(recognition));
         DataContext = this;
+    }
+
+    public RecognitionResultWindow(IReadOnlyList<InvoiceRecognition> recognitions) : this()
+    {
+        foreach (var recognition in recognitions) Rows.Add(ToRow(recognition));
         var resolved = Rows.Count(row => row.Status == "已识别");
         SummaryText.Text = $"共识别 {Rows.Count} 张小票，其中 {resolved} 张解析出关键字段";
     }

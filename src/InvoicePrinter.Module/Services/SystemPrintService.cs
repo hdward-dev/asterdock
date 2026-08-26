@@ -23,6 +23,20 @@ public sealed class SystemPrintService
             return items.Select(item => new PrinterInfo(item.GetProperty("Name").GetString() ?? "未知打印机", item.TryGetProperty("Default", out var value) && value.GetBoolean())).OrderByDescending(item => item.IsDefault).ThenBy(item => item.Name).ToList();
         }
 
+        if (OperatingSystem.IsMacOS())
+        {
+            var printerOutput = await RunCaptureAsync("/usr/bin/lpstat", "-e");
+            var defaultOutput = await RunCaptureAsync("/usr/bin/lpstat", "-d");
+            var macDefaultName = ParseDefaultPrinterName(defaultOutput);
+
+            return printerOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Distinct(StringComparer.Ordinal)
+                .Select(name => new PrinterInfo(name, string.Equals(name, macDefaultName, StringComparison.Ordinal)))
+                .OrderByDescending(item => item.IsDefault)
+                .ThenBy(item => item.Name)
+                .ToList();
+        }
+
         var output = await RunCaptureAsync("lpstat", "-p -d");
         var defaultName = output.Split('\n').FirstOrDefault(line => line.StartsWith("system default destination:", StringComparison.OrdinalIgnoreCase))?.Split(':', 2).Last().Trim();
         return output.Split('\n').Where(line => line.StartsWith("printer ")).Select(line => line.Split(' ', StringSplitOptions.RemoveEmptyEntries)[1]).Distinct().Select(name => new PrinterInfo(name, name == defaultName)).OrderByDescending(item => item.IsDefault).ThenBy(item => item.Name).ToList();
@@ -81,5 +95,11 @@ public sealed class SystemPrintService
         var output = await process.StandardOutput.ReadToEndAsync();
         await process.WaitForExitAsync();
         return process.ExitCode == 0 ? output : string.Empty;
+    }
+
+    private static string? ParseDefaultPrinterName(string output)
+    {
+        var separatorIndex = Math.Max(output.LastIndexOf(':'), output.LastIndexOf('：'));
+        return separatorIndex < 0 ? null : output[(separatorIndex + 1)..].Trim();
     }
 }

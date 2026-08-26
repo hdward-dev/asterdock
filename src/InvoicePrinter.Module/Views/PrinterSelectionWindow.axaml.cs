@@ -7,6 +7,8 @@ namespace InvoicePrinter.Module.Views;
 
 public partial class PrinterSelectionWindow : Window
 {
+    private static readonly TimeSpan PrintSuccessDisplayDuration = TimeSpan.FromSeconds(1);
+
     private readonly SystemPrintService _service;
     private readonly string _pdfPath;
     public ObservableCollection<PrinterInfo> Printers { get; } = [];
@@ -36,7 +38,13 @@ public partial class PrinterSelectionWindow : Window
     {
         if (PrinterComboBox.SelectedItem is not PrinterInfo printer) return;
         PrintButton.IsEnabled = false; StatusText.Text = "正在发送打印任务…";
-        try { await _service.PrintAsync(_pdfPath, printer.Name); Close(true); }
+        try
+        {
+            await _service.PrintAsync(_pdfPath, printer.Name);
+            StatusText.Text = $"已发送到 {printer.DisplayName}";
+            await Task.Delay(PrintSuccessDisplayDuration);
+            Close(true);
+        }
         catch (Exception exception) { StatusText.Text = $"打印失败：{exception.Message}"; PrintButton.IsEnabled = true; }
     }
 

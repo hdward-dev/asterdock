@@ -1,0 +1,43 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:models="using:InvoicePrinter.Module.Models"
+        x:Class="InvoicePrinter.Module.Views.RecognitionResultWindow" x:CompileBindings="False"
+        Title="票面信息识别结果" Width="780" Height="520" MinWidth="640" MinHeight="380" CanResize="True" WindowStartupLocation="CenterOwner">
+  <Grid RowDefinitions="Auto,*,Auto" Margin="24">
+    <StackPanel Spacing="6">
+      <TextBlock Text="识别结果" FontSize="22" FontWeight="SemiBold"/>
+      <TextBlock x:Name="SummaryText" Foreground="#667085"/>
+    </StackPanel>
+    <Border Grid.Row="1" Margin="0,20,0,0" BorderBrush="#E2E7EF" BorderThickness="1" CornerRadius="8" ClipToBounds="True">
+      <Grid RowDefinitions="40,*">
+        <Grid ColumnDefinitions="2*,0.7*,1*,1.4*,1.1*" Background="#F2F6FC">
+          <TextBlock Text="文件" FontWeight="SemiBold" Margin="14,0,0,0" VerticalAlignment="Center"/>
+          <TextBlock Grid.Column="1" Text="类型" FontWeight="SemiBold" VerticalAlignment="Center"/>
+          <TextBlock Grid.Column="2" Text="金额" FontWeight="SemiBold" VerticalAlignment="Center"/>
+          <TextBlock Grid.Column="3" Text="编号" FontWeight="SemiBold" VerticalAlignment="Center"/>
+          <TextBlock Grid.Column="4" Text="状态" FontWeight="SemiBold" VerticalAlignment="Center"/>
+        </Grid>
+        <ScrollViewer Grid.Row="1">
+          <ItemsControl ItemsSource="{Binding Rows}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="models:RecognitionRow">
+                <Border BorderBrush="#EDF0F5" BorderThickness="0,0,0,1" Background="Transparent">
+                  <Grid ColumnDefinitions="2*,0.7*,1*,1.4*,1.1*" Height="42">
+                    <TextBlock Text="{Binding File}" Margin="14,0,8,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding File}"/>
+                    <TextBlock Grid.Column="1" Text="{Binding Category}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="2" Text="{Binding Amount}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="3" Text="{Binding Serial}" Margin="0,0,8,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Serial}"/>
+                    <TextBlock Grid.Column="4" Text="{Binding Status}" Margin="0,0,10,0" VerticalAlignment="Center" Foreground="#667085" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Status}"/>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </Grid>
+    </Border>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,18,0,0">
+      <Button Content="导出 CSV" Width="96" Click="Export_Click"/>
+      <Button Content="关闭" Width="96" Click="Close_Click"/>
+    </StackPanel>
+  </Grid>
+</Window>

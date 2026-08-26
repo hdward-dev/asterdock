@@ -128,9 +128,15 @@
             </Border>
           </Viewbox>
         </Border>
-        <Grid Grid.Row="2" Margin="16,0" ColumnDefinitions="*,Auto">
+        <Grid Grid.Row="2" Margin="16,0" ColumnDefinitions="*,Auto,Auto">
           <TextBlock x:Name="PageSummary" Text="共 0 页" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
-          <Button Grid.Column="1" Classes="primary" MinWidth="112" Height="40" Click="Print_Click">
+          <Button x:Name="RecognizeButton" Grid.Column="1" MinWidth="96" Height="40" Margin="0,0,10,0" Click="Recognize_Click" ToolTip.Tip="自动识别每张小票的类型、金额与编号">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <PathIcon Data="M4,5 H20 V19 H4 Z M7,9 H17 M7,12 H17 M7,15 H13" Width="16" Height="16"/>
+              <TextBlock Text="识别信息" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+          <Button x:Name="PrintButton" Grid.Column="2" Classes="primary" MinWidth="112" Height="40" Click="Print_Click">
             <StackPanel Orientation="Horizontal" Spacing="7">
               <PathIcon Data="M6,3 H18 V8 H20 A2,2 0 0 1 22,10 V17 H18 V22 H6 V17 H2 V10 A2,2 0 0 1 4,8 H6 Z M8,15 V20 H16 V15 Z M8,5 V8 H16 V5 Z" Width="16" Height="16"/>
               <TextBlock Text="打印" VerticalAlignment="Center"/>

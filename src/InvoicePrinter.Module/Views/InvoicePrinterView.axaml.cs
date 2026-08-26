@@ -15,6 +15,7 @@ public partial class InvoicePrinterView : UserControl
     private readonly InvoiceLoader _loader = new();
     private readonly PrintPdfService _pdfService = new();
     private readonly SystemPrintService _systemPrint = new();
+    private readonly InvoiceOcrService _ocrService = new();
     private readonly IWindowService? _windowService;
     private int _currentPage;
 
@@ -135,6 +136,42 @@ public partial class InvoicePrinterView : UserControl
         var dialog = new PrinterSelectionWindow(_systemPrint, output, pageCount);
         if (_windowService is not null) await _windowService.ShowDialogAsync<bool>(dialog);
         else await dialog.ShowDialog<bool>(owner);
+        if (Pages.Count > 0) await RunRecognitionAsync();
+    }
+
+    private async void Recognize_Click(object? sender, RoutedEventArgs e)
+    {
+        if (Pages.Count == 0)
+        {
+            await ShowErrorAsync("请先导入发票文件");
+            return;
+        }
+        await RunRecognitionAsync();
+    }
+
+    private async Task RunRecognitionAsync()
+    {
+        RecognizeButton.IsEnabled = false;
+        PrintButton.IsEnabled = false;
+        PageSummary.Text = "正在识别票面信息…";
+        try
+        {
+            var recognitions = await Task.Run(() => _ocrService.RecognizeAsync(Pages.Select(item => item.Page).ToList()));
+            var window = new RecognitionResultWindow(recognitions);
+            if (_windowService is not null) await _windowService.ShowDialogAsync<bool>(window);
+            else if (TopLevel.GetTopLevel(this) is Window resultOwner) await window.ShowDialog<bool>(resultOwner);
+            else window.Show();
+        }
+        catch (Exception exception)
+        {
+            await ShowErrorAsync($"识别失败：{exception.Message}");
+        }
+        finally
+        {
+            RecognizeButton.IsEnabled = true;
+            PrintButton.IsEnabled = true;
+            RefreshPreview();
+        }
     }
 
     private void RefreshPreview()

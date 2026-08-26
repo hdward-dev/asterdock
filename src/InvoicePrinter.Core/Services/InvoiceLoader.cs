@@ -16,7 +16,6 @@ public sealed class InvoiceLoader
 
         if (!Path.GetExtension(path).Equals(".pdf", StringComparison.OrdinalIgnoreCase))
             return [new InvoicePage(path, Path.GetFileName(path), NormalizeImage(path))];
-
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsMacOS() && !OperatingSystem.IsLinux())
             throw new PlatformNotSupportedException("当前平台不支持 PDF 渲染");
 
@@ -27,7 +26,7 @@ public sealed class InvoiceLoader
         for (var index = 0; index < count; index++)
         {
             using var bitmap = Conversion.ToImage(pdf, index, options: new RenderOptions(Dpi: 144));
-            result.Add(new InvoicePage(path, count > 1 ? $"{Path.GetFileName(path)} · 第 {index + 1} 页" : Path.GetFileName(path), EncodePng(bitmap)));
+            result.Add(new InvoicePage(path, count > 1 ? $"{Path.GetFileName(path)} · 第 {index + 1} 页" : Path.GetFileName(path), EncodePng(bitmap), index));
         }
 #pragma warning restore CA1416
         return result;

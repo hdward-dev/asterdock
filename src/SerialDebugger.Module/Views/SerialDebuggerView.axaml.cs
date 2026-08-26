@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -10,8 +11,12 @@ namespace SerialDebugger.Module.Views;
 
 public partial class SerialDebuggerView : UserControl
 {
+    private const double ReceiveAreaGrowthBaseline = 650;
     private readonly SerialDebuggerViewModel _viewModel;
     private bool _disposed;
+    private SerialPortSessionViewModel? _resizingSession;
+    private double _resizeStartX;
+    private double _resizeStartWidth;
 
     public SerialDebuggerView()
         : this(Path.Combine(Path.GetTempPath(), "AsterDock", "SerialDebuggerPreview"))
@@ -40,9 +45,21 @@ public partial class SerialDebuggerView : UserControl
     private void Sessions_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (e.OldItems is not null)
-            foreach (SerialPortSessionViewModel session in e.OldItems) DetachSession(session);
+            foreach (SerialPortSessionViewModel session in e.OldItems)
+            {
+                if (ReferenceEquals(_resizingSession, session)) _resizingSession = null;
+                DetachSession(session);
+            }
         if (e.NewItems is not null)
-            foreach (SerialPortSessionViewModel session in e.NewItems) AttachSession(session);
+        {
+            foreach (SerialPortSessionViewModel session in e.NewItems)
+            {
+                AttachSession(session);
+                UpdateReceiveAreaHeight(session, TileScrollViewer.Bounds.Height);
+            }
+            if (_viewModel.IsTileLayout)
+                Dispatcher.UIThread.Post(TileScrollViewer.ScrollToEnd, DispatcherPriority.Background);
+        }
     }
 
     private static SerialPortSessionViewModel? GetSession(object? sender) =>
@@ -69,6 +86,50 @@ public partial class SerialDebuggerView : UserControl
     private void TogglePortCard_Click(object? sender, RoutedEventArgs e)
     {
         if (GetSession(sender) is { } session) session.IsCollapsed = !session.IsCollapsed;
+    }
+
+    private void ResizeHandle_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Border { Tag: SerialPortSessionViewModel session } handle) return;
+        _resizingSession = session;
+        _resizeStartX = e.GetPosition(this).X;
+        _resizeStartWidth = session.TileWidth;
+        e.Pointer.Capture(handle);
+        e.Handled = true;
+    }
+
+    private void ResizeHandle_PointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_resizingSession is null || sender is not Border { Tag: SerialPortSessionViewModel session } ||
+            !ReferenceEquals(_resizingSession, session)) return;
+        session.TileWidth = _resizeStartWidth + e.GetPosition(this).X - _resizeStartX;
+        e.Handled = true;
+    }
+
+    private void ResizeHandle_PointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_resizingSession is null) return;
+        _resizingSession = null;
+        e.Pointer.Capture(null);
+        e.Handled = true;
+    }
+
+    private void ResizeHandle_DoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is Border { Tag: SerialPortSessionViewModel session })
+            session.TileWidth = SerialPortSessionViewModel.DefaultTileWidth;
+    }
+
+    private void TileScrollViewer_SizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        foreach (var session in _viewModel.Sessions)
+            UpdateReceiveAreaHeight(session, e.NewSize.Height);
+    }
+
+    private static void UpdateReceiveAreaHeight(SerialPortSessionViewModel session, double workspaceHeight)
+    {
+        var growth = Math.Max(0, workspaceHeight - ReceiveAreaGrowthBaseline);
+        session.ReceiveAreaHeight = SerialPortSessionViewModel.DefaultReceiveAreaHeight + growth;
     }
 
     private void RefreshPorts_Click(object? sender, RoutedEventArgs e) => GetSession(sender)?.RefreshPorts();

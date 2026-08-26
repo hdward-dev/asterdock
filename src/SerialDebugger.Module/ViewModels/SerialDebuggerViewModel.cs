@@ -68,7 +68,7 @@ public sealed class SerialDebuggerViewModel : INotifyPropertyChanged, IDisposabl
                 ClearSessions();
                 IsTileLayout = settings.IsTileLayout;
                 IsLinked = settings.IsLinked;
-                foreach (var profile in settings.Ports.Take(4)) AddSession(profile);
+                foreach (var profile in settings.Ports) AddSession(profile);
                 WorkspaceStatus = $"已恢复 {Sessions.Count} 个串口卡片";
             });
         }
@@ -81,12 +81,6 @@ public sealed class SerialDebuggerViewModel : INotifyPropertyChanged, IDisposabl
 
     public void AddSession(SerialPortProfile? profile = null)
     {
-        if (Sessions.Count >= 4)
-        {
-            WorkspaceStatus = "当前工作区最多同时放置 4 个串口";
-            return;
-        }
-
         var ports = GetPortNames();
         var preferredPort = ports.FirstOrDefault(port =>
             string.Equals(port.PortName, profile?.PortName, StringComparison.OrdinalIgnoreCase))?.PortName;
@@ -109,11 +103,6 @@ public sealed class SerialDebuggerViewModel : INotifyPropertyChanged, IDisposabl
 
     public void DuplicateSession(SerialPortSessionViewModel source)
     {
-        if (Sessions.Count >= 4)
-        {
-            WorkspaceStatus = "当前工作区最多同时放置 4 个串口";
-            return;
-        }
         AddSession(source.CreateProfile());
         WorkspaceStatus = $"已复制 {source.Title} 的配置";
     }
@@ -239,7 +228,7 @@ public sealed class SerialDebuggerViewModel : INotifyPropertyChanged, IDisposabl
         AddSession(new SerialPortProfile(
             ports.ElementAtOrDefault(1)?.PortName ?? string.Empty,
             9600, 8, "1", "无", "无", "UTF-8", "CRLF", "01 03 00 00 00 02"));
-        WorkspaceStatus = "双串口工作区已就绪";
+        WorkspaceStatus = "水平平铺工作区已就绪";
     }
 
     private void ClearSessions()
@@ -273,7 +262,18 @@ public sealed class SerialDebuggerViewModel : INotifyPropertyChanged, IDisposabl
     private static IReadOnlyList<SerialPortDevice> GetPortNames()
         => SerialPortDiscovery.GetConnectedPorts();
 
-    private static string GetSessionTitle(int index) => $"端口 {(char)('A' + index)}";
+    private static string GetSessionTitle(int index)
+    {
+        var value = index + 1;
+        var suffix = string.Empty;
+        while (value > 0)
+        {
+            value--;
+            suffix = (char)('A' + value % 26) + suffix;
+            value /= 26;
+        }
+        return $"端口 {suffix}";
+    }
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {

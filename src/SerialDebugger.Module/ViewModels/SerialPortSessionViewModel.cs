@@ -14,6 +14,9 @@ namespace SerialDebugger.Module.ViewModels;
 public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDisposable
 {
     private const int MaximumLogEntries = 500;
+    public const double DefaultTileWidth = 720;
+    public const double MinimumTileWidth = 520;
+    public const double DefaultReceiveAreaHeight = 188;
     private readonly object _portGate = new();
     private readonly List<SerialLogEntry> _entries = [];
     private readonly SemaphoreSlim _sendGate = new(1, 1);
@@ -52,6 +55,8 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
     private long _txFrames;
     private long _rxFrames;
     private long _errorCount;
+    private double _tileWidth = DefaultTileWidth;
+    private double _receiveAreaHeight = DefaultReceiveAreaHeight;
 
     public SerialPortSessionViewModel(
         string title,
@@ -180,6 +185,8 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
     public long TxFrames { get => _txFrames; private set => SetField(ref _txFrames, value); }
     public long RxFrames { get => _rxFrames; private set => SetField(ref _rxFrames, value); }
     public long ErrorCount { get => _errorCount; private set => SetField(ref _errorCount, value); }
+    public double TileWidth { get => _tileWidth; set => SetField(ref _tileWidth, Math.Max(MinimumTileWidth, value)); }
+    public double ReceiveAreaHeight { get => _receiveAreaHeight; set => SetField(ref _receiveAreaHeight, Math.Max(DefaultReceiveAreaHeight, value)); }
     public string StatisticsText => $"TX {TxFrames} · RX {RxFrames} · 错误 {ErrorCount}";
 
     private string ParitySummary => Parity switch
@@ -395,7 +402,8 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
         FlowControl,
         EncodingName,
         LineEnding,
-        SendText);
+        SendText,
+        TileWidth);
 
     public void ApplyProfile(SerialPortProfile profile)
     {
@@ -408,6 +416,7 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
         EncodingName = profile.EncodingName;
         LineEnding = profile.LineEnding;
         SendText = profile.SendText;
+        TileWidth = profile.TileWidth;
         RefreshPorts();
     }
 
@@ -651,7 +660,8 @@ public sealed record SerialPortProfile(
     string FlowControl,
     string EncodingName,
     string LineEnding,
-    string SendText);
+    string SendText,
+    double TileWidth = SerialPortSessionViewModel.DefaultTileWidth);
 
 internal static class HexTextExtensions
 {

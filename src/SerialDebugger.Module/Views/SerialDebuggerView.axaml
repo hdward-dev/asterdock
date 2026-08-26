@@ -17,7 +17,7 @@
       <Setter Property="SelectionBrush" Value="{DynamicResource AppSelectionBrush}"/>
     </Style>
     <Style Selector="ItemsControl.port-grid > ContentPresenter">
-      <Setter Property="Margin" Value="7"/>
+      <Setter Property="Margin" Value="0"/>
     </Style>
     <Style Selector="TabItem">
       <Setter Property="Padding" Value="18,8"/>
@@ -117,7 +117,7 @@
                     <TextBox Grid.Column="7" Classes="ad-compact" Text="{Binding SearchText, Mode=TwoWay}" PlaceholderText="搜索或过滤"/>
                     <Button Grid.Column="8" Classes="ad-icon" Content="⌫" ToolTip.Tip="清空日志" Tag="{Binding}" Click="ClearLogs_Click"/>
                   </Grid>
-                  <TextBox Classes="console" Height="188" Text="{Binding ReceiveText, Mode=OneWay}" Tag="{Binding}"
+                  <TextBox Classes="console" Height="{Binding ReceiveAreaHeight}" Text="{Binding ReceiveText, Mode=OneWay}" Tag="{Binding}"
                            IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
                            ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto"/>
                 </StackPanel>
@@ -199,6 +199,19 @@
         </Grid>
       </Border>
     </DataTemplate>
+
+    <DataTemplate x:Key="TilePortCardTemplate" x:DataType="viewModels:SerialPortSessionViewModel">
+      <Grid Width="{Binding TileWidth}" Margin="7">
+        <ContentControl Content="{Binding}" ContentTemplate="{StaticResource PortCardTemplate}" Margin="0,0,8,0"/>
+        <Border Width="14" HorizontalAlignment="Right" Background="Transparent" Cursor="SizeWestEast"
+                Tag="{Binding}" ToolTip.Tip="拖动调整卡片宽度，双击恢复默认宽度"
+                PointerPressed="ResizeHandle_PointerPressed" PointerMoved="ResizeHandle_PointerMoved"
+                PointerReleased="ResizeHandle_PointerReleased" DoubleTapped="ResizeHandle_DoubleTapped">
+          <Border Width="2" Height="64" CornerRadius="1" Background="{DynamicResource AppBorderBrush}"
+                  HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
+        </Border>
+      </Grid>
+    </DataTemplate>
   </UserControl.Resources>
 
   <Grid RowDefinitions="64,58,*,Auto">
@@ -214,8 +227,10 @@
 
     <Border Grid.Row="1" Background="{DynamicResource AppSurfaceBrush}" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1">
       <Grid Margin="20,0" ColumnDefinitions="Auto,12,Auto,*,Auto,10,Auto,10,Auto,10,Auto">
-        <TextBlock Text="工作区：双串口联调" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
+        <TextBlock Text="工作区：水平平铺" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
         <Button Grid.Column="2" Content="＋ 添加串口" Padding="13,7" VerticalAlignment="Center" Click="AddPort_Click"/>
+        <TextBlock Grid.Column="3" Text="向右无限扩展 · 拖动卡片右侧边缘调整宽度" Margin="14,0"
+                   Foreground="{DynamicResource AppMutedBrush}" VerticalAlignment="Center"/>
         <Border Grid.Column="4" Classes="ad-segmented" VerticalAlignment="Center">
           <StackPanel Orientation="Horizontal">
             <Button Classes="ad-segment-item" Classes.selected="{Binding IsTileLayout}" Content="▦  平铺" Click="TileLayout_Click"/>
@@ -234,10 +249,12 @@
     </Border>
 
     <Grid Grid.Row="2">
-      <ScrollViewer IsVisible="{Binding IsTileLayout}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <ItemsControl Classes="port-grid" ItemsSource="{Binding Sessions}" ItemTemplate="{StaticResource PortCardTemplate}">
+      <ScrollViewer x:Name="TileScrollViewer" IsVisible="{Binding IsTileLayout}" Margin="7"
+                    VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                    SizeChanged="TileScrollViewer_SizeChanged">
+        <ItemsControl Classes="port-grid" ItemsSource="{Binding Sessions}" ItemTemplate="{StaticResource TilePortCardTemplate}">
           <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate>
+            <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
           </ItemsControl.ItemsPanel>
         </ItemsControl>
       </ScrollViewer>

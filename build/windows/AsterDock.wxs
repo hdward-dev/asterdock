@@ -1,0 +1,45 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="AsterDock"
+           Manufacturer="hdward-dev"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="{B4744C63-9135-4FA8-A06B-EBE87BC6C298}"
+           Scope="perMachine"
+           Language="2052">
+    <MajorUpgrade DowngradeErrorMessage="已安装更新版本的 AsterDock。" />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="AsterDock" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <Feature Id="MainFeature" Title="AsterDock" Level="1">
+      <ComponentRef Id="MainExecutable" />
+      <ComponentGroupRef Id="PublishedFiles" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="MainExecutable" Guid="*">
+        <File Id="AsterDockExecutable"
+              Source="$(var.PublishDir)\AsterDock.Host.exe"
+              KeyPath="yes">
+          <Shortcut Id="StartMenuShortcut"
+                    Directory="ProgramMenuFolder"
+                    Name="AsterDock"
+                    WorkingDirectory="INSTALLFOLDER"
+                    Advertise="yes" />
+        </File>
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="PublishedFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(var.PublishDir)\**">
+        <Exclude Files="$(var.PublishDir)\AsterDock.Host.exe" />
+      </Files>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

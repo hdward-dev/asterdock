@@ -1,0 +1,165 @@
+name: Nightly Release
+
+on:
+  schedule:
+    - cron: "0 14 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nightly-release
+  cancel-in-progress: false
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  prepare:
+    name: Prepare release
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.release.outputs.should_release }}
+      release_date: ${{ steps.release.outputs.release_date }}
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check for updates and existing release
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_date="$(TZ=Asia/Shanghai date +%Y%m%d)"
+          display_date="$(TZ=Asia/Shanghai date +%Y-%m-%d)"
+          commit_timestamp="$(git log -1 --format=%ct)"
+          commit_date="$(TZ=Asia/Shanghai date -d "@$commit_timestamp" +%Y%m%d)"
+          short_sha="${GITHUB_SHA:0:7}"
+          tag="nightly-${release_date}-${short_sha}"
+          version="1.0.${GITHUB_RUN_NUMBER}"
+          should_release="false"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" || "$commit_date" == "$release_date" ]]; then
+            should_release="true"
+          fi
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            should_release="false"
+          fi
+
+          echo "should_release=$should_release" >> "$GITHUB_OUTPUT"
+          echo "release_date=$display_date" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  package-windows:
+    name: Package Windows (${{ matrix.rid }})
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        rid:
+          - win-x64
+          - win-arm64
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Restore dependencies
+        run: dotnet restore AsterDock.slnx --runtime ${{ matrix.rid }}
+
+      - name: Build MSI
+        shell: pwsh
+        run: ./scripts/package-windows.ps1 -RuntimeIdentifier ${{ matrix.rid }} -Version ${{ needs.prepare.outputs.version }}
+
+      - name: Package lightweight applications
+        shell: pwsh
+        run: ./scripts/package-apps.ps1 -RuntimeIdentifier ${{ matrix.rid }}
+
+      - name: Upload Windows packages
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-${{ matrix.rid }}
+          path: artifacts/release/${{ matrix.rid }}/*
+          if-no-files-found: error
+
+  package-macos:
+    name: Package macOS (${{ matrix.rid }})
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        rid:
+          - osx-x64
+          - osx-arm64
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Restore dependencies
+        run: dotnet restore AsterDock.slnx --runtime ${{ matrix.rid }}
+
+      - name: Build DMG
+        run: bash scripts/package-macos-release.sh ${{ matrix.rid }} ${{ needs.prepare.outputs.version }}
+
+      - name: Package lightweight applications
+        shell: pwsh
+        run: ./scripts/package-apps.ps1 -RuntimeIdentifier ${{ matrix.rid }}
+
+      - name: Upload macOS packages
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-${{ matrix.rid }}
+          path: artifacts/release/${{ matrix.rid }}/*
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    needs:
+      - prepare
+      - package-windows
+      - package-macos
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release packages
+        uses: actions/download-artifact@v7
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_DATE: ${{ needs.prepare.outputs.release_date }}
+        run: |
+          gh release create "$RELEASE_TAG" release-assets/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "AsterDock Nightly $RELEASE_DATE" \
+            --notes "自动构建：Windows x64/arm64 MSI、macOS x64/arm64 DMG，以及各平台独立轻应用包。macOS 包尚未签名和公证。"

@@ -5,7 +5,8 @@
     <RootNamespace>AsterDock.Host</RootNamespace>
     <AssemblyName>AsterDock.Host</AssemblyName>
     <UseAppHost>true</UseAppHost>
-    <RuntimeIdentifiers>win-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <RuntimeIdentifiers>win-x64;win-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <BundleApplications Condition="'$(BundleApplications)' == ''">true</BundleApplications>
     <BundledModuleProject>$(MSBuildProjectDirectory)\..\InvoicePrinter.Module\InvoicePrinter.Module.csproj</BundledModuleProject>
     <BundledModuleOutput>$(MSBuildProjectDirectory)\..\InvoicePrinter.Module\bin\$(Configuration)\net10.0</BundledModuleOutput>
     <BundledDeviceModuleProject>$(MSBuildProjectDirectory)\..\DeviceInformation.Module\DeviceInformation.Module.csproj</BundledDeviceModuleProject>
@@ -43,7 +44,8 @@
     <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
 
-  <Target Name="BuildBundledApplications" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
+  <Target Name="BuildBundledApplications" AfterTargets="Build"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(BundleApplications)' == 'true'">
     <ItemGroup>
       <BundledModuleFiles Include="$(BundledModuleOutput)\**\*" />
       <BundledDeviceModuleFiles Include="$(BundledDeviceModuleOutput)\**\*" />
@@ -84,7 +86,8 @@
           DestinationFolder="$(OutDir)Apps\SerialDebugger" SkipUnchangedFiles="true" />
   </Target>
 
-  <Target Name="PublishBundledApplications" AfterTargets="Publish" Condition="'$(DesignTimeBuild)' != 'true'">
+  <Target Name="PublishBundledApplications" AfterTargets="Publish"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(BundleApplications)' == 'true'">
     <ItemGroup>
       <PublishedModuleFiles Include="$(BundledModuleOutput)\**\*" />
       <PublishedDeviceModuleFiles Include="$(BundledDeviceModuleOutput)\**\*" />

@@ -1,4 +1,4 @@
-<p align="center">
+<p align="left">
   <img src="docs/assets/asterdock-lockup.svg" alt="星栈 AsterDock" width="450">
 </p>
 

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/asterdock-lockup.svg" alt="星栈 AsterDock" width="450">
+</p>
+
 # AsterDock（星栈）
 
 基于 .NET 10 与 Avalonia 12 的 Windows/macOS 跨平台应用容器。外壳只负责窗口、导航和模块加载，当前内置主页、发票打印助手、设备信息、网络加速、Android 投屏与串口调试六个独立应用模块。

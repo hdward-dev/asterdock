@@ -32,6 +32,7 @@ dotnet publish "$ROOT/src/AsterDock.Host/AsterDock.Host.csproj" \
 
 mkdir -p "$APP_DIRECTORY/Contents/MacOS" "$APP_DIRECTORY/Contents/Resources"
 cp "$ROOT/build/macos/Info.plist" "$APP_DIRECTORY/Contents/Info.plist"
+cp "$ROOT/src/AsterDock.Host/Assets/Brand/AsterDock.icns" "$APP_DIRECTORY/Contents/Resources/AsterDock.icns"
 plutil -replace CFBundleVersion -string "$VERSION" "$APP_DIRECTORY/Contents/Info.plist"
 plutil -replace CFBundleShortVersionString -string "$VERSION" "$APP_DIRECTORY/Contents/Info.plist"
 cp -R "$PUBLISH_DIRECTORY/"* "$APP_DIRECTORY/Contents/MacOS/"

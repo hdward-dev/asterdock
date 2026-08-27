@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">AsterDock</title>
+  <desc id="desc">Four docked blue modules surrounding a white star.</desc>
+  <defs>
+    <linearGradient id="tile" x1="144" y1="112" x2="880" y2="912" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4D9CFF"/>
+      <stop offset="0.48" stop-color="#1267E8"/>
+      <stop offset="1" stop-color="#0A4FC4"/>
+    </linearGradient>
+    <linearGradient id="lightPanel" x1="220" y1="190" x2="450" y2="438" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#75B8FF"/>
+      <stop offset="1" stop-color="#2B82F4"/>
+    </linearGradient>
+    <linearGradient id="darkPanel" x1="804" y1="218" x2="580" y2="444" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0D397F"/>
+      <stop offset="1" stop-color="#0B2F6B"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="64" y="64" width="896" height="896" rx="224" fill="url(#tile)"/>
+
+  <path d="M224 184h190c42 0 66 24 66 66v112c0 25-9 47-27 65l-72 72c-18 18-40 27-65 27h-92c-42 0-66-24-66-66V250c0-42 24-66 66-66Z" fill="url(#lightPanel)"/>
+  <path d="M800 184H610c-42 0-66 24-66 66v112c0 25 9 47 27 65l72 72c18 18 40 27 65 27h92c42 0 66-24 66-66V250c0-42-24-66-66-66Z" fill="url(#darkPanel)"/>
+  <path d="M224 840h190c42 0 66-24 66-66V662c0-25-9-47-27-65l-72-72c-18-18-40-27-65-27h-92c-42 0-66 24-66 66v210c0 42 24 66 66 66Z" fill="url(#darkPanel)"/>
+  <path d="M800 840H610c-42 0-66-24-66-66V662c0-25 9-47 27-65l72-72c18-18 40-27 65-27h92c42 0 66 24 66 66v210c0 42-24 66-66 66Z" fill="url(#lightPanel)"/>
+
+  <path d="M512 356c16 84 72 140 156 156-84 16-140 72-156 156-16-84-72-140-156-156 84-16 140-72 156-156Z" fill="#FFFFFF"/>
+</svg>

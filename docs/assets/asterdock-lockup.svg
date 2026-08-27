@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 240" role="img" aria-labelledby="title desc">
+  <title id="title">星栈 AsterDock</title>
+  <desc id="desc">AsterDock horizontal brand lockup.</desc>
+  <defs>
+    <linearGradient id="tile" x1="30" y1="24" x2="210" y2="216" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4D9CFF"/>
+      <stop offset="0.5" stop-color="#1267E8"/>
+      <stop offset="1" stop-color="#0A4FC4"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(12 12) scale(.2109375)">
+    <rect x="0" y="0" width="1024" height="1024" rx="256" fill="url(#tile)"/>
+    <path d="M170 148h244c42 0 66 24 66 66v148c0 25-9 47-27 65l-72 72c-18 18-40 27-65 27H170c-42 0-66-24-66-66V214c0-42 24-66 66-66Z" fill="#66ADFA"/>
+    <path d="M854 148H610c-42 0-66 24-66 66v148c0 25 9 47 27 65l72 72c18 18 40 27 65 27h146c42 0 66-24 66-66V214c0-42-24-66-66-66Z" fill="#0B2F6B"/>
+    <path d="M170 876h244c42 0 66-24 66-66V662c0-25-9-47-27-65l-72-72c-18-18-40-27-65-27H170c-42 0-66 24-66 66v246c0 42 24 66 66 66Z" fill="#0B2F6B"/>
+    <path d="M854 876H610c-42 0-66-24-66-66V662c0-25 9-47 27-65l72-72c18-18 40-27 65-27h146c42 0 66 24 66 66v246c0 42-24 66-66 66Z" fill="#66ADFA"/>
+    <path d="M512 356c16 84 72 140 156 156-84 16-140 72-156 156-16-84-72-140-156-156 84-16 140-72 156-156Z" fill="#FFF"/>
+  </g>
+  <text x="270" y="118" fill="#172033" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="78" font-weight="700" letter-spacing="2">星栈</text>
+  <text x="274" y="176" fill="#667085" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="40" font-weight="600" letter-spacing="1">AsterDock</text>
+</svg>

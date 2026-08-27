@@ -12,6 +12,7 @@ dotnet publish "$ROOT/src/AsterDock.Host/AsterDock.Host.csproj" \
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$ROOT/build/macos/Info.plist" "$APP/Contents/Info.plist"
+cp "$ROOT/src/AsterDock.Host/Assets/Brand/AsterDock.icns" "$APP/Contents/Resources/AsterDock.icns"
 cp -R "$PUBLISH/"* "$APP/Contents/MacOS/"
 chmod +x "$APP/Contents/MacOS/AsterDock.Host"
 echo "$APP"

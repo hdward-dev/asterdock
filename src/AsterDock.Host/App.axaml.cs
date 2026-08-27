@@ -12,7 +12,7 @@ public partial class App : Application
 {
     private MainWindow? _mainWindow;
     private TrayIcon? _trayIcon;
-    private WriteableBitmap? _trayBitmap;
+    private Bitmap? _trayBitmap;
     private bool _trayDisposed;
 
     public override void Initialize()

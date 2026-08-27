@@ -112,10 +112,8 @@
                 </MenuItem>
               </MenuFlyout>
             </FlyoutBase.AttachedFlyout>
-            <Border Width="20" Height="20" CornerRadius="5" Background="{DynamicResource AppAccentBrush}">
-            <PathIcon Data="M3,3 H9 V9 H3 Z M11,3 H17 V9 H11 Z M3,11 H9 V17 H3 Z M11,11 H17 V17 H11 Z"
-                      Foreground="{DynamicResource AppOnAccentBrush}" Width="14" Height="14"/>
-            </Border>
+            <Image Source="avares://AsterDock.Host/Assets/Brand/AsterDock.png"
+                   Width="22" Height="22" Stretch="Uniform"/>
           </Border>
           <TextBlock x:Name="WindowTitleText" Text="星栈" Margin="5,0,0,0" FontSize="12.5"
                      Foreground="{DynamicResource AppStrongTextBrush}" VerticalAlignment="Center"/>

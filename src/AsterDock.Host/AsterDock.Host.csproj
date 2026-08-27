@@ -24,17 +24,23 @@
     <ProjectReference Include="..\AsterDock.Contracts\AsterDock.Contracts.csproj" />
     <ProjectReference Include="..\AsterDock.UI\AsterDock.UI.csproj" />
     <ProjectReference Include="..\DeviceInformation.Core\DeviceInformation.Core.csproj" />
-    <ProjectReference Include="..\InvoicePrinter.Module\InvoicePrinter.Module.csproj" ReferenceOutputAssembly="false" Private="false"
+    <ProjectReference Include="..\InvoicePrinter.Module\InvoicePrinter.Module.csproj"
+                      Condition="'$(BundleApplications)' == 'true'" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
-    <ProjectReference Include="..\DeviceInformation.Module\DeviceInformation.Module.csproj" ReferenceOutputAssembly="false" Private="false"
+    <ProjectReference Include="..\DeviceInformation.Module\DeviceInformation.Module.csproj"
+                      Condition="'$(BundleApplications)' == 'true'" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
-    <ProjectReference Include="..\Home.Module\Home.Module.csproj" ReferenceOutputAssembly="false" Private="false"
+    <ProjectReference Include="..\Home.Module\Home.Module.csproj"
+                      Condition="'$(BundleApplications)' == 'true'" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
-    <ProjectReference Include="..\NetworkAccelerator.Module\NetworkAccelerator.Module.csproj" ReferenceOutputAssembly="false" Private="false"
+    <ProjectReference Include="..\NetworkAccelerator.Module\NetworkAccelerator.Module.csproj"
+                      Condition="'$(BundleApplications)' == 'true'" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
-    <ProjectReference Include="..\AndroidScreen.Module\AndroidScreen.Module.csproj" ReferenceOutputAssembly="false" Private="false"
+    <ProjectReference Include="..\AndroidScreen.Module\AndroidScreen.Module.csproj"
+                      Condition="'$(BundleApplications)' == 'true'" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
-    <ProjectReference Include="..\SerialDebugger.Module\SerialDebugger.Module.csproj" ReferenceOutputAssembly="false" Private="false"
+    <ProjectReference Include="..\SerialDebugger.Module\SerialDebugger.Module.csproj"
+                      Condition="'$(BundleApplications)' == 'true'" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
     <PackageReference Include="Avalonia" Version="12.1.0" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />

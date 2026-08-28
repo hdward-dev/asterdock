@@ -9,6 +9,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using AsterDock.Host.Services;
 
 namespace AsterDock.Host.Views;
@@ -22,11 +23,16 @@ public partial class MainWindow : Window, IApplicationShell
     private enum SettingsSection
     {
         Applications,
-        Shortcuts
+        Discover,
+        Shortcuts,
+        Update
     }
 
     private readonly ModuleCatalog _catalog = new();
     private readonly SharedSystemMetricsService _systemMetrics = new();
+    private readonly GitHubUpdateService _updateService = new();
+    private readonly GitHubApplicationDiscoveryService _discoveryService = new();
+    private readonly CancellationTokenSource _updateCancellation = new();
     private bool _spaceKeyDown;
     private bool _appSwitcherShortcutTriggered;
     private bool _allowClose;
@@ -34,9 +40,12 @@ public partial class MainWindow : Window, IApplicationShell
     private int _capsuleAnimationVersion;
     private int _appInfoAnimationVersion;
     private LoadedApplication? _currentApplication;
+    private ApplicationUpdate? _availableUpdate;
+    private bool _discoveryLoaded;
     private readonly Dictionary<string, DateTimeOffset> _recentApplications = new(StringComparer.OrdinalIgnoreCase);
 
     public ObservableCollection<LoadedApplication> Applications { get; } = [];
+    public ObservableCollection<DiscoverableApplication> DiscoverableApplications { get; } = [];
     public ObservableCollection<string> AppCategories { get; } = [];
     public event EventHandler? StateChanged;
 
@@ -52,15 +61,26 @@ public partial class MainWindow : Window, IApplicationShell
         DataContext = this;
         AddHandler(InputElement.KeyDownEvent, Window_KeyDown, RoutingStrategies.Tunnel);
         AddHandler(InputElement.KeyUpEvent, Window_KeyUp, RoutingStrategies.Tunnel);
-        Opened += (_, _) => LoadApplications();
+        Opened += MainWindow_Opened;
         Closing += MainWindow_Closing;
         Closed += (_, _) =>
         {
             DetachApplicationNavigation();
             _catalog.Dispose();
             _systemMetrics.Dispose();
+            _updateCancellation.Cancel();
+            _updateCancellation.Dispose();
+            _updateService.Dispose();
+            _discoveryService.Dispose();
         };
         Deactivated += (_, _) => ResetShortcutState();
+        CurrentVersionText.Text = $"v{GitHubUpdateService.CurrentVersion}";
+    }
+
+    private async void MainWindow_Opened(object? sender, EventArgs e)
+    {
+        LoadApplications();
+        await CheckForUpdatesAsync(silent: true);
     }
 
     private string UserAppsDirectory => ApplicationPaths.UserAppsDirectory;
@@ -355,17 +375,182 @@ public partial class MainWindow : Window, IApplicationShell
     private void ApplicationsSettingsNav_Click(object? sender, RoutedEventArgs e)
         => ShowSettingsSection(SettingsSection.Applications);
 
+    private void InstalledApplicationsTab_Click(object? sender, RoutedEventArgs e)
+        => ShowSettingsSection(SettingsSection.Applications);
+
+    private async void DiscoverApplicationsTab_Click(object? sender, RoutedEventArgs e)
+    {
+        ShowSettingsSection(SettingsSection.Discover);
+        if (!_discoveryLoaded) await RefreshDiscoveryAsync();
+    }
+
     private void ShortcutsSettingsNav_Click(object? sender, RoutedEventArgs e)
         => ShowSettingsSection(SettingsSection.Shortcuts);
+
+    private void UpdateSettingsNav_Click(object? sender, RoutedEventArgs e)
+        => ShowSettingsSection(SettingsSection.Update);
 
     private void ShowSettingsSection(SettingsSection section)
     {
         var showApplications = section == SettingsSection.Applications;
+        var showDiscover = section == SettingsSection.Discover;
+        var showApplicationManagement = showApplications || showDiscover;
+        var showShortcuts = section == SettingsSection.Shortcuts;
+        var showUpdate = section == SettingsSection.Update;
         SettingsApplicationsSection.IsVisible = showApplications;
-        SettingsShortcutsSection.IsVisible = !showApplications;
-        SettingsSectionSubtitle.Text = showApplications ? "应用管理" : "快捷键";
-        ApplicationsSettingsNavButton.Classes.Set("selected", showApplications);
-        ShortcutsSettingsNavButton.Classes.Set("selected", !showApplications);
+        SettingsDiscoverSection.IsVisible = showDiscover;
+        SettingsShortcutsSection.IsVisible = showShortcuts;
+        SettingsUpdateSection.IsVisible = showUpdate;
+        ApplicationManagementTabs.IsVisible = showApplicationManagement;
+        SettingsSectionSubtitle.Text = showApplications ? "应用管理 · 已安装" :
+            showDiscover ? "应用管理 · 发现" : showShortcuts ? "快捷键" : "软件更新";
+        ApplicationsSettingsNavButton.Classes.Set("selected", showApplicationManagement);
+        ShortcutsSettingsNavButton.Classes.Set("selected", showShortcuts);
+        UpdateSettingsNavButton.Classes.Set("selected", showUpdate);
+        InstalledApplicationsTabButton.Classes.Set("selected", showApplications);
+        DiscoverApplicationsTabButton.Classes.Set("selected", showDiscover);
+    }
+
+    private async void RefreshDiscovery_Click(object? sender, RoutedEventArgs e) => await RefreshDiscoveryAsync();
+
+    private async Task RefreshDiscoveryAsync()
+    {
+        RefreshDiscoveryButton.IsEnabled = false;
+        DiscoveryStatusText.Text = "正在从 GitHub 获取轻应用目录…";
+        try
+        {
+            var applications = await _discoveryService.GetCatalogAsync(_updateCancellation.Token);
+            DiscoverableApplications.Clear();
+            foreach (var application in applications) DiscoverableApplications.Add(application);
+            _discoveryLoaded = true;
+            DiscoveryEmptyState.IsVisible = applications.Count == 0;
+            DiscoveryStatusText.Text = applications.Count == 0
+                ? "目录已刷新。"
+                : $"已找到 {applications.Count} 个可下载的轻应用。";
+        }
+        catch (OperationCanceledException) when (_updateCancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            DiscoveryStatusText.Text = $"获取轻应用失败：{exception.GetBaseException().Message}";
+        }
+        finally
+        {
+            RefreshDiscoveryButton.IsEnabled = true;
+        }
+    }
+
+    private async void InstallDiscoveredApplication_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: DiscoverableApplication application } button) return;
+        button.IsEnabled = false;
+        RefreshDiscoveryButton.IsEnabled = false;
+        DiscoveryProgress.Value = 0;
+        DiscoveryProgress.IsVisible = true;
+        DiscoveryStatusText.Text = $"正在下载 {application.Name} {application.Version}…";
+        try
+        {
+            var progress = new Progress<double>(value => DiscoveryProgress.Value = value * 100);
+            var packagePath = await _discoveryService.DownloadAsync(application, progress, _updateCancellation.Token);
+            var installedPath = ApplicationInstaller.InstallPackage(packagePath, UserAppsDirectory);
+            LoadApplications(activateFirst: false);
+            ShowSettings();
+            ShowSettingsSection(SettingsSection.Discover);
+            DiscoveryStatusText.Text = $"{application.Name} {application.Version} 已安装：{installedPath}";
+        }
+        catch (OperationCanceledException) when (_updateCancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            DiscoveryStatusText.Text = $"安装失败：{exception.GetBaseException().Message}";
+        }
+        finally
+        {
+            button.IsEnabled = true;
+            RefreshDiscoveryButton.IsEnabled = true;
+            DiscoveryProgress.IsVisible = false;
+        }
+    }
+
+    private async void CheckUpdate_Click(object? sender, RoutedEventArgs e)
+        => await CheckForUpdatesAsync(silent: false);
+
+    private async Task CheckForUpdatesAsync(bool silent)
+    {
+        if (silent && !GitHubUpdateService.IsAutomaticCheckDue()) return;
+        CheckUpdateButton.IsEnabled = false;
+        if (!silent) UpdateStatusText.Text = "正在检查 GitHub Releases…";
+        try
+        {
+            _availableUpdate = await _updateService.CheckAsync(_updateCancellation.Token);
+            GitHubUpdateService.MarkCheckCompleted();
+            if (_availableUpdate is null)
+            {
+                UpdateStatusText.Text = $"当前已是最新版本（v{GitHubUpdateService.CurrentVersion}）。";
+                UpdateActionPanel.IsVisible = false;
+                ReleaseNotesCard.IsVisible = false;
+                UpdateSettingsNavText.Text = "软件更新";
+                return;
+            }
+
+            UpdateStatusText.Text = $"发现新版本 {_availableUpdate.DisplayVersion}，可下载适用于当前设备的安装包。";
+            ReleaseNameText.Text = _availableUpdate.ReleaseName;
+            ReleaseNotesText.Text = string.IsNullOrWhiteSpace(_availableUpdate.ReleaseNotes)
+                ? "此版本没有发布说明。"
+                : _availableUpdate.ReleaseNotes;
+            UpdateActionPanel.IsVisible = true;
+            ReleaseNotesCard.IsVisible = true;
+            UpdateSettingsNavText.Text = "软件更新 · 新版本";
+        }
+        catch (OperationCanceledException) when (_updateCancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            if (!silent) UpdateStatusText.Text = $"检查更新失败：{exception.GetBaseException().Message}";
+        }
+        finally
+        {
+            CheckUpdateButton.IsEnabled = true;
+        }
+    }
+
+    private async void DownloadUpdate_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_availableUpdate is null) return;
+        DownloadUpdateButton.IsEnabled = false;
+        CheckUpdateButton.IsEnabled = false;
+        UpdateProgress.Value = 0;
+        UpdateProgress.IsVisible = true;
+        UpdateStatusText.Text = $"正在从 GitHub 下载 {_availableUpdate.AssetName}…";
+        try
+        {
+            var progress = new Progress<double>(value => UpdateProgress.Value = value * 100);
+            var path = await _updateService.DownloadAsync(_availableUpdate, progress, _updateCancellation.Token);
+            UpdateStatusText.Text = "下载完成，正在打开安装包。安装时请按系统提示操作。";
+            GitHubUpdateService.OpenInstaller(path);
+        }
+        catch (OperationCanceledException) when (_updateCancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            UpdateStatusText.Text = $"下载更新失败：{exception.GetBaseException().Message}";
+            DownloadUpdateButton.IsEnabled = true;
+        }
+        finally
+        {
+            CheckUpdateButton.IsEnabled = true;
+            UpdateProgress.IsVisible = false;
+        }
+    }
+
+    private void OpenReleasePage_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_availableUpdate is null) return;
+        Process.Start(new ProcessStartInfo(_availableUpdate.ReleasePage.AbsoluteUri) { UseShellExecute = true });
     }
 
     private void Window_KeyDown(object? sender, KeyEventArgs e)

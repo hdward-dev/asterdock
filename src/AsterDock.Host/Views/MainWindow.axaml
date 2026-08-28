@@ -36,6 +36,18 @@
       <Setter Property="BorderThickness" Value="0"/>
     </Style>
     <Style Selector="Button.category-chip:pointerover"><Setter Property="Background" Value="{DynamicResource AppBorderBrush}"/></Style>
+    <Style Selector="Button.management-tab">
+      <Setter Property="Padding" Value="16,8"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+    <Style Selector="Button.management-tab:pointerover"><Setter Property="Background" Value="{DynamicResource AppSubtleBrush}"/></Style>
+    <Style Selector="Button.management-tab.selected">
+      <Setter Property="Background" Value="{DynamicResource AppAccentSurfaceBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppAccentBrush}"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
     <Style Selector="Button.app-tile">
       <Setter Property="Width" Value="124"/>
       <Setter Property="Height" Value="138"/>
@@ -217,11 +229,29 @@
                     <TextBlock Text="快捷键" VerticalAlignment="Center"/>
                   </StackPanel>
                 </Button>
+                <Button x:Name="UpdateSettingsNavButton" Classes="settings-nav"
+                        Click="UpdateSettingsNav_Click">
+                  <StackPanel Orientation="Horizontal" Spacing="11">
+                    <PathIcon Data="M12,3 V15 M7,10 L12,15 L17,10 M4,20 H20" Width="18" Height="18"/>
+                    <TextBlock x:Name="UpdateSettingsNavText" Text="软件更新" VerticalAlignment="Center"/>
+                  </StackPanel>
+                </Button>
               </StackPanel>
             </Border>
 
-            <Grid Grid.Column="1" Margin="0,20,24,20">
-              <ScrollViewer x:Name="SettingsApplicationsSection">
+            <Grid Grid.Column="1" Margin="0,20,24,20" RowDefinitions="Auto,*">
+              <Border x:Name="ApplicationManagementTabs" Margin="0,0,0,14" Padding="4" HorizontalAlignment="Left"
+                      CornerRadius="10" Background="{DynamicResource AppSurfaceBrush}"
+                      BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="1">
+                <StackPanel Orientation="Horizontal" Spacing="2">
+                  <Button x:Name="InstalledApplicationsTabButton" Classes="management-tab selected"
+                          Content="已安装" Click="InstalledApplicationsTab_Click"/>
+                  <Button x:Name="DiscoverApplicationsTabButton" Classes="management-tab"
+                          Content="发现" Click="DiscoverApplicationsTab_Click"/>
+                </StackPanel>
+              </Border>
+
+              <ScrollViewer x:Name="SettingsApplicationsSection" Grid.Row="1">
                 <StackPanel Spacing="16" MaxWidth="980" HorizontalAlignment="Stretch">
                   <StackPanel Margin="2,0,0,4" Spacing="4">
                     <TextBlock Text="应用管理" FontSize="20" FontWeight="SemiBold"/>
@@ -278,7 +308,58 @@
                 </StackPanel>
               </ScrollViewer>
 
-              <ScrollViewer x:Name="SettingsShortcutsSection" IsVisible="False">
+              <ScrollViewer x:Name="SettingsDiscoverSection" Grid.Row="1" IsVisible="False">
+                <StackPanel Spacing="16" MaxWidth="980" HorizontalAlignment="Stretch">
+                  <Grid ColumnDefinitions="*,Auto" Margin="2,0,2,4">
+                    <StackPanel Spacing="4">
+                      <TextBlock Text="发现轻应用" FontSize="20" FontWeight="SemiBold"/>
+                      <TextBlock Text="浏览并安装 AsterDock 官方仓库中已经发布的应用包。"
+                                 Foreground="{DynamicResource AppMutedBrush}"/>
+                    </StackPanel>
+                    <Button x:Name="RefreshDiscoveryButton" Grid.Column="1" Content="刷新"
+                            VerticalAlignment="Center" Click="RefreshDiscovery_Click"/>
+                  </Grid>
+
+                  <ProgressBar x:Name="DiscoveryProgress" Height="4" Minimum="0" Maximum="100" IsVisible="False"/>
+                  <TextBlock x:Name="DiscoveryStatusText" Text="打开此页面后会从 GitHub 获取轻应用目录。"
+                             Foreground="{DynamicResource AppMutedBrush}" TextWrapping="Wrap"/>
+
+                  <ItemsControl x:Name="DiscoverableApplicationsItems" ItemsSource="{Binding DiscoverableApplications}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Border Classes="settings-card" Padding="18" Margin="0,0,0,10">
+                          <Grid ColumnDefinitions="48,*,Auto">
+                            <Border Width="40" Height="40" CornerRadius="9" Background="{DynamicResource AppAccentSurfaceBrush}"
+                                    VerticalAlignment="Top">
+                              <PathIcon Data="M4,4 H10 V10 H4 Z M14,4 H20 V10 H14 Z M4,14 H10 V20 H4 Z M14,14 H20 V20 H14 Z"
+                                        Foreground="{DynamicResource AppAccentBrush}" Width="20" Height="20"/>
+                            </Border>
+                            <StackPanel Grid.Column="1" Margin="12,0,18,0" Spacing="5">
+                              <StackPanel Orientation="Horizontal" Spacing="9">
+                                <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold"/>
+                                <Border Background="{DynamicResource AppAccentSurfaceBrush}" CornerRadius="6" Padding="8,3">
+                                  <TextBlock Text="{Binding Version, StringFormat='v{0}'}" Foreground="{DynamicResource AppAccentBrush}" FontSize="12"/>
+                                </Border>
+                              </StackPanel>
+                              <TextBlock Text="{Binding Description}" Foreground="{DynamicResource AppMutedBrush}" TextWrapping="Wrap"/>
+                              <TextBlock Text="{Binding Category}" Foreground="{DynamicResource AppControlBorderBrush}" FontSize="11"/>
+                            </StackPanel>
+                            <Button Grid.Column="2" Classes="accent" Content="下载并安装" Tag="{Binding}"
+                                    VerticalAlignment="Center" Click="InstallDiscoveredApplication_Click"/>
+                          </Grid>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+
+                  <Border x:Name="DiscoveryEmptyState" Classes="settings-card" Padding="30" IsVisible="False">
+                    <TextBlock Text="仓库中暂时没有可供下载的轻应用。" HorizontalAlignment="Center"
+                               Foreground="{DynamicResource AppMutedBrush}"/>
+                  </Border>
+                </StackPanel>
+              </ScrollViewer>
+
+              <ScrollViewer x:Name="SettingsShortcutsSection" Grid.Row="1" IsVisible="False">
                 <StackPanel Spacing="16" MaxWidth="980" HorizontalAlignment="Stretch">
                   <StackPanel Margin="2,0,0,4" Spacing="4">
                     <TextBlock Text="快捷键" FontSize="20" FontWeight="SemiBold"/>
@@ -310,6 +391,45 @@
                         <TextBlock Text="已启用" Foreground="{DynamicResource AppPositiveBrush}"/>
                       </Border>
                     </Grid>
+                  </Border>
+                </StackPanel>
+              </ScrollViewer>
+
+              <ScrollViewer x:Name="SettingsUpdateSection" Grid.Row="1" IsVisible="False">
+                <StackPanel Spacing="16" MaxWidth="980" HorizontalAlignment="Stretch">
+                  <StackPanel Margin="2,0,0,4" Spacing="4">
+                    <TextBlock Text="软件更新" FontSize="20" FontWeight="SemiBold"/>
+                    <TextBlock Text="从 AsterDock 官方 GitHub Releases 检查并下载安装包。"
+                               Foreground="{DynamicResource AppMutedBrush}"/>
+                  </StackPanel>
+
+                  <Border Classes="settings-card" Padding="20">
+                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
+                      <StackPanel Spacing="5">
+                        <TextBlock Text="当前版本" FontSize="16" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="CurrentVersionText" Foreground="{DynamicResource AppMutedBrush}"/>
+                      </StackPanel>
+                      <Button x:Name="CheckUpdateButton" Grid.Column="1" Content="检查更新"
+                              VerticalAlignment="Center" Click="CheckUpdate_Click"/>
+                      <ProgressBar x:Name="UpdateProgress" Grid.Row="1" Grid.ColumnSpan="2" Height="4"
+                                   Margin="0,18,0,0" Minimum="0" Maximum="100" IsVisible="False"/>
+                      <TextBlock x:Name="UpdateStatusText" Grid.Row="2" Grid.ColumnSpan="2" Margin="0,16,0,0"
+                                 Text="启动后会自动检查更新。" Foreground="{DynamicResource AppMutedBrush}" TextWrapping="Wrap"/>
+                      <StackPanel x:Name="UpdateActionPanel" Grid.Row="3" Grid.ColumnSpan="2" Margin="0,16,0,0"
+                                  Orientation="Horizontal" Spacing="10" IsVisible="False">
+                        <Button x:Name="DownloadUpdateButton" Classes="accent" Content="下载更新"
+                                Click="DownloadUpdate_Click"/>
+                        <Button Content="查看发布说明" Click="OpenReleasePage_Click"/>
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+
+                  <Border x:Name="ReleaseNotesCard" Classes="settings-card" Padding="20" IsVisible="False">
+                    <StackPanel Spacing="10">
+                      <TextBlock x:Name="ReleaseNameText" FontSize="17" FontWeight="SemiBold"/>
+                      <TextBlock x:Name="ReleaseNotesText" Foreground="{DynamicResource AppMutedBrush}"
+                                 TextWrapping="Wrap" MaxHeight="280"/>
+                    </StackPanel>
                   </Border>
                 </StackPanel>
               </ScrollViewer>

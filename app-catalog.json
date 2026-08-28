@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "applications": [
+    {
+      "id": "invoice-printer",
+      "name": "发票打印助手",
+      "description": "导入发票并按 A4 每页一张或两张直接打印",
+      "category": "工具",
+      "version": "1.0.0",
+      "releaseTag": "app-invoice-printer-v1.0.0",
+      "assetName": "AsterDockApp-invoice-printer-1.0.0.appbundle"
+    }
+  ]
+}

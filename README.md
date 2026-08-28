@@ -89,11 +89,11 @@ Windows 开启 TUN 后，在“开始加速”时会弹出一次 UAC。应用容
 开发阶段可以直接放置应用文件夹；分发阶段可以生成 `.appbundle`（ZIP 格式）：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/package-invoice-app.ps1
+powershell -ExecutionPolicy Bypass -File scripts/package-invoice-app.ps1 -RuntimeIdentifier win-x64
 ```
 
 ```bash
-bash scripts/package-invoice-app.sh
+bash scripts/package-invoice-app.sh Release 1.0.0 osx-arm64
 ```
 
 也可以在“设置 → 应用管理 → 发现”中浏览仓库发布的轻应用并直接下载安装。发现页读取仓库根目录的 `app-catalog.json`，安装时从目录指定的 GitHub Release 下载 `.appbundle`，校验 Release 的 SHA-256 digest 以及包内 `app.json` 的应用 id 和版本后再安装。
@@ -108,7 +108,7 @@ bash scripts/package-invoice-app.sh
 仓库发布轻应用时，使用 `app-<应用 id>-v<版本>` 形式的 prerelease Tag，并采用 `AsterDockApp-<应用 id>-<版本>.appbundle` 资产名；prerelease 不会被主程序更新所使用的 GitHub `releases/latest` 选中。发布后同步更新 `app-catalog.json`。例如：
 
 ```bash
-bash scripts/package-invoice-app.sh Release 1.0.0
+bash scripts/package-invoice-app.sh Release 1.0.0 osx-arm64
 ```
 
 ## macOS 容器

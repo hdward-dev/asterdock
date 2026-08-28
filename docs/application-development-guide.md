@@ -463,11 +463,11 @@ MyApplication.appbundle
 可以参考项目脚本生成发票应用包：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/package-invoice-app.ps1
+powershell -ExecutionPolicy Bypass -File scripts/package-invoice-app.ps1 -RuntimeIdentifier win-x64
 ```
 
 ```bash
-bash scripts/package-invoice-app.sh
+bash scripts/package-invoice-app.sh Release 1.0.0 osx-arm64
 ```
 
 ## 13. 构建与验证
@@ -481,8 +481,9 @@ dotnet build src/MyApplication.Module/MyApplication.Module.csproj
 - `app.json`
 - 入口 DLL
 - `.deps.json`
-- 所有第三方托管依赖
-- 目标平台需要的 `runtimes` 文件
+- 业务专属的第三方托管依赖
+
+`.appbundle` 由官方脚本创建时会移除由容器统一提供的 `AsterDock.Contracts`、Avalonia、SkiaSharp、主题库和其原生运行库，以及所有 `.pdb` 调试符号。应用包只能由版本兼容的星栈容器加载；业务专属依赖必须保留。
 
 然后通过星栈设置页加载目录或 `.appbundle`，验证：
 

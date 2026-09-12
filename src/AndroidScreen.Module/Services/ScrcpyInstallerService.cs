@@ -9,6 +9,7 @@ namespace AndroidScreen.Module.Services;
 
 public sealed class ScrcpyInstallerService : IDisposable
 {
+    public const string ServerVersion = "3.3.4";
     private const long MaximumArchiveBytes = 256L * 1024 * 1024;
     private readonly HttpClient _httpClient = new(new HttpClientHandler { MaxAutomaticRedirections = 5 })
     {
@@ -18,7 +19,7 @@ public sealed class ScrcpyInstallerService : IDisposable
 
     public ScrcpyInstallerService(string dataDirectory)
     {
-        _installDirectory = Path.Combine(dataDirectory, "scrcpy");
+        _installDirectory = Path.Combine(dataDirectory, "scrcpy", "embedded-" + ServerVersion);
         _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("AsterDock-AndroidScreen/1.0");
     }
 
@@ -53,10 +54,14 @@ public sealed class ScrcpyInstallerService : IDisposable
             var executable = FindExecutable(stagingDirectory)
                 ?? throw new InvalidDataException("scrcpy 下载包中未找到可执行文件");
             if (OperatingSystem.IsMacOS())
+            {
                 File.SetUnixFileMode(executable,
                     UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
                     UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
                     UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+                foreach (var adb in Directory.EnumerateFiles(stagingDirectory, "adb", SearchOption.AllDirectories))
+                    File.SetUnixFileMode(adb, File.GetUnixFileMode(executable));
+            }
             await VerifyAsync(executable, cancellationToken).ConfigureAwait(false);
 
             TryDeleteDirectory(backupDirectory);
@@ -90,7 +95,7 @@ public sealed class ScrcpyInstallerService : IDisposable
 
     private async Task<ReleaseAsset> GetReleaseAssetAsync(CancellationToken cancellationToken)
     {
-        const string releaseUrl = "https://api.github.com/repos/Genymobile/scrcpy/releases/latest";
+        const string releaseUrl = "https://api.github.com/repos/Genymobile/scrcpy/releases/tags/v" + ServerVersion;
         var text = await _httpClient.GetStringAsync(releaseUrl, cancellationToken).ConfigureAwait(false);
         var root = JsonNode.Parse(text)?.AsObject() ?? throw new InvalidDataException("GitHub Release 信息格式无效");
         var prefix = GetAssetPrefix();
@@ -197,7 +202,11 @@ public sealed class ScrcpyInstallerService : IDisposable
         };
         startInfo.ArgumentList.Add("--version");
         using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("无法验证 scrcpy");
+        using var registration = cancellationToken.Register(() => AndroidBridge.Kill(process));
+        var output = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var error = process.StandardError.ReadToEndAsync(cancellationToken);
         await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        await Task.WhenAll(output, error).ConfigureAwait(false);
         if (process.ExitCode != 0) throw new InvalidDataException("下载的 scrcpy 无法运行");
     }
 

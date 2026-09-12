@@ -5,11 +5,12 @@ namespace AsterDock.Host.Services;
 
 internal sealed class ApplicationWindowService : IWindowService, IDisposable
 {
-    private readonly Window _owner;
+    private Window _owner;
     private readonly HashSet<Window> _windows = [];
     private readonly Dictionary<string, Window> _keyedWindows = new(StringComparer.OrdinalIgnoreCase);
 
     public ApplicationWindowService(Window owner) => _owner = owner;
+    public void SetOwner(Window owner) => _owner = owner;
 
     public void Show(Window window, bool owned = true)
     {

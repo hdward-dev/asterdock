@@ -21,9 +21,10 @@ public sealed class SerialDebuggerViewModel : INotifyPropertyChanged, IDisposabl
     private readonly string _settingsPath;
     private bool _initialized;
     private bool _disposed;
-    private bool _isTileLayout = true;
+    private bool _isTileLayout;
+    private SerialPortSessionViewModel? _selectedSession;
     private bool _isLinked;
-    private bool _isOrchestrationExpanded = true;
+    private bool _isOrchestrationExpanded;
     private bool _isBusy;
     private string _workspaceStatus = "双串口工作区已就绪";
 
@@ -42,15 +43,17 @@ public sealed class SerialDebuggerViewModel : INotifyPropertyChanged, IDisposabl
         {
             if (!SetField(ref _isTileLayout, value)) return;
             OnPropertyChanged(nameof(IsTabLayout));
+            foreach (var session in Sessions) session.IsSinglePortFocus = !value;
         }
     }
     public bool IsTabLayout => !IsTileLayout;
+    public SerialPortSessionViewModel? SelectedSession { get => _selectedSession; set => SetField(ref _selectedSession, value); }
     public bool IsLinked { get => _isLinked; set { if (SetField(ref _isLinked, value)) WorkspaceStatus = value ? "端口联动发送已开启" : "端口联动发送已关闭"; } }
     public bool IsOrchestrationExpanded { get => _isOrchestrationExpanded; set => SetField(ref _isOrchestrationExpanded, value); }
     public bool IsBusy { get => _isBusy; private set => SetField(ref _isBusy, value); }
     public string WorkspaceStatus { get => _workspaceStatus; private set => SetField(ref _workspaceStatus, value); }
     public string ConnectedSummary => $"{Sessions.Count(session => session.IsConnected)} / {Sessions.Count} 已连接";
-    public string LinkedButtonText => IsLinked ? "联动已开" : "联动";
+    public string LinkedButtonText => IsLinked ? "联动发送：开" : "联动发送：关";
 
     public async Task InitializeAsync()
     {
@@ -95,8 +98,10 @@ public sealed class SerialDebuggerViewModel : INotifyPropertyChanged, IDisposabl
             profile?.BaudRate ?? (Sessions.Count == 1 ? 9600 : 115200),
             new SolidColorBrush(AccentColors[Sessions.Count % AccentColors.Length]));
         if (profile is not null) session.ApplyProfile(profile with { PortName = preferredPort });
+        session.IsSinglePortFocus = IsTabLayout;
         session.PropertyChanged += Session_PropertyChanged;
         Sessions.Add(session);
+        SelectedSession = session;
         RefreshWorkspaceProperties();
         WorkspaceStatus = $"已添加 {session.Title}";
     }
@@ -116,6 +121,7 @@ public sealed class SerialDebuggerViewModel : INotifyPropertyChanged, IDisposabl
         }
         session.PropertyChanged -= Session_PropertyChanged;
         Sessions.Remove(session);
+        if (ReferenceEquals(SelectedSession, session)) SelectedSession = Sessions.FirstOrDefault();
         session.Dispose();
         RenumberSessions();
         RefreshWorkspaceProperties();
@@ -225,10 +231,7 @@ public sealed class SerialDebuggerViewModel : INotifyPropertyChanged, IDisposabl
         AddSession(new SerialPortProfile(
             ports.ElementAtOrDefault(0)?.PortName ?? string.Empty,
             115200, 8, "1", "无", "无", "UTF-8", "CRLF", "AA 55 01 00 FF"));
-        AddSession(new SerialPortProfile(
-            ports.ElementAtOrDefault(1)?.PortName ?? string.Empty,
-            9600, 8, "1", "无", "无", "UTF-8", "CRLF", "01 03 00 00 00 02"));
-        WorkspaceStatus = "水平平铺工作区已就绪";
+        WorkspaceStatus = "选择串口设备后连接；需要同时调试多个设备时，可添加串口";
     }
 
     private void ClearSessions()

@@ -24,6 +24,7 @@ internal sealed class ApplicationContext : IApplicationContext, IDisposable
     public IWindowService Windows => _windowService;
     public IApplicationShell Shell { get; }
     public ISystemMetricsService SystemMetrics { get; }
+    public void SetWindowOwner(Avalonia.Controls.Window owner) => _windowService.SetOwner(owner);
 
     public void Dispose() => _windowService.Dispose();
 }

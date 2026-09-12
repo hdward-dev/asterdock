@@ -139,7 +139,7 @@
                           <PathIcon Data="{Binding IconGeometry}" Foreground="{Binding IconForeground}" Width="30" Height="30"/>
                         </Border>
                         <StackPanel Grid.Column="1" Margin="12,0" Spacing="6" VerticalAlignment="Center">
-                          <TextBlock Text="{Binding Name}" FontSize="17" FontWeight="SemiBold"/>
+                          <TextBlock Text="{Binding Name}" Foreground="{DynamicResource AppStrongTextBrush}" FontSize="17" FontWeight="SemiBold"/>
                           <TextBlock Text="{Binding Description}" Foreground="{DynamicResource AppMutedBrush}"
                                      TextWrapping="Wrap" MaxHeight="40"/>
                         </StackPanel>
@@ -186,7 +186,7 @@
                             <Border Width="32" Height="32" CornerRadius="8" Background="#E8F0FE">
                               <PathIcon Data="{Binding IconGeometry}" Width="17" Height="17" Foreground="#1267E8"/>
                             </Border>
-                            <TextBlock Grid.Column="1" Text="{Binding Name}" Margin="10,0" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" Text="{Binding Name}" Foreground="{DynamicResource AppStrongTextBrush}" Margin="10,0" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="2" Text="{Binding RelativeTime}" Foreground="{DynamicResource AppMutedBrush}"
                                        VerticalAlignment="Center"/>
                           </Grid>

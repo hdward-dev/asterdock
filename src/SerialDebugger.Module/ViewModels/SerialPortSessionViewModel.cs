@@ -39,9 +39,15 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
     private bool _isSettingsExpanded;
     private bool _isReceiveExpanded = true;
     private bool _isSendExpanded = true;
-    private bool _isQuickCommandsExpanded;
+    private bool _isQuickCommandsExpanded = true;
+    private bool _isSinglePortFocus = true;
+    private QuickCommand? _selectedQuickCommand;
+    private string _quickCommandName = string.Empty;
     private bool _isProtocolExpanded;
     private bool _isHexMode = true;
+    private bool _isSendHexMode = true;
+    private bool _isLoopSending;
+    private double _workspaceHeight = 600;
     private bool _showTimestamp = true;
     private bool _autoScroll = true;
     private bool _loopSendEnabled;
@@ -70,10 +76,10 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
         AccentBrush = accentBrush;
         QuickCommands =
         [
-            new QuickCommand("读取设备信息", "AA 55 01 00 01"),
-            new QuickCommand("启动采集", "AA 55 01 00 02"),
-            new QuickCommand("停止采集", "AA 55 01 00 03"),
-            new QuickCommand("设备复位", "AA 55 01 00 FF")
+            new QuickCommand("示例：读取设备信息", "AA 55 01 00 01"),
+            new QuickCommand("示例：启动采集", "AA 55 01 00 02"),
+            new QuickCommand("示例：停止采集", "AA 55 01 00 03"),
+            new QuickCommand("示例：设备复位", "AA 55 01 00 FF")
         ];
         RefreshPorts();
     }
@@ -92,6 +98,54 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
 
     public ObservableCollection<SerialPortDevice> AvailablePorts { get; } = [];
     public ObservableCollection<QuickCommand> QuickCommands { get; }
+    public bool IsSinglePortFocus { get => _isSinglePortFocus; set { if (SetField(ref _isSinglePortFocus, value)) OnPropertyChanged(nameof(WorkspaceHeight)); } }
+    public string QuickCommandName { get => _quickCommandName; set => SetField(ref _quickCommandName, value); }
+    public QuickCommand? SelectedQuickCommand
+    {
+        get => _selectedQuickCommand;
+        set
+        {
+            if (!SetField(ref _selectedQuickCommand, value)) return;
+            QuickCommandName = value?.Name ?? string.Empty;
+            OnPropertyChanged(nameof(HasSelectedQuickCommand));
+        }
+    }
+    public bool HasSelectedQuickCommand => SelectedQuickCommand is not null;
+
+    public void LoadQuickCommand()
+    {
+        if (SelectedQuickCommand is not { } command) return;
+        SendText = command.Payload;
+        IsSendHexMode = command.IsHexMode;
+        EncodingName = command.EncodingName;
+        LineEnding = command.LineEnding;
+        StatusText = $"已填入「{command.Name}」，可编辑后发送";
+    }
+
+    public bool SaveQuickCommand()
+    {
+        var name = QuickCommandName.Trim();
+        if (name.Length == 0) { StatusText = "请填写快捷指令名称"; return false; }
+        try { _ = BuildPayload(); }
+        catch (Exception exception) { StatusText = exception.Message; return false; }
+        var command = new QuickCommand(name, SendText, IsSendHexMode, EncodingName, LineEnding);
+        var existing = QuickCommands.FirstOrDefault(item => string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (existing is null) QuickCommands.Add(command);
+        else QuickCommands[QuickCommands.IndexOf(existing)] = command;
+        SelectedQuickCommand = command;
+        StatusText = $"已保存快捷指令「{name}」";
+        return true;
+    }
+
+    public bool RemoveQuickCommand()
+    {
+        if (SelectedQuickCommand is not { } command) return false;
+        QuickCommands.Remove(command);
+        SelectedQuickCommand = null;
+        StatusText = $"已删除快捷指令「{command.Name}」";
+        return true;
+    }
+
     public IBrush AccentBrush { get; }
     public IReadOnlyList<int> BaudRates => BaudRateOptions;
     public IReadOnlyList<int> DataBitChoices => DataBitsOptions;
@@ -138,12 +192,13 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
         {
             if (!SetField(ref _isConnected, value)) return;
             OnPropertyChanged(nameof(IsDisconnected));
+            OnPropertyChanged(nameof(CanSend));
             OnPropertyChanged(nameof(ConnectionButtonText));
             OnPropertyChanged(nameof(ConnectionStatusText));
         }
     }
     public bool IsDisconnected => !IsConnected;
-    public bool IsBusy { get => _isBusy; private set => SetField(ref _isBusy, value); }
+    public bool IsBusy { get => _isBusy; private set { if (SetField(ref _isBusy, value)) OnPropertyChanged(nameof(CanSend)); } }
     public string ConnectionButtonText => IsConnected ? "断开" : "连接";
     public string ConnectionStatusText => IsConnected ? "已连接" : "未连接";
     public bool IsCollapsed { get => _isCollapsed; set => SetField(ref _isCollapsed, value); }
@@ -164,6 +219,20 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
         }
     }
     public bool IsTextMode => !IsHexMode;
+    public bool IsSendHexMode
+    {
+        get => _isSendHexMode;
+        set { if (SetField(ref _isSendHexMode, value)) OnPropertyChanged(nameof(IsSendTextMode)); }
+    }
+    public bool IsSendTextMode => !IsSendHexMode;
+    public bool IsLoopSending
+    {
+        get => _isLoopSending;
+        private set { if (SetField(ref _isLoopSending, value)) OnPropertyChanged(nameof(SendButtonText)); }
+    }
+    public string SendButtonText => IsLoopSending ? "停止定时发送" : LoopSendEnabled ? "开始定时发送" : "发送";
+    public bool CanSend => IsConnected && !IsBusy;
+    public double WorkspaceHeight { get => Math.Max(_workspaceHeight, IsSinglePortFocus ? 640 : 540); set => SetField(ref _workspaceHeight, Math.Max(540, value)); }
     public bool ShowTimestamp { get => _showTimestamp; set { if (SetField(ref _showTimestamp, value)) RebuildReceiveText(); } }
     public bool AutoScroll { get => _autoScroll; set => SetField(ref _autoScroll, value); }
     public bool LoopSendEnabled
@@ -173,6 +242,7 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
         {
             if (!SetField(ref _loopSendEnabled, value)) return;
             if (!value) StopLoopSending();
+            OnPropertyChanged(nameof(SendButtonText));
         }
     }
     public int CycleIntervalMs { get => _cycleIntervalMs; set => SetField(ref _cycleIntervalMs, Math.Clamp(value, 50, 60000)); }
@@ -187,7 +257,7 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
     public long ErrorCount { get => _errorCount; private set => SetField(ref _errorCount, value); }
     public double TileWidth { get => _tileWidth; set => SetField(ref _tileWidth, Math.Max(MinimumTileWidth, value)); }
     public double ReceiveAreaHeight { get => _receiveAreaHeight; set => SetField(ref _receiveAreaHeight, Math.Max(DefaultReceiveAreaHeight, value)); }
-    public string StatisticsText => $"TX {TxFrames} · RX {RxFrames} · 错误 {ErrorCount}";
+    public string StatisticsText => $"TX {TxBytes} B · RX {RxBytes} B · 错误 {ErrorCount}";
 
     private string ParitySummary => Parity switch
     {
@@ -332,6 +402,13 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
 
     public async Task TriggerSendAsync(Func<byte[], Task>? linkedSend = null)
     {
+        if (IsLoopSending)
+        {
+            StopLoopSending();
+            StatusText = "定时发送已停止";
+            return;
+        }
+        if (!CanSend) { StatusText = "请先连接串口"; return; }
         byte[] payload;
         try
         {
@@ -347,7 +424,10 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
         {
             await SendPayloadAsync(payload).ConfigureAwait(false);
             if (linkedSend is not null) await linkedSend(payload).ConfigureAwait(false);
-            if (LoopSendEnabled) StartLoopSending(payload, linkedSend);
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (LoopSendEnabled && IsConnected && !_disposed) StartLoopSending(payload, linkedSend);
+            });
         }
         catch (Exception exception)
         {
@@ -358,7 +438,9 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
     public async Task SendQuickCommandAsync(QuickCommand command, Func<byte[], Task>? linkedSend = null)
     {
         SendText = command.Payload;
-        IsHexMode = true;
+        IsSendHexMode = command.IsHexMode;
+        EncodingName = command.EncodingName;
+        LineEnding = command.LineEnding;
         await TriggerSendAsync(linkedSend).ConfigureAwait(false);
     }
 
@@ -403,7 +485,10 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
         EncodingName,
         LineEnding,
         SendText,
-        TileWidth);
+        TileWidth,
+        IsHexMode,
+        IsSendHexMode,
+        QuickCommands.ToList());
 
     public void ApplyProfile(SerialPortProfile profile)
     {
@@ -417,6 +502,14 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
         LineEnding = profile.LineEnding;
         SendText = profile.SendText;
         TileWidth = profile.TileWidth;
+        IsHexMode = profile.IsHexMode;
+        IsSendHexMode = profile.IsSendHexMode;
+        if (profile.QuickCommands is not null)
+        {
+            QuickCommands.Clear();
+            foreach (var command in profile.QuickCommands) QuickCommands.Add(command);
+        }
+        SelectedQuickCommand = QuickCommands.FirstOrDefault();
         RefreshPorts();
     }
 
@@ -510,7 +603,7 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
         if (filter.Length > 0)
             lines = lines.Where(line => line.Contains(filter, StringComparison.OrdinalIgnoreCase));
         var text = string.Join(Environment.NewLine, lines);
-        ReceiveText = text.Length == 0 ? "等待接收数据…" : text;
+        ReceiveText = text.Length == 0 ? (filter.Length > 0 ? "没有匹配的日志，请修改或清除过滤条件" : "等待接收数据…") : text;
         ReceiveTextUpdated?.Invoke(this, EventArgs.Empty);
     }
 
@@ -525,7 +618,7 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
 
     private byte[] BuildPayload()
     {
-        if (!IsHexMode)
+        if (!IsSendHexMode)
         {
             var ending = LineEnding switch
             {
@@ -555,6 +648,7 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
     {
         StopLoopSending();
         _loopCancellation = new CancellationTokenSource();
+        IsLoopSending = true;
         var token = _loopCancellation.Token;
         var interval = TimeSpan.FromMilliseconds(CycleIntervalMs);
         _ = Task.Run(async () =>
@@ -581,6 +675,7 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
 
     private void StopLoopSending()
     {
+        IsLoopSending = false;
         var cancellation = Interlocked.Exchange(ref _loopCancellation, null);
         if (cancellation is null) return;
         cancellation.Cancel();
@@ -661,7 +756,10 @@ public sealed record SerialPortProfile(
     string EncodingName,
     string LineEnding,
     string SendText,
-    double TileWidth = SerialPortSessionViewModel.DefaultTileWidth);
+    double TileWidth = SerialPortSessionViewModel.DefaultTileWidth,
+    bool IsHexMode = true,
+    bool IsSendHexMode = true,
+    List<QuickCommand>? QuickCommands = null);
 
 internal static class HexTextExtensions
 {

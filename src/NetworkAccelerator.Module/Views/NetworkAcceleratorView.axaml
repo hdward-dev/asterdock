@@ -28,8 +28,8 @@
       <Setter Property="Background" Value="Transparent"/>
     </Style>
     <Style Selector="Button.node-row">
-      <Setter Property="Height" Value="64"/>
-      <Setter Property="Padding" Value="12,0"/>
+      <Setter Property="Height" Value="72"/>
+      <Setter Property="Padding" Value="14,0"/>
       <Setter Property="Margin" Value="0,0,0,6"/>
       <Setter Property="BorderThickness" Value="0"/>
       <Setter Property="CornerRadius" Value="9"/>
@@ -45,7 +45,7 @@
       <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
     </Style>
     <Style Selector="TextBox.node-search">
-      <Setter Property="Width" Value="280"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
       <Setter Property="Height" Value="38"/>
       <Setter Property="Padding" Value="13,0"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
@@ -108,140 +108,193 @@
         </Animation>
       </Style.Animations>
     </Style>
+    <Style Selector="Button.section-nav">
+      <Setter Property="Height" Value="68"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="Padding" Value="8"/>
+      <Setter Property="CornerRadius" Value="12"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppMutedBrush}"/>
+    </Style>
+    <Style Selector="Button.section-nav.selected">
+      <Setter Property="Background" Value="{DynamicResource AppAccentSurfaceBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppAccentBrush}"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="TextBlock.page-title">
+      <Setter Property="FontSize" Value="21"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="TextBlock.description">
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppMutedBrush}"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
   </UserControl.Styles>
 
-  <Grid RowDefinitions="64,*">
-    <Border Background="{DynamicResource AppChromeBrush}" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1">
-      <Grid Margin="26,0" VerticalAlignment="Center">
-        <StackPanel>
-          <TextBlock Text="网络加速" FontSize="23" FontWeight="SemiBold"/>
-          <TextBlock Text="安全、稳定地管理网络连接" FontSize="12.5" Foreground="{DynamicResource AppMutedBrush}"/>
+  <Grid ColumnDefinitions="*,88">
+    <ScrollViewer x:Name="PageScroll" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
+      <StackPanel Margin="24" Spacing="20">
+        <StackPanel Spacing="5">
+          <TextBlock x:Name="SectionTitle" Classes="page-title" Text="概览"/>
+          <TextBlock x:Name="SectionDescription" Classes="description" Text="连接状态与常用功能，一目了然"/>
         </StackPanel>
-      </Grid>
-    </Border>
-
-    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
-      <StackPanel Margin="24" Spacing="14" HorizontalAlignment="Stretch">
-        <Grid ColumnDefinitions="1.55*,14,1*">
-          <Border Classes="card" Padding="20" MinHeight="184">
-            <Grid RowDefinitions="Auto,*,Auto">
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                <Border Classes="connection-state" Classes.connected="{Binding IsConnected}"
-                        Width="14" Height="14" CornerRadius="7" VerticalAlignment="Center"/>
-                <TextBlock Classes="connection-state" Classes.connected="{Binding IsConnected}"
-                           Text="{Binding ConnectionStatusText}" FontSize="23" FontWeight="SemiBold"/>
-              </StackPanel>
-              <Grid Grid.Row="1" ColumnDefinitions="1.15*,0.65*,0.85*,0.75*,Auto" Margin="0,14,0,12">
-                <StackPanel>
-                  <TextBlock Text="当前节点" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/>
-                  <TextBlock Text="{Binding CurrentNodeText}" FontSize="20" FontWeight="SemiBold" Margin="0,5,0,0" TextTrimming="CharacterEllipsis"/>
+        <Border x:Name="PageStatus" Background="{DynamicResource AppSubtleBrush}" CornerRadius="10" Padding="14,10" IsVisible="False">
+          <StackPanel Spacing="8">
+            <TextBlock Text="{Binding StatusMessage}" Classes="description"/>
+            <ProgressBar IsVisible="{Binding IsBusy}" IsIndeterminate="True" Height="3"/>
+          </StackPanel>
+        </Border>
+        <Border x:Name="ConnectionCard" Classes="card" Padding="24" CornerRadius="16">
+          <StackPanel Spacing="20">
+            <Grid x:Name="ConnectionHeader" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+              <Grid ColumnDefinitions="56,*" Margin="0,0,16,0">
+                <Border Width="44" Height="44" CornerRadius="14" Background="{DynamicResource AppAccentSurfaceBrush}" VerticalAlignment="Top">
+                  <PathIcon Data="M13,2 L5,13 H11 L10,22 L19,10 H13 Z" Width="23" Height="23" Foreground="{DynamicResource AppAccentBrush}"/>
+                </Border>
+                <StackPanel Grid.Column="1" Spacing="6">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding ConnectionStatusText}" FontSize="24" FontWeight="SemiBold"/>
+                    <Border Classes="connection-state" Classes.connected="{Binding IsConnected}" Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center"/>
+                  </StackPanel>
+                  <TextBlock Text="{Binding StatusMessage}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource AppMutedBrush}"/>
                 </StackPanel>
-                <StackPanel Grid.Column="1">
-                  <TextBlock Text="延迟" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/>
-                  <TextBlock Text="{Binding CurrentLatencyText}" FontSize="20" FontWeight="SemiBold"
-                             Foreground="{DynamicResource AppPositiveBrush}" Margin="0,5,0,0"/>
+              </Grid>
+              <Button x:Name="ConnectionAction" Grid.Column="1" Classes="accent" Content="{Binding ConnectionButtonText}"
+                      MinWidth="148" Height="48" Padding="24,0" CornerRadius="12" VerticalAlignment="Center"
+                      IsEnabled="{Binding !IsBusy}" Click="ToggleConnection_Click"/>
+            </Grid>
+            <ProgressBar IsVisible="{Binding IsBusy}" IsIndeterminate="True" Height="3"/>
+            <Border Background="{DynamicResource AppSubtleBrush}" CornerRadius="12" Padding="18,14">
+              <Grid x:Name="ConnectionMetrics" ColumnDefinitions="2*,*,*,*" RowDefinitions="Auto,Auto">
+                <StackPanel x:Name="NodeMetric" Spacing="6" Margin="0,0,16,0">
+                  <TextBlock Text="当前线路" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/>
+                  <TextBlock Text="{Binding CurrentNodeText}" FontSize="17" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding CurrentNodeText}"/>
                 </StackPanel>
-                <StackPanel Grid.Column="2">
-                  <TextBlock Text="已连接时长" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/>
-                  <TextBlock Text="{Binding ConnectionDurationText}" FontSize="20" FontWeight="SemiBold" Margin="0,5,0,0"/>
+                <StackPanel x:Name="LatencyMetric" Grid.Column="1" Spacing="6">
+                  <TextBlock Text="线路延迟" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/>
+                  <TextBlock Text="{Binding CurrentLatencyText}" FontSize="17" FontWeight="SemiBold"/>
                 </StackPanel>
-                <StackPanel Grid.Column="3">
-                  <TextBlock Text="代理端口" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/>
-                  <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,2,0,0">
-                    <TextBlock Text="{Binding ProxyPort}" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <StackPanel x:Name="DurationMetric" Grid.Column="2" Spacing="6">
+                  <TextBlock Text="连接时长" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/>
+                  <TextBlock Text="{Binding ConnectionDurationText}" FontSize="17" FontWeight="SemiBold"/>
+                </StackPanel>
+                <StackPanel x:Name="PortMetric" Grid.Column="3" Spacing="3">
+                  <TextBlock Text="本地代理端口" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/>
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="{Binding ProxyPort}" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/>
                     <Button Width="26" Height="26" Padding="0" Background="Transparent" BorderThickness="0"
-                            ToolTip.Tip="复制当前系统的终端代理命令" Click="CopyTerminalProxyCommand_Click">
-                      <PathIcon Data="M8,8 H20 V20 H8 Z M4,4 H16 V8 M4,4 V16 H8"
-                                Width="15" Height="15" Foreground="{DynamicResource AppAccentBrush}"/>
+                            AutomationProperties.Name="复制终端代理命令" ToolTip.Tip="复制终端代理命令" Click="CopyTerminalProxyCommand_Click">
+                      <PathIcon Data="M8,8 H20 V20 H8 Z M4,4 H16 V8 M4,4 V16 H8" Width="14" Height="14" Foreground="{DynamicResource AppAccentBrush}"/>
                     </Button>
                   </StackPanel>
                 </StackPanel>
-                <Button Grid.Column="4" Classes="accent" Content="{Binding ConnectionButtonText}"
-                        MinWidth="126" Height="48" Padding="20,0" CornerRadius="9"
-                        VerticalAlignment="Top"
-                        IsEnabled="{Binding !IsBusy}" Click="ToggleConnection_Click"/>
               </Grid>
-              <Border Grid.Row="2" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,1,0,0" Padding="0,10,0,0">
-                <Grid ColumnDefinitions="Auto,*,Auto">
-                  <TextBlock Text="↓ 下载  0 KB/s" Foreground="{DynamicResource AppAccentBrush}"/>
-                  <TextBlock Grid.Column="1" Text="↑ 上传  0 KB/s" Foreground="{DynamicResource AppPositiveBrush}" HorizontalAlignment="Center"/>
-                  <TextBlock Grid.Column="2" Text="{Binding StatusMessage}" Foreground="{DynamicResource AppMutedBrush}" TextTrimming="CharacterEllipsis" MaxWidth="300"/>
-                </Grid>
-              </Border>
-            </Grid>
-          </Border>
+            </Border>
+          </StackPanel>
+        </Border>
 
-          <Border Grid.Column="2" Classes="card" Padding="20" MinHeight="184">
-            <StackPanel Spacing="14">
-              <TextBlock Text="代理方式" FontSize="17" FontWeight="SemiBold"/>
-              <Border Background="{DynamicResource AppSubtleBrush}" CornerRadius="9" Padding="3">
-                <Grid x:Name="ModeSliderHost" Height="40">
-                  <Border x:Name="ModeSliderThumb" Height="40" HorizontalAlignment="Left"
-                          CornerRadius="7" Background="{DynamicResource AppAccentBrush}" IsHitTestVisible="False">
-                    <Border.Transitions>
-                      <Transitions>
-                        <DoubleTransition Property="Width" Duration="0:0:0.2"/>
-                      </Transitions>
-                    </Border.Transitions>
-                    <Border.RenderTransform>
-                      <TranslateTransform>
-                        <TranslateTransform.Transitions>
-                          <Transitions>
-                            <DoubleTransition Property="X" Duration="0:0:0.24"/>
-                          </Transitions>
-                        </TranslateTransform.Transitions>
-                      </TranslateTransform>
-                    </Border.RenderTransform>
-                  </Border>
-                  <UniformGrid Columns="3">
-                    <Button x:Name="RuleModeButton" Classes="mode selected" Content="规则" Click="RuleMode_Click"/>
-                    <Button x:Name="GlobalModeButton" Classes="mode" Content="全局" Click="GlobalMode_Click"/>
-                    <Button x:Name="DirectModeButton" Classes="mode" Content="直连" Click="DirectMode_Click"/>
-                  </UniformGrid>
-                </Grid>
-              </Border>
-              <Grid ColumnDefinitions="*,Auto" Margin="0,2,0,0">
-                <StackPanel>
-                  <TextBlock Text="TUN 模式" FontSize="16" FontWeight="SemiBold"/>
-                  <TextBlock Text="接管系统全部网络流量" FontSize="12" Foreground="{DynamicResource AppMutedBrush}" Margin="0,3,0,0"/>
-                  <TextBlock Text="开始加速时会请求管理员权限" FontSize="11" Foreground="{DynamicResource AppWarningBrush}"
-                             Margin="0,2,0,0" IsVisible="{Binding TunRequiresAdministrator}"/>
-                </StackPanel>
-                <ToggleSwitch Grid.Column="1" x:Name="TunToggle" IsChecked="{Binding TunEnabled}"
-                              OnContent="" OffContent="" VerticalAlignment="Center" Click="TunToggle_Click"/>
-              </Grid>
+        <StackPanel x:Name="OverviewPage" Spacing="16">
+          <Border Classes="card" Padding="22" CornerRadius="16">
+            <StackPanel Spacing="16">
+              <TextBlock Text="常用功能" FontSize="17" FontWeight="SemiBold"/>
+              <Button Tag="Proxies" Click="Navigate_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="16">
+                <Grid ColumnDefinitions="*,Auto"><StackPanel Spacing="6"><TextBlock Text="代理线路" FontWeight="SemiBold"/><TextBlock Classes="description" Text="{Binding NodeCountText}"/></StackPanel><TextBlock Grid.Column="1" Text="选择线路 →" VerticalAlignment="Center" Foreground="{DynamicResource AppAccentBrush}"/></Grid>
+              </Button>
+              <Button Tag="Configuration" Click="Navigate_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="16">
+                <Grid ColumnDefinitions="*,Auto"><StackPanel Spacing="6"><TextBlock Text="{Binding SubscriptionName}" FontWeight="SemiBold"/><TextBlock Classes="description" Text="{Binding SubscriptionUpdatedText}"/></StackPanel><TextBlock Grid.Column="1" Text="管理配置 →" VerticalAlignment="Center" Foreground="{DynamicResource AppAccentBrush}"/></Grid>
+              </Button>
+              <Button Tag="Rules" Click="Navigate_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="16">
+                <Grid ColumnDefinitions="*,Auto"><StackPanel Spacing="6"><TextBlock Text="{Binding RulesText}" FontWeight="SemiBold"/><TextBlock Classes="description" Text="{Binding ModeDescription}"/></StackPanel><TextBlock Grid.Column="1" Text="查看规则 →" VerticalAlignment="Center" Foreground="{DynamicResource AppAccentBrush}"/></Grid>
+              </Button>
             </StackPanel>
           </Border>
-        </Grid>
+          <Border Classes="card" Padding="22" CornerRadius="16">
+            <Grid ColumnDefinitions="*,Auto"><StackPanel Spacing="8"><TextBlock Text="运行环境" FontSize="17" FontWeight="SemiBold"/><TextBlock Classes="core-state" Classes.ready="{Binding IsCoreAvailable}" Text="{Binding CoreStatusText}"/></StackPanel><Button Grid.Column="1" Content="打开设置" Tag="Settings" Click="Navigate_Click" VerticalAlignment="Center"/></Grid>
+          </Border>
+        </StackPanel>
 
-        <Grid ColumnDefinitions="1.55*,14,1*">
-          <Border Classes="card" Padding="16,10,16,16" MinHeight="356">
-            <Grid RowDefinitions="Auto,1,*">
-              <Grid ColumnDefinitions="*,Auto,*" Margin="4,0,4,6">
-                <TextBlock Text="节点选择" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                <TextBox Grid.Column="1" Classes="node-search" PlaceholderText="搜索节点"
-                         Text="{Binding NodeSearchText, Mode=TwoWay}"
-                         HorizontalAlignment="Center"/>
-                <Button Grid.Column="2" Width="38" Height="38" Padding="0" CornerRadius="9"
-                        HorizontalAlignment="Right" ToolTip.Tip="{Binding RefreshLatencyButtonText}"
-                        AutomationProperties.Name="测速"
-                        IsEnabled="{Binding !IsRefreshingLatencies}"
-                        Click="RefreshLatency_Click">
-                  <PathIcon Data="M13,2 L5,13 H11 L10,22 L19,10 H13 Z"
-                            Width="18" Height="18" Foreground="{DynamicResource AppAccentBrush}"/>
-                </Button>
-              </Grid>
-              <Border Grid.Row="1" Background="{DynamicResource AppBorderBrush}"/>
-              <Grid Grid.Row="2" Margin="0,6,0,0">
-                <StackPanel IsVisible="{Binding HasNoNodes}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
-                  <Border Width="52" Height="52" CornerRadius="26" Background="{DynamicResource AppSubtleBrush}">
-                    <PathIcon Data="M4,12 H20 M12,4 V20" Width="23" Height="23" Foreground="{DynamicResource AppMutedBrush}"/>
-                  </Border>
-                  <TextBlock Text="还没有可用节点" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-                  <TextBlock Text="请配置并更新 sing-box JSON 订阅" FontSize="12" Foreground="{DynamicResource AppMutedBrush}"/>
-                  <Button Content="配置订阅" Click="ManageSubscription_Click"/>
+        <Border x:Name="ConnectionsPage" Classes="card" Padding="24" CornerRadius="16" IsVisible="False">
+          <StackPanel Spacing="18">
+            <TextBlock Text="本地连接" FontSize="17" FontWeight="SemiBold"/>
+            <TextBlock Classes="description" Text="查看当前代理入口，或复制命令供终端使用。"/>
+            <Grid ColumnDefinitions="140,*"><TextBlock Classes="description" Text="监听地址"/><TextBlock Grid.Column="1" Text="127.0.0.1"/></Grid>
+            <Grid ColumnDefinitions="140,*"><TextBlock Classes="description" Text="HTTP / SOCKS 端口"/><TextBlock Grid.Column="1" Text="{Binding ProxyPort}"/></Grid>
+            <Grid ColumnDefinitions="140,*"><TextBlock Classes="description" Text="接入方式"/><TextBlock Grid.Column="1" Text="{Binding ConnectionMethodText}"/></Grid>
+            <TextBlock Classes="description" Text="{Binding ModeDescription}"/>
+            <Button Content="复制终端代理命令" Click="CopyTerminalProxyCommand_Click"/>
+          </StackPanel>
+        </Border>
+
+        <StackPanel x:Name="RulesPage" Spacing="16" IsVisible="False">
+          <Border Classes="card" Padding="24" CornerRadius="16">
+            <StackPanel Spacing="14">
+              <TextBlock Text="当前路由策略" FontSize="17" FontWeight="SemiBold"/>
+              <TextBlock Text="{Binding RulesText}" Foreground="{DynamicResource AppAccentBrush}"/>
+              <TextBlock Classes="description" Text="{Binding ModeDescription}"/>
+              <Button Content="切换代理方式" Tag="Proxies" Click="Navigate_Click"/>
+            </StackPanel>
+          </Border>
+          <Border Classes="card" Padding="24" CornerRadius="16">
+            <StackPanel Spacing="18">
+              <TextBlock Text="内置分流规则" FontSize="17" FontWeight="SemiBold"/>
+              <TextBlock Classes="description" Text="以下为应用生成的路由规则；规则集在规则模式下启用。"/>
+              <Border Background="{DynamicResource AppSubtleBrush}" CornerRadius="10" Padding="16"><StackPanel Spacing="6"><TextBlock Text="本机与局域网 · 直连" FontWeight="SemiBold"/><TextBlock Classes="description" Text="本机、私有地址和链路本地地址直接连接。"/></StackPanel></Border>
+              <Border Background="{DynamicResource AppSubtleBrush}" CornerRadius="10" Padding="16"><StackPanel Spacing="6"><TextBlock Text="geosite-cn / geoip-cn" FontWeight="SemiBold"/><TextBlock Classes="description" Text="规则模式下，中国大陆域名与 IP 地址直连。"/></StackPanel></Border>
+              <Border Background="{DynamicResource AppSubtleBrush}" CornerRadius="10" Padding="16"><StackPanel Spacing="6"><TextBlock Text="其他流量" FontWeight="SemiBold"/><TextBlock Classes="description" Text="规则和全局模式通过当前节点；直连模式直接连接。"/></StackPanel></Border>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+
+        <Border x:Name="LogsPage" Classes="card" Padding="20" CornerRadius="16" IsVisible="False">
+          <Grid RowDefinitions="Auto,Auto,*">
+            <Grid ColumnDefinitions="*,Auto"><TextBlock Text="运行日志" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/><Button Grid.Column="1" Content="清空显示" Click="ClearLogs_Click"/></Grid>
+            <TextBlock Grid.Row="1" Classes="description" Text="本次会话最近 300 条日志，随核心运行实时更新。" Margin="0,10,0,16"/>
+            <Grid Grid.Row="2" MinHeight="360">
+              <TextBlock Text="暂无运行日志，启动加速后将在这里显示" Classes="description" IsVisible="{Binding HasNoLogs}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              <ScrollViewer MaxHeight="560" HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl ItemsSource="{Binding LogEntries}">
+                  <ItemsControl.ItemTemplate><DataTemplate><SelectableTextBlock Text="{Binding}" FontFamily="Menlo,Consolas" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10"/></DataTemplate></ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </Grid>
+          </Grid>
+        </Border>
+        <Grid x:Name="WorkspaceGrid" ColumnDefinitions="*,20,320" RowDefinitions="Auto,Auto">
+          <Border x:Name="NodesCard" Classes="card" Padding="20" CornerRadius="16" VerticalAlignment="Top">
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="4">
+                  <TextBlock Text="选择线路" FontSize="18" FontWeight="SemiBold"/>
+                  <TextBlock Text="{Binding NodeCountText}" FontSize="12" Foreground="{DynamicResource AppMutedBrush}"/>
                 </StackPanel>
-                <ScrollViewer IsVisible="{Binding HasNodes}" VerticalScrollBarVisibility="Auto">
+                <Button Grid.Column="1" Content="{Binding RefreshLatencyButtonText}" Height="36" Padding="14,0" CornerRadius="8"
+                        IsEnabled="{Binding CanRefreshLatencies}" Click="RefreshLatency_Click"/>
+              </Grid>
+              <TextBox Grid.Row="1" Classes="node-search" Margin="0,18,0,14" PlaceholderText="搜索节点名称、地区或协议"
+                       AutomationProperties.Name="搜索线路" Text="{Binding NodeSearchText, Mode=TwoWay}"/>
+              <Border Grid.Row="2" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1" Padding="14,0,14,10">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Text="线路 / 协议" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/>
+                  <TextBlock Grid.Column="1" Text="延迟 / 选择" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/>
+                </Grid>
+              </Border>
+              <Grid Grid.Row="3" MinHeight="300" Margin="0,8,0,0">
+                <StackPanel IsVisible="{Binding HasNoNodes}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" MaxWidth="280">
+                  <Border Width="56" Height="56" CornerRadius="18" Background="{DynamicResource AppAccentSurfaceBrush}" HorizontalAlignment="Center">
+                    <PathIcon Data="M4,12 H20 M12,4 V20" Width="22" Height="22" Foreground="{DynamicResource AppAccentBrush}"/>
+                  </Border>
+                  <TextBlock Text="添加你的第一条线路" FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                  <TextBlock Text="添加订阅后，即可选择节点并开始加速。" TextWrapping="Wrap" TextAlignment="Center" FontSize="12" Foreground="{DynamicResource AppMutedBrush}"/>
+                  <Button Content="添加订阅" HorizontalAlignment="Center" Click="ManageSubscription_Click"/>
+                </StackPanel>
+                <StackPanel IsVisible="{Binding HasNoSearchResults}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                  <TextBlock Text="没有找到匹配的线路" FontSize="16" FontWeight="SemiBold"/>
+                  <TextBlock Text="试试其他名称、地区或协议" FontSize="12" Foreground="{DynamicResource AppMutedBrush}" HorizontalAlignment="Center"/>
+                  <Button Content="清空搜索" HorizontalAlignment="Center" Click="ClearSearch_Click"/>
+                </StackPanel>
+                <ScrollViewer IsVisible="{Binding HasVisibleNodes}" MaxHeight="520" VerticalScrollBarVisibility="Auto">
                   <ItemsControl Classes="node-list" ItemsSource="{Binding Nodes}" HorizontalAlignment="Stretch">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="models:NodeItemViewModel">
@@ -258,7 +311,7 @@
                               </Grid>
                             </Border>
                             <StackPanel Grid.Column="1" Margin="10,0" VerticalAlignment="Center">
-                              <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold"/>
+                              <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                               <TextBlock Text="{Binding Subtitle}" FontSize="11" Foreground="{DynamicResource AppMutedBrush}" TextTrimming="CharacterEllipsis"/>
                             </StackPanel>
                             <Border Grid.Column="2" MinWidth="72" Height="28" Padding="9,0" CornerRadius="14"
@@ -295,16 +348,65 @@
             </Grid>
           </Border>
 
-          <Border Grid.Column="2" Classes="card" Padding="20" MinHeight="356">
-            <Grid RowDefinitions="Auto,*,Auto">
-              <Grid ColumnDefinitions="Auto,14,*">
-                <TextBlock Text="订阅信息" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                <ComboBox Grid.Column="2" Height="36" MinWidth="140" MaxWidth="220"
-                          HorizontalAlignment="Right" Background="Transparent"
-                          BorderThickness="0" Padding="10,0,6,0"
+          <StackPanel x:Name="SettingsPanel" Grid.Column="2" Spacing="16">
+            <Border x:Name="ProxySettingsCard" Classes="card" Padding="20" CornerRadius="16">
+              <StackPanel Spacing="14">
+                <TextBlock Text="连接设置" FontSize="18" FontWeight="SemiBold"/>
+                <TextBlock Text="代理方式" FontSize="12" Foreground="{DynamicResource AppMutedBrush}"/>
+              <Border Background="{DynamicResource AppSubtleBrush}" CornerRadius="9" Padding="3">
+                <Grid x:Name="ModeSliderHost" Height="40">
+                  <Border x:Name="ModeSliderThumb" Height="40" HorizontalAlignment="Left"
+                          CornerRadius="7" Background="{DynamicResource AppAccentBrush}" IsHitTestVisible="False">
+                    <Border.Transitions>
+                      <Transitions>
+                        <DoubleTransition Property="Width" Duration="0:0:0.2"/>
+                      </Transitions>
+                    </Border.Transitions>
+                    <Border.RenderTransform>
+                      <TranslateTransform>
+                        <TranslateTransform.Transitions>
+                          <Transitions>
+                            <DoubleTransition Property="X" Duration="0:0:0.24"/>
+                          </Transitions>
+                        </TranslateTransform.Transitions>
+                      </TranslateTransform>
+                    </Border.RenderTransform>
+                  </Border>
+                  <UniformGrid Columns="3" IsEnabled="{Binding !IsBusy}">
+                    <Button x:Name="RuleModeButton" Classes="mode selected" Content="规则" Click="RuleMode_Click"/>
+                    <Button x:Name="GlobalModeButton" Classes="mode" Content="全局" Click="GlobalMode_Click"/>
+                    <Button x:Name="DirectModeButton" Classes="mode" Content="直连" Click="DirectMode_Click"/>
+                  </UniformGrid>
+                </Grid>
+              </Border>
+
+                <TextBlock Text="{Binding ModeDescription}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource AppMutedBrush}" MinHeight="34"/>
+                <Border BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,1,0,0" Padding="0,16,0,0">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="5">
+                      <TextBlock Text="TUN 模式" FontSize="14" FontWeight="SemiBold"/>
+                      <TextBlock Text="接管系统网络流量" FontSize="12" Foreground="{DynamicResource AppMutedBrush}"/>
+                    </StackPanel>
+                    <ToggleSwitch Grid.Column="1" x:Name="TunToggle" IsChecked="{Binding TunEnabled}" IsEnabled="{Binding !IsBusy}"
+                                  AutomationProperties.Name="TUN 模式" OnContent="" OffContent="" VerticalAlignment="Center" Click="TunToggle_Click"/>
+                  </Grid>
+                </Border>
+                <TextBlock Text="开启后，开始加速时将请求管理员权限" FontSize="11" TextWrapping="Wrap"
+                           Foreground="{DynamicResource AppWarningBrush}" IsVisible="{Binding TunRequiresAdministrator}"/>
+              </StackPanel>
+            </Border>
+            <Border x:Name="SubscriptionCard" Classes="card" Padding="20" CornerRadius="16">
+              <StackPanel Spacing="14">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Text="我的订阅" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                  <Button Grid.Column="1" Content="管理" Padding="10,5" Background="Transparent" Click="ManageSubscription_Click" IsEnabled="{Binding !IsBusy}"/>
+                </Grid>
+                <ComboBox Height="36"
+                          HorizontalAlignment="Stretch" Background="{DynamicResource AppInputBrush}"
+                          BorderThickness="1" Padding="10,0,6,0"
                           ItemsSource="{Binding Configurations}"
                           SelectedItem="{Binding ActiveConfiguration, Mode=OneWay}"
-                          PlaceholderText="{Binding ActiveConfiguration.Name}" IsEnabled="{Binding !IsBusy}"
+                          PlaceholderText="选择订阅配置" IsEnabled="{Binding !IsBusy}"
                           SelectionChanged="Configuration_SelectionChanged" ToolTip.Tip="切换当前配置">
                   <ComboBox.ItemTemplate>
                     <DataTemplate>
@@ -312,62 +414,65 @@
                     </DataTemplate>
                   </ComboBox.ItemTemplate>
                 </ComboBox>
-              </Grid>
-              <StackPanel Grid.Row="1">
-                <TextBlock Text="配置名称" FontSize="11" Foreground="{DynamicResource AppMutedBrush}" Margin="0,18,0,0"/>
-                <TextBlock Text="{Binding SubscriptionName}" FontSize="17" FontWeight="SemiBold" Margin="0,4,0,0"/>
-                <TextBlock Text="状态" FontSize="11" Foreground="{DynamicResource AppMutedBrush}" Margin="0,15,0,0"/>
-                <TextBlock Text="{Binding SubscriptionUpdatedText}" Foreground="{DynamicResource AppPositiveBrush}" FontWeight="SemiBold" Margin="0,4,0,0"/>
-                <TextBlock Text="剩余流量" FontSize="11" Foreground="{DynamicResource AppMutedBrush}" Margin="0,15,0,0"/>
-                <TextBlock Text="{Binding RemainingTrafficText}" FontSize="17" FontWeight="SemiBold" Foreground="{DynamicResource AppAccentBrush}" Margin="0,4,0,0"/>
-                <ProgressBar Value="{Binding TrafficPercent}" Height="6" Margin="0,9,0,0"/>
-                <TextBlock Text="到期时间" FontSize="11" Foreground="{DynamicResource AppMutedBrush}" Margin="0,15,0,0"/>
-                <TextBlock Text="{Binding ExpiresText}" Margin="0,4,0,0"/>
+                <StackPanel Spacing="5">
+                  <TextBlock Text="{Binding SubscriptionName}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                  <TextBlock Text="{Binding SubscriptionUpdatedText}" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/>
+                </StackPanel>
+                <Border Background="{DynamicResource AppSubtleBrush}" CornerRadius="10" Padding="14">
+                  <StackPanel Spacing="8">
+                    <TextBlock Text="剩余 / 总流量" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/>
+                    <TextBlock Text="{Binding RemainingTrafficText}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                    <ProgressBar Value="{Binding RemainingTrafficPercent}" IsVisible="{Binding HasTrafficInformation}" Height="5"/>
+                  </StackPanel>
+                </Border>
+                <Grid ColumnDefinitions="Auto,*">
+                  <TextBlock Text="到期时间" FontSize="12" Foreground="{DynamicResource AppMutedBrush}"/>
+                  <TextBlock Grid.Column="1" Text="{Binding ExpiresText}" FontSize="12" HorizontalAlignment="Right"/>
+                </Grid>
+                <Button Content="更新订阅" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Height="36"
+                        IsEnabled="{Binding !IsBusy}" Click="UpdateSubscription_Click"/>
               </StackPanel>
-              <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,14,0,0">
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                  <TextBlock Classes="core-state" Classes.ready="{Binding IsCoreAvailable}"
-                             Text="{Binding CoreStatusText}" FontSize="11"
-                             VerticalAlignment="Center"/>
-                  <Button Content="安装核心" IsVisible="{Binding IsCoreMissing}" IsEnabled="{Binding !IsBusy}"
-                          Padding="10,4" Click="InstallCore_Click"/>
-                </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                  <Button Width="36" Height="36" Padding="0" CornerRadius="8"
-                          ToolTip.Tip="更新当前订阅" Click="UpdateSubscription_Click">
-                    <Path Data="M19,8 A8,8 0 1 0 20,13 M19,8 V3 M19,8 H14"
-                          Width="17" Height="17" Stretch="Uniform"
-                          Stroke="{DynamicResource AppAccentBrush}" StrokeThickness="1.7"/>
-                  </Button>
-                  <Button Width="36" Height="36" Padding="0" CornerRadius="8"
-                          ToolTip.Tip="管理订阅配置" Click="ManageSubscription_Click">
-                    <Path Data="M4,7 H20 M8,4 V10 M4,17 H20 M16,14 V20"
-                          Width="17" Height="17" Stretch="Uniform"
-                          Stroke="{DynamicResource AppStrongTextBrush}" StrokeThickness="1.7"/>
-                  </Button>
-                </StackPanel>
-              </Grid>
-            </Grid>
-          </Border>
+            </Border>
+            <Border x:Name="CoreCard" Classes="card" Padding="20" CornerRadius="16">
+              <StackPanel Spacing="10">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Classes="core-state" Classes.ready="{Binding IsCoreAvailable}" Text="{Binding CoreStatusText}"
+                             FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                  <Button Grid.Column="1" Content="安装核心" IsVisible="{Binding IsCoreMissing}" IsEnabled="{Binding !IsBusy}" Padding="10,4" Click="InstallCore_Click"/>
+                </Grid>
+                <TextBlock Text="{Binding RulesText}" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/>
+              </StackPanel>
+            </Border>
+          </StackPanel>
         </Grid>
-
-        <Border Classes="card" Padding="18,13">
-          <Grid ColumnDefinitions="1.2*,1*,1*">
-            <StackPanel Orientation="Horizontal" Spacing="9">
-              <PathIcon Classes="core-state" Classes.ready="{Binding IsCoreAvailable}"
-                        Data="M4,12 L9,17 L20,6" Width="18" Height="18"/>
-              <TextBlock Classes="core-state" Classes.ready="{Binding IsCoreAvailable}"
-                         Text="{Binding CoreStatusText}" VerticalAlignment="Center"/>
-            </StackPanel>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="9" HorizontalAlignment="Center">
-              <PathIcon Data="M5,6 H19 M5,12 H19 M5,18 H19 M2,6 H3 M2,12 H3 M2,18 H3" Width="18" Height="18"/>
-              <TextBlock Text="{Binding RulesText}" VerticalAlignment="Center"/>
-            </StackPanel>
-            <Button Grid.Column="2" Content="查看日志" HorizontalAlignment="Right" Background="Transparent"
-                    Foreground="{DynamicResource AppAccentBrush}" BorderThickness="0" Click="ViewLog_Click"/>
-          </Grid>
-        </Border>
       </StackPanel>
     </ScrollViewer>
+    <Border Grid.Column="1" Background="{DynamicResource AppSurfaceBrush}" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="1,0,0,0">
+      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel x:Name="SectionNavigation" Margin="10,24" Spacing="8">
+          <Button Classes="section-nav" Tag="Overview" Click="Navigate_Click" AutomationProperties.Name="概览" ToolTip.Tip="概览">
+            <StackPanel Spacing="7"><Path Data="M3,3 H10 V10 H3 Z M14,3 H21 V10 H14 Z M3,14 H10 V21 H3 Z M14,14 H21 V21 H14 Z" Width="20" Height="20" Stretch="Uniform" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" HorizontalAlignment="Center"/><TextBlock Text="概览" FontSize="12" HorizontalAlignment="Center"/></StackPanel>
+          </Button>
+          <Button Classes="section-nav" Tag="Proxies" Click="Navigate_Click" AutomationProperties.Name="代理" ToolTip.Tip="代理">
+            <StackPanel Spacing="7"><Path Data="M13,2 L5,13 H11 L10,22 L19,10 H13 Z" Width="20" Height="20" Stretch="Uniform" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" HorizontalAlignment="Center"/><TextBlock Text="代理" FontSize="12" HorizontalAlignment="Center"/></StackPanel>
+          </Button>
+          <Button Classes="section-nav" Tag="Configuration" Click="Navigate_Click" AutomationProperties.Name="配置" ToolTip.Tip="配置">
+            <StackPanel Spacing="7"><Path Data="M5,3 H15 L19,7 V21 H5 Z M14,3 V8 H19 M8,12 H16 M8,16 H16" Width="20" Height="20" Stretch="Uniform" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" HorizontalAlignment="Center"/><TextBlock Text="配置" FontSize="12" HorizontalAlignment="Center"/></StackPanel>
+          </Button>
+          <Button Classes="section-nav" Tag="Connections" Click="Navigate_Click" AutomationProperties.Name="连接" ToolTip.Tip="连接">
+            <StackPanel Spacing="7"><Path Data="M8,8 L16,16 M9,5 L12,2 L22,12 L19,15 M5,9 L2,12 L12,22 L15,19" Width="20" Height="20" Stretch="Uniform" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" HorizontalAlignment="Center"/><TextBlock Text="连接" FontSize="12" HorizontalAlignment="Center"/></StackPanel>
+          </Button>
+          <Button Classes="section-nav" Tag="Rules" Click="Navigate_Click" AutomationProperties.Name="规则" ToolTip.Tip="规则">
+            <StackPanel Spacing="7"><Path Data="M8,5 H21 M8,12 H21 M8,19 H21 M2,5 H4 M2,12 H4 M2,19 H4" Width="20" Height="20" Stretch="Uniform" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" HorizontalAlignment="Center"/><TextBlock Text="规则" FontSize="12" HorizontalAlignment="Center"/></StackPanel>
+          </Button>
+          <Button Classes="section-nav" Tag="Logs" Click="Navigate_Click" AutomationProperties.Name="日志" ToolTip.Tip="日志">
+            <StackPanel Spacing="7"><Path Data="M4,4 H20 V20 H4 Z M8,8 L11,11 L8,14 M13,15 H17" Width="20" Height="20" Stretch="Uniform" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" HorizontalAlignment="Center"/><TextBlock Text="日志" FontSize="12" HorizontalAlignment="Center"/></StackPanel>
+          </Button>
+          <Button Classes="section-nav" Tag="Settings" Click="Navigate_Click" AutomationProperties.Name="设置" ToolTip.Tip="设置">
+            <StackPanel Spacing="7"><Path Data="M3,6 H21 M3,18 H21 M8,3 V9 M16,15 V21" Width="20" Height="20" Stretch="Uniform" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" HorizontalAlignment="Center"/><TextBlock Text="设置" FontSize="12" HorizontalAlignment="Center"/></StackPanel>
+          </Button>
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
   </Grid>
 </UserControl>

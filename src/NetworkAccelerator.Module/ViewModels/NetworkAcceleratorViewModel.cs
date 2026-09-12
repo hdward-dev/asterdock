@@ -60,6 +60,14 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
     public event PropertyChangedEventHandler? PropertyChanged;
     public ObservableCollection<NodeItemViewModel> Nodes { get; } = [];
     public ObservableCollection<SubscriptionConfiguration> Configurations { get; } = [];
+    public ObservableCollection<string> LogEntries { get; } = [];
+    public bool HasNoLogs => LogEntries.Count == 0;
+
+    public void ClearLogs()
+    {
+        LogEntries.Clear();
+        OnPropertyChanged(nameof(HasNoLogs));
+    }
     public bool IsBusy { get => _isBusy; private set => SetField(ref _isBusy, value); }
     public bool IsRefreshingLatencies
     {
@@ -67,10 +75,19 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
         private set
         {
             if (SetField(ref _isRefreshingLatencies, value))
+            {
                 OnPropertyChanged(nameof(RefreshLatencyButtonText));
+                OnPropertyChanged(nameof(CanRefreshLatencies));
+            }
         }
     }
     public string RefreshLatencyButtonText => IsRefreshingLatencies ? "测速中…" : "测速";
+    public bool CanRefreshLatencies => HasNodes && !IsRefreshingLatencies;
+    public bool HasVisibleNodes => HasNodes && Nodes.Any(node => node.IsVisible);
+    public bool HasNoSearchResults => HasNodes && !HasVisibleNodes;
+    public string NodeCountText => HasNodes
+        ? $"{Nodes.Count(node => !node.IsAutomatic)} 条线路 · 支持自动选择"
+        : "添加订阅，获取可用线路";
     public string NodeSearchText
     {
         get => _nodeSearchText;
@@ -80,8 +97,31 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
         }
     }
     public bool IsConnected { get => _isConnected; private set { if (SetField(ref _isConnected, value)) OnPropertyChanged(nameof(ConnectionButtonText)); } }
-    public bool TunEnabled { get => _tunEnabled; set => SetField(ref _tunEnabled, value); }
-    public ProxyMode Mode { get => _mode; private set => SetField(ref _mode, value); }
+    public bool TunEnabled
+    {
+        get => _tunEnabled;
+        set
+        {
+            if (SetField(ref _tunEnabled, value)) OnPropertyChanged(nameof(ConnectionMethodText));
+        }
+    }
+    public string ConnectionMethodText => TunEnabled ? "TUN 虚拟网卡" : "系统代理";
+    public ProxyMode Mode
+    {
+        get => _mode;
+        private set
+        {
+            if (!SetField(ref _mode, value)) return;
+            OnPropertyChanged(nameof(ModeDescription));
+            OnPropertyChanged(nameof(RulesText));
+        }
+    }
+    public string ModeDescription => Mode switch
+    {
+        ProxyMode.Global => "所有流量通过当前节点，本机与局域网流量除外。",
+        ProxyMode.Direct => "流量直接连接，适合临时关闭代理或排查问题。",
+        _ => "根据规则分流，局域网直连，其余流量通过代理。"
+    };
     public string ConnectionStatusText { get => _connectionStatusText; private set => SetField(ref _connectionStatusText, value); }
     public string StatusMessage { get => _statusMessage; private set => SetField(ref _statusMessage, value); }
     public string CurrentNodeText { get => _currentNodeText; private set => SetField(ref _currentNodeText, value); }
@@ -91,7 +131,16 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
     public string SubscriptionUpdatedText { get => _subscriptionUpdatedText; private set => SetField(ref _subscriptionUpdatedText, value); }
     public string RemainingTrafficText { get => _remainingTrafficText; private set => SetField(ref _remainingTrafficText, value); }
     public string ExpiresText { get => _expiresText; private set => SetField(ref _expiresText, value); }
-    public double TrafficPercent { get => _trafficPercent; private set => SetField(ref _trafficPercent, value); }
+    public double TrafficPercent
+    {
+        get => _trafficPercent;
+        private set
+        {
+            if (SetField(ref _trafficPercent, value)) OnPropertyChanged(nameof(RemainingTrafficPercent));
+        }
+    }
+    public double RemainingTrafficPercent => 100 - TrafficPercent;
+    public bool HasTrafficInformation => _profile?.TotalBytes is > 0;
     public string CoreStatusText { get => _coreStatusText; private set => SetField(ref _coreStatusText, value); }
     public string LastLogText { get => _lastLogText; private set => SetField(ref _lastLogText, value); }
     public bool HasNodes { get => _hasNodes; private set { if (SetField(ref _hasNodes, value)) OnPropertyChanged(nameof(HasNoNodes)); } }
@@ -449,6 +498,13 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
         {
             HasNodes = false;
             SubscriptionName = "未配置订阅";
+            SubscriptionUpdatedText = "尚未更新";
+            RemainingTrafficText = "订阅未提供流量信息";
+            TrafficPercent = 0;
+            ExpiresText = "--";
+            SelectNode(string.Empty);
+            RefreshNodePresentation();
+            OnPropertyChanged(nameof(HasTrafficInformation));
             StatusMessage = "请配置订阅后开始使用";
             return;
         }
@@ -457,6 +513,8 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
         foreach (var node in _profile.Nodes) Nodes.Add(new NodeItemViewModel(node));
         ApplyNodeFilter();
         HasNodes = _profile.Nodes.Count > 0;
+        RefreshNodePresentation();
+        OnPropertyChanged(nameof(HasTrafficInformation));
         SubscriptionName = _profile.Name;
         SubscriptionUpdatedText = $"{_profile.UpdatedAt:MM-dd HH:mm} 更新";
         ExpiresText = _profile.ExpiresAt?.ToString("yyyy-MM-dd") ?? "未提供";
@@ -545,6 +603,15 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
                              node.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
                              node.Subtitle.Contains(query, StringComparison.OrdinalIgnoreCase);
         }
+        RefreshNodePresentation();
+    }
+
+    private void RefreshNodePresentation()
+    {
+        OnPropertyChanged(nameof(HasVisibleNodes));
+        OnPropertyChanged(nameof(HasNoSearchResults));
+        OnPropertyChanged(nameof(NodeCountText));
+        OnPropertyChanged(nameof(CanRefreshLatencies));
     }
 
     private void StartDurationTimer()
@@ -585,7 +652,14 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
     }
 
     private void Engine_LogReceived(object? sender, string message) =>
-        Dispatcher.UIThread.Post(() => LastLogText = SanitizeLog(message));
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_disposed) return;
+            LastLogText = SanitizeLog(message);
+            LogEntries.Insert(0, LastLogText);
+            while (LogEntries.Count > 300) LogEntries.RemoveAt(LogEntries.Count - 1);
+            OnPropertyChanged(nameof(HasNoLogs));
+        });
 
     private void Engine_StateChanged(object? sender, EventArgs e)
     {

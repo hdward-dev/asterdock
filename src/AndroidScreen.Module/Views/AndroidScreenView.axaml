@@ -1,53 +1,152 @@
-<UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="AndroidScreen.Module.Views.AndroidScreenView"
-             x:CompileBindings="False"
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="AndroidScreen.Module.Views.AndroidScreenView" x:CompileBindings="False"
              Background="{DynamicResource AppPageBrush}">
-  <Grid RowDefinitions="64,*">
-    <Border Background="{DynamicResource AppChromeBrush}" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1">
-      <StackPanel Margin="26,0" VerticalAlignment="Center">
-        <TextBlock Text="Android 投屏" FontSize="23" FontWeight="SemiBold"/>
-        <TextBlock Text="使用 scrcpy 镜像并控制 Android 设备" FontSize="12.5" Foreground="{DynamicResource AppMutedBrush}"/>
+  <UserControl.Styles>
+    <Style Selector="Border.screen-card">
+      <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="16"/>
+    </Style>
+    <Style Selector="TextBlock.muted"><Setter Property="Foreground" Value="{DynamicResource AppMutedBrush}"/></Style>
+    <Style Selector="Button.screen-tool">
+      <Setter Property="CornerRadius" Value="9"/><Setter Property="MinHeight" Value="36"/>
+      <Setter Property="Padding" Value="12,7"/><Setter Property="FontSize" Value="12"/>
+    </Style>
+    <Style Selector="TextBox"><Setter Property="CornerRadius" Value="9"/></Style>
+    <Style Selector="ComboBox"><Setter Property="CornerRadius" Value="9"/></Style>
+  </UserControl.Styles>
+  <Grid RowDefinitions="Auto,*,Auto">
+    <Border BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1" Padding="24,19">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+        <StackPanel Spacing="5">
+          <TextBlock Text="Android 投屏" FontSize="25" FontWeight="SemiBold" LetterSpacing="-0.5"/>
+          <TextBlock Text="让手机与桌面，自然连接。" Classes="muted" FontSize="12"/>
+        </StackPanel>
+        <Border Grid.Column="1" Background="{DynamicResource AppSubtleBrush}" CornerRadius="14" Padding="12,7" VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="7">
+            <Ellipse Width="6" Height="6" Fill="{DynamicResource AppMutedBrush}" IsVisible="{Binding !HasFrame}"/>
+            <Ellipse Width="6" Height="6" Fill="#22C58B" IsVisible="{Binding HasFrame}"/>
+            <TextBlock Text="{Binding ConnectionLabel}" FontSize="12" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Border>
+      </Grid>
+    </Border>
+    <ScrollViewer x:Name="WorkspaceScroll" Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Disabled">
+    <Grid x:Name="Workspace" ColumnDefinitions="280,*" RowDefinitions="*" Margin="20" ColumnSpacing="18" RowSpacing="14">
+      <ScrollViewer x:Name="ConnectionPanel" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="14">
+          <Border Classes="screen-card" Padding="20">
+            <StackPanel Spacing="16">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="连接设备" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <Button Grid.Column="1" Content="刷新" Classes="screen-tool" Click="Refresh_Click" IsEnabled="{Binding CanConfigure}"/>
+              </Grid>
+              <StackPanel Spacing="7" IsEnabled="{Binding CanConfigure}">
+                <TextBlock Text="可用设备" FontSize="12" Classes="muted"/>
+                <ComboBox ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
+                          HorizontalAlignment="Stretch" PlaceholderText="连接手机后刷新" MinHeight="40">
+                  <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis"/></DataTemplate></ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBlock Text="USB 连接后，请在手机上允许调试。" FontSize="11" Classes="muted" TextWrapping="Wrap"/>
+              </StackPanel>
+              <StackPanel Spacing="7" IsEnabled="{Binding CanConfigure}">
+                <TextBlock Text="画面清晰度" FontSize="12" Classes="muted"/>
+                <ComboBox SelectedIndex="{Binding QualityIndex, Mode=TwoWay}" HorizontalAlignment="Stretch">
+                  <ComboBoxItem Content="流畅 · 1024p"/><ComboBoxItem Content="均衡 · 1600p"/><ComboBoxItem Content="清晰 · 1920p"/>
+                </ComboBox>
+              </StackPanel>
+              <Button Content="{Binding LaunchButtonText}" Classes="accent" Height="44" HorizontalAlignment="Stretch" Click="Toggle_Click"/>
+              <Button Content="准备投屏核心" IsVisible="{Binding IsCoreMissing}" IsEnabled="{Binding CanConfigure}" HorizontalAlignment="Stretch" Click="Install_Click"/>
+              <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Height="3"/>
+            </StackPanel>
+          </Border>
+          <Border Classes="screen-card" Padding="20">
+            <StackPanel Spacing="12" IsEnabled="{Binding CanConfigure}">
+              <TextBlock Text="无线连接" FontSize="15" FontWeight="SemiBold"/>
+              <TextBlock Text="设备与电脑需连接同一网络。" FontSize="11" Classes="muted"/>
+              <TextBox Text="{Binding NetworkAddress, Mode=TwoWay}" PlaceholderText="IP 地址:连接端口"/>
+              <Button Content="连接无线设备" HorizontalAlignment="Stretch" IsEnabled="{Binding IsCoreAvailable}" Click="Wireless_Click"/>
+              <Expander Header="首次无线配对" HorizontalAlignment="Stretch" Padding="0">
+                <StackPanel Spacing="9" Margin="0,10,0,0">
+                  <TextBlock Text="Android 11+：在“无线调试”中选择使用配对码配对。配对端口与连接端口不同。" FontSize="11" Classes="muted" TextWrapping="Wrap"/>
+                  <TextBox Text="{Binding PairAddress, Mode=TwoWay}" PlaceholderText="IP 地址:配对端口"/>
+                  <TextBox Text="{Binding PairCode, Mode=TwoWay}" PlaceholderText="六位配对码" MaxLength="6"/>
+                  <Button Content="配对设备" Click="Pair_Click" HorizontalAlignment="Stretch" IsEnabled="{Binding IsCoreAvailable}"/>
+                </StackPanel>
+              </Expander>
+            </StackPanel>
+          </Border>
+          <StackPanel Margin="6,2" Spacing="7">
+            <TextBlock Text="操作提示" FontSize="12" FontWeight="SemiBold"/>
+            <TextBlock Text="点击和拖动控制手机，滚轮上下滑动。点击画面后可直接输入文字。" FontSize="11" Classes="muted" TextWrapping="Wrap" LineHeight="18"/>
+            <TextBlock Text="声音保留在手机播放。" FontSize="11" Classes="muted"/>
+          </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
+      <Border x:Name="PreviewPanel" Grid.Column="1" Classes="screen-card" ClipToBounds="True">
+        <Grid RowDefinitions="Auto,*,Auto">
+          <Grid ColumnDefinitions="*,Auto" Margin="20,16" ColumnSpacing="10">
+            <StackPanel Spacing="4">
+              <TextBlock Text="{Binding DeviceName}" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+              <TextBlock Text="{Binding FrameInfo}" FontSize="11" Classes="muted"/>
+            </StackPanel>
+            <Button Grid.Column="1" Content="截图" Classes="screen-tool" IsEnabled="{Binding HasFrame}" Click="Screenshot_Click"/>
+          </Grid>
+          <Border Grid.Row="1" Background="#101620" Margin="12,0" CornerRadius="12" ClipToBounds="True" MinHeight="260">
+            <Grid>
+              <Grid IsVisible="{Binding !HasFrame}" IsHitTestVisible="False" Margin="24">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="18" MaxWidth="300">
+                  <Border Width="94" Height="162" CornerRadius="22" BorderThickness="2" BorderBrush="#465772" HorizontalAlignment="Center" Background="#192332">
+                    <Grid RowDefinitions="Auto,*,Auto" Margin="12">
+                      <Border Width="28" Height="4" CornerRadius="2" Background="#465772" HorizontalAlignment="Center"/>
+                      <Path Grid.Row="1" Data="M 0,18 L 12,6 L 24,18 M 12,6 L 12,34" Stroke="#81A9FF" StrokeThickness="2" Width="24" Height="34" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                      <Border Grid.Row="2" Width="26" Height="3" CornerRadius="2" Background="#465772" HorizontalAlignment="Center"/>
+                    </Grid>
+                  </Border>
+                  <StackPanel Spacing="8">
+                    <TextBlock Text="你的手机，即将出现在这里" Foreground="#E8EDF6" FontSize="17" FontWeight="SemiBold" TextAlignment="Center" TextWrapping="Wrap"/>
+                    <TextBlock Text="连接设备，开启大屏操作体验" Foreground="#8C9AB0" FontSize="12" TextAlignment="Center" TextWrapping="Wrap"/>
+                  </StackPanel>
+                  <Border Background="#202D40" CornerRadius="12" Padding="12,6" HorizontalAlignment="Center">
+                    <TextBlock Text="USB / 无线连接" Foreground="#A5BCDF" FontSize="11"/>
+                  </Border>
+                  <Border IsVisible="{Binding HasError}" Background="#402727" BorderBrush="#9D5151" BorderThickness="1" CornerRadius="10" Padding="12">
+                    <StackPanel Spacing="6">
+                      <TextBlock Text="投屏未能启动" Foreground="#FFB4AB" FontWeight="SemiBold" TextAlignment="Center"/>
+                      <TextBlock Text="{Binding StatusMessage}" Foreground="#EDD4D2" FontSize="12" TextWrapping="Wrap" TextAlignment="Center" MaxHeight="72"/>
+                    </StackPanel>
+                  </Border>
+                </StackPanel>
+              </Grid>
+              <Border x:Name="VideoSurface" Background="Transparent" Focusable="True"
+                      PointerPressed="Video_Pressed" PointerMoved="Video_Moved" PointerReleased="Video_Released"
+                      PointerCaptureLost="Video_CaptureLost" PointerWheelChanged="Video_Wheel"
+                      KeyDown="Video_KeyDown" TextInput="Video_TextInput">
+                <Image Source="{Binding Frame}" Stretch="Uniform" IsHitTestVisible="False"/>
+              </Border>
+            </Grid>
+          </Border>
+          <WrapPanel Grid.Row="2" HorizontalAlignment="Center" Margin="12" IsEnabled="{Binding HasFrame}">
+            <Button Content="← 返回" Tag="4" Classes="screen-tool" Margin="3" Click="Key_Click"/>
+            <Button Content="○ 主页" Tag="3" Classes="screen-tool" Margin="3" Click="Key_Click"/>
+            <Button Content="□ 多任务" Tag="187" Classes="screen-tool" Margin="3" Click="Key_Click"/>
+            <Button Content="旋转" Classes="screen-tool" Margin="3" Click="Rotate_Click"/>
+            <Button Content="粘贴到手机" Classes="screen-tool" Margin="3" Click="Paste_Click"/>
+            <Button Content="复制手机剪贴板" Classes="screen-tool" Margin="3" Click="Copy_Click"/>
+          </WrapPanel>
+        </Grid>
+      </Border>
+    </Grid>
+    </ScrollViewer>
+    <Border Grid.Row="2" Background="{DynamicResource AppChromeBrush}" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,1,0,0" Padding="24,11">
+      <StackPanel Spacing="6">
+        <TextBlock Text="{Binding StatusMessage}" FontSize="12" Classes="muted" TextWrapping="Wrap" MaxHeight="64"/>
+        <Expander Header="错误详情" IsVisible="{Binding HasError}" HorizontalAlignment="Stretch">
+          <ScrollViewer MaxHeight="160" HorizontalScrollBarVisibility="Disabled">
+            <SelectableTextBlock Text="{Binding ErrorDetails}" TextWrapping="Wrap" FontSize="11"/>
+          </ScrollViewer>
+        </Expander>
       </StackPanel>
     </Border>
-
-    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
-      <StackPanel Margin="24" Spacing="14" MaxWidth="860">
-        <Border Classes="card" Padding="24">
-          <StackPanel Spacing="18">
-            <StackPanel Spacing="4">
-              <TextBlock Text="投屏与控制" FontSize="22" FontWeight="SemiBold"/>
-              <TextBlock Text="默认通过 USB 连接；scrcpy 窗口支持鼠标、键盘和剪贴板控制。" Foreground="{DynamicResource AppMutedBrush}"/>
-            </StackPanel>
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-              <StackPanel Spacing="6">
-                <TextBlock Text="无线设备地址（可选）" FontWeight="SemiBold"/>
-                <TextBox Text="{Binding NetworkAddress, Mode=TwoWay}"
-                         PlaceholderText="例如 192.168.1.20 或 192.168.1.20:5555"/>
-                <TextBlock Text="填写地址后以 scrcpy 的 TCP/IP 模式连接；留空则等待 USB 设备。" FontSize="12" Foreground="{DynamicResource AppMutedBrush}" TextWrapping="Wrap"/>
-              </StackPanel>
-              <StackPanel Grid.Column="1" Spacing="8" VerticalAlignment="Center">
-                <Button Content="{Binding LaunchButtonText}" Classes="accent"
-                        MinWidth="132" Height="44" IsEnabled="{Binding !IsBusy}" Click="Toggle_Click"/>
-                <Button Content="安装 scrcpy" IsVisible="{Binding IsScrcpyMissing}" IsEnabled="{Binding !IsBusy}"
-                        HorizontalAlignment="Center" Click="Install_Click"/>
-              </StackPanel>
-            </Grid>
-            <Border Background="{DynamicResource AppSubtleBrush}" CornerRadius="8" Padding="14,11">
-              <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" Foreground="{DynamicResource AppMutedBrush}"/>
-            </Border>
-          </StackPanel>
-        </Border>
-
-        <Border Classes="card" Padding="24">
-          <StackPanel Spacing="10">
-            <TextBlock Text="使用前准备" FontSize="17" FontWeight="SemiBold"/>
-            <TextBlock Text="1. 在 Android 开发者选项中开启“USB 调试”，首次连接时在手机上允许本机的调试授权。"/>
-            <TextBlock Text="2. 在本页点击“安装 scrcpy”，应用会从官方 GitHub Release 下载并校验适用于当前平台的版本。"/>
-            <TextBlock Text="3. 无线模式需要设备与电脑处于同一网络，且已通过 ADB 配置好 TCP/IP 调试。"/>
-          </StackPanel>
-        </Border>
-      </StackPanel>
-    </ScrollViewer>
   </Grid>
 </UserControl>

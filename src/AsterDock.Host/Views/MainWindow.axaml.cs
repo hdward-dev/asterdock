@@ -18,8 +18,8 @@ public partial class MainWindow : Window, IApplicationShell
 {
     private const double CollapsedCapsuleWidth = 124;
     private const double HostBackCapsuleWidth = 176;
-    private const double ExpandedCapsuleWidth = 218;
-    private const double ExpandedBackCapsuleWidth = 261;
+    private const double ExpandedCapsuleWidth = 261;
+    private const double ExpandedBackCapsuleWidth = 304;
     private enum SettingsSection
     {
         Applications,
@@ -65,6 +65,7 @@ public partial class MainWindow : Window, IApplicationShell
         Closing += MainWindow_Closing;
         Closed += (_, _) =>
         {
+            CloseDetachedApplications();
             DetachApplicationNavigation();
             _catalog.Dispose();
             _systemMetrics.Dispose();
@@ -87,6 +88,7 @@ public partial class MainWindow : Window, IApplicationShell
 
     private void LoadApplications(bool activateFirst = true)
     {
+        CloseDetachedApplications();
         DetachApplicationNavigation();
         _currentApplication = null;
         ApplicationContent.Content = null;
@@ -124,7 +126,9 @@ public partial class MainWindow : Window, IApplicationShell
         {
             SettingsPanel.IsVisible = false;
             HideAppInfo();
-            ApplicationContent.Content = application.GetOrCreateView(this, _systemMetrics);
+            ApplicationContent.Content = _detachedApplications.ContainsKey(application)
+                ? CreateDetachedPlaceholder(application)
+                : application.GetOrCreateView(this, _systemMetrics);
             EmptyState.IsVisible = false;
             SetCurrentApplication(application);
             UpdateCapsuleState();
@@ -327,6 +331,8 @@ public partial class MainWindow : Window, IApplicationShell
         CapsuleInfoButton.IsVisible = !hostCanGoBack && !isHome;
         CapsuleInfoHomeSeparator.IsVisible = !hostCanGoBack && !isHome;
         CapsuleHomeButton.IsVisible = !hostCanGoBack && !isHome;
+        CapsulePopOutButton.IsVisible = !hostCanGoBack && !isHome;
+        CapsulePopOutSeparator.IsVisible = !hostCanGoBack && !isHome;
 
         var visible = hostCanGoBack || !isHome;
         var width = hostCanGoBack
@@ -670,6 +676,7 @@ public partial class MainWindow : Window, IApplicationShell
         string status;
         try
         {
+            CloseDetachedApplications();
             ApplicationContent.Content = null;
             _catalog.Dispose();
             Applications.Clear();

@@ -11,8 +11,10 @@
           <SolidColorBrush x:Key="AppBorderBrush" Color="#E2E7EF"/>
           <SolidColorBrush x:Key="AppMutedBrush" Color="#667085"/>
           <SolidColorBrush x:Key="AppPreviewBrush" Color="#E9EDF3"/>
-          <SolidColorBrush x:Key="AppStrongTextBrush" Color="#344054"/>
+          <SolidColorBrush x:Key="AppStrongTextBrush" Color="#000000"/>
           <SolidColorBrush x:Key="AppAccentBrush" Color="#1267E8"/>
+          <SolidColorBrush x:Key="AppAccentHoverBrush" Color="#0F5CCD"/>
+          <SolidColorBrush x:Key="AppAccentPressedBrush" Color="#0C4CAA"/>
           <SolidColorBrush x:Key="AppOnAccentBrush" Color="#FFFFFF"/>
           <SolidColorBrush x:Key="AppAccentSurfaceBrush" Color="#E8F0FE"/>
           <SolidColorBrush x:Key="AppSelectionBrush" Color="#EEF5FF"/>
@@ -37,6 +39,8 @@
           <SolidColorBrush x:Key="AppPreviewBrush" Color="#0D0F13"/>
           <SolidColorBrush x:Key="AppStrongTextBrush" Color="#E7EBF1"/>
           <SolidColorBrush x:Key="AppAccentBrush" Color="#6EA8FF"/>
+          <SolidColorBrush x:Key="AppAccentHoverBrush" Color="#8DBAFF"/>
+          <SolidColorBrush x:Key="AppAccentPressedBrush" Color="#5796EF"/>
           <SolidColorBrush x:Key="AppOnAccentBrush" Color="#0B1A2C"/>
           <SolidColorBrush x:Key="AppAccentSurfaceBrush" Color="#1B3555"/>
           <SolidColorBrush x:Key="AppSelectionBrush" Color="#1A3557"/>
@@ -79,6 +83,12 @@
       </ControlTheme>
     </ResourceDictionary>
   </Styles.Resources>
+
+  <!-- Semi defaults to ButtonDefaultPrimaryForeground even for ordinary buttons.
+       Use neutral app text while keeping semantic and primary variants explicit. -->
+  <Style Selector="Button">
+    <Setter Property="Foreground" Value="{DynamicResource AppStrongTextBrush}"/>
+  </Style>
 
   <Style Selector="Border.ad-card">
     <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
@@ -286,5 +296,19 @@
   </Style>
   <Style Selector="TextBlock.ad-status-text.connected">
     <Setter Property="Foreground" Value="{DynamicResource AppPositiveBrush}"/>
+  </Style>
+  <!-- Semi applies interaction colors to PART_ContentPresenter, not Button. -->
+  <Style Selector="Button.ad-primary:not(:disabled):pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.primary:not(:disabled):pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.ad-accent:not(:disabled):pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.accent:not(:disabled):pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.ad-segment-item.selected:not(:disabled):pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AppAccentHoverBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+  </Style>
+  <Style Selector="Button.ad-primary:not(:disabled):pressed /template/ ContentPresenter#PART_ContentPresenter, Button.primary:not(:disabled):pressed /template/ ContentPresenter#PART_ContentPresenter, Button.ad-accent:not(:disabled):pressed /template/ ContentPresenter#PART_ContentPresenter, Button.accent:not(:disabled):pressed /template/ ContentPresenter#PART_ContentPresenter, Button.ad-segment-item.selected:not(:disabled):pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AppAccentPressedBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+  </Style>
+  <Style Selector="Button:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AppSubtleBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppMutedBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
   </Style>
 </Styles>

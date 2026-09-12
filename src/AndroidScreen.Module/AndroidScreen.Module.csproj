@@ -8,8 +8,23 @@
     <ProjectReference Include="..\AsterDock.Contracts\AsterDock.Contracts.csproj" />
     <PackageReference Include="Avalonia" Version="12.1.0" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
+    <PackageReference Include="DevEnvy.FFmpeg.Binaries.LGPL" Version="8.0.1.4" GeneratePathProperty="true" ExcludeAssets="all" />
   </ItemGroup>
   <ItemGroup>
     <None Update="app.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <!-- The host also bundles modules without a RID; retain supported desktop runtimes then. -->
+  <ItemGroup>
+    <None Include="$(PkgDevEnvy_FFmpeg_Binaries_LGPL)/ffmpeg/win-x64/**/*"
+          Condition="'$(RuntimeIdentifier)' == '' Or '$(RuntimeIdentifier)' == 'win-x64' Or '$(RuntimeIdentifier)' == 'win-arm64'"
+          Link="ffmpeg/win-x64/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="$(PkgDevEnvy_FFmpeg_Binaries_LGPL)/ffmpeg/osx-x64/**/*"
+          Condition="'$(RuntimeIdentifier)' == '' Or '$(RuntimeIdentifier)' == 'osx-x64'"
+          Link="ffmpeg/osx-x64/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="$(PkgDevEnvy_FFmpeg_Binaries_LGPL)/ffmpeg/osx-arm64/**/*"
+          Condition="'$(RuntimeIdentifier)' == '' Or '$(RuntimeIdentifier)' == 'osx-arm64'"
+          Link="ffmpeg/osx-arm64/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="$(PkgDevEnvy_FFmpeg_Binaries_LGPL)/THIRD_PARTY_NOTICES.md" Link="ffmpeg/THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

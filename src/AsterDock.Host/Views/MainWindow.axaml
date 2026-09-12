@@ -163,6 +163,14 @@
                 </Button>
                 <Border x:Name="CapsuleInfoHomeSeparator" Width="1" Height="17" VerticalAlignment="Center"
                         Background="{DynamicResource AppBorderBrush}"/>
+                <Button x:Name="CapsulePopOutButton" Classes="capsule-action" Focusable="True"
+                        ToolTip.Tip="在独立窗口打开" AutomationProperties.Name="在独立窗口打开" Click="CapsulePopOut_Click">
+                  <Path Data="M13,3 H21 V11 M21,3 L11,13 M10,5 H4 V21 H20 V14"
+                        Width="12" Height="12" Stretch="Uniform" StrokeThickness="1.3"
+                        Stroke="{DynamicResource AppStrongTextBrush}"/>
+                </Button>
+                <Border x:Name="CapsulePopOutSeparator" Width="1" Height="17" VerticalAlignment="Center"
+                        Background="{DynamicResource AppBorderBrush}"/>
                 <Button x:Name="CapsuleHomeButton" Classes="capsule-action" ToolTip.Tip="返回主页" Click="CapsuleHome_Click">
                   <Border Width="17" Height="17" CornerRadius="9" BorderBrush="{DynamicResource AppStrongTextBrush}" BorderThickness="1.4">
                     <Border Width="5" Height="5" CornerRadius="3" Background="{DynamicResource AppStrongTextBrush}"
@@ -291,7 +299,7 @@
                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Button>
                             <StackPanel Grid.Column="1" Margin="12,0,18,0" Spacing="5">
-                              <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold"/>
+                              <TextBlock Text="{Binding Name}" Foreground="{DynamicResource AppStrongTextBrush}" FontSize="16" FontWeight="SemiBold"/>
                               <TextBlock Text="{Binding Description}" Foreground="{DynamicResource AppMutedBrush}" TextWrapping="Wrap"/>
                               <TextBlock Text="{Binding Directory}" Foreground="{DynamicResource AppControlBorderBrush}" FontSize="11" TextTrimming="CharacterEllipsis"/>
                             </StackPanel>
@@ -336,7 +344,7 @@
                             </Border>
                             <StackPanel Grid.Column="1" Margin="12,0,18,0" Spacing="5">
                               <StackPanel Orientation="Horizontal" Spacing="9">
-                                <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding Name}" Foreground="{DynamicResource AppStrongTextBrush}" FontSize="16" FontWeight="SemiBold"/>
                                 <Border Background="{DynamicResource AppAccentSurfaceBrush}" CornerRadius="6" Padding="8,3">
                                   <TextBlock Text="{Binding Version, StringFormat='v{0}'}" Foreground="{DynamicResource AppAccentBrush}" FontSize="12"/>
                                 </Border>
@@ -505,7 +513,7 @@
                           <PathIcon Data="{Binding IconGeometry}" Foreground="{DynamicResource AppOnAccentBrush}" Width="34" Height="34"
                                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
-                        <TextBlock Text="{Binding Name}" Width="108" FontSize="14" TextAlignment="Center"
+                        <TextBlock Text="{Binding Name}" Foreground="{DynamicResource AppStrongTextBrush}" Width="108" FontSize="14" TextAlignment="Center"
                                    TextTrimming="CharacterEllipsis"/>
                       </StackPanel>
                     </Button>
@@ -556,7 +564,7 @@
               <PathIcon x:Name="AppInfoIcon" Foreground="{DynamicResource AppOnAccentBrush}" Width="36" Height="36"
                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
-            <TextBlock x:Name="AppInfoName" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+            <TextBlock x:Name="AppInfoName" Foreground="{DynamicResource AppStrongTextBrush}" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center"/>
             <TextBlock x:Name="AppInfoDescription" MaxWidth="286" TextAlignment="Center" TextWrapping="Wrap"
                        Foreground="{DynamicResource AppMutedBrush}"/>
           </StackPanel>
@@ -591,7 +599,7 @@
                                   Foreground="{DynamicResource AppAccentBrush}"
                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
                       </Border>
-                      <TextBlock Text="{Binding Name}" Width="58" FontSize="11.5" TextAlignment="Center"
+                      <TextBlock Text="{Binding Name}" Foreground="{DynamicResource AppStrongTextBrush}" Width="58" FontSize="11.5" TextAlignment="Center"
                                  TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
                     </StackPanel>
                   </Button>

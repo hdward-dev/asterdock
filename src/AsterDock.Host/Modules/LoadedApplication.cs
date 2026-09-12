@@ -52,6 +52,8 @@ public sealed class LoadedApplication : IDisposable
             : [];
     }
 
+    public void SetWindowOwner(Window owner) => _context?.SetWindowOwner(owner);
+
     public void Dispose()
     {
         _view = null;

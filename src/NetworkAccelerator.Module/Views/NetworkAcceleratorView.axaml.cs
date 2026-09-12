@@ -15,11 +15,83 @@ public partial class NetworkAcceleratorView : UserControl
     private readonly IApplicationContext? _context;
     private readonly NetworkAcceleratorViewModel? _viewModel;
     private bool _initialized;
+    private string _selectedSection = "Overview";
 
     public NetworkAcceleratorView()
     {
         InitializeComponent();
         ModeSliderHost.SizeChanged += (_, _) => UpdateModeSlider();
+        SizeChanged += (_, _) => UpdateLayoutForWidth();
+        SelectSection("Overview");
+    }
+
+    private void Navigate_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string section }) SelectSection(section);
+    }
+
+    private void SelectSection(string section)
+    {
+        var (title, description) = section switch
+        {
+            "Overview" => ("概览", "连接状态与常用功能，一目了然"),
+            "Proxies" => ("代理", "选择线路、测试延迟，调整代理方式"),
+            "Configuration" => ("配置", "管理订阅来源、切换配置与更新线路"),
+            "Connections" => ("连接", "查看当前连接状态与本地代理入口"),
+            "Rules" => ("规则", "了解当前路由策略与内置分流规则"),
+            "Logs" => ("日志", "查看本次会话的核心运行记录"),
+            "Settings" => ("设置", "调整网络接入方式，管理加速核心"),
+            _ => (string.Empty, string.Empty)
+        };
+        if (title.Length == 0) return;
+        _selectedSection = section;
+        SectionTitle.Text = title;
+        SectionDescription.Text = description;
+        ConnectionCard.IsVisible = section is "Overview" or "Connections";
+        PageStatus.IsVisible = !ConnectionCard.IsVisible;
+        OverviewPage.IsVisible = section == "Overview";
+        ConnectionsPage.IsVisible = section == "Connections";
+        RulesPage.IsVisible = section == "Rules";
+        LogsPage.IsVisible = section == "Logs";
+        WorkspaceGrid.IsVisible = section is "Proxies" or "Configuration" or "Settings";
+        NodesCard.IsVisible = section == "Proxies";
+        ProxySettingsCard.IsVisible = section is "Proxies" or "Settings";
+        SubscriptionCard.IsVisible = section == "Configuration";
+        CoreCard.IsVisible = section == "Settings";
+        foreach (var button in SectionNavigation.Children.OfType<Button>())
+            button.Classes.Set("selected", Equals(button.Tag, section));
+        PageScroll.Offset = default;
+        UpdateLayoutForWidth();
+    }
+
+    private void ClearLogs_Click(object? sender, RoutedEventArgs e) => _viewModel?.ClearLogs();
+
+    private void UpdateLayoutForWidth()
+    {
+        var contentWidth = Math.Max(0, Bounds.Width - 88);
+        var stackedProxies = _selectedSection == "Proxies" && contentWidth < 900;
+        var splitProxies = _selectedSection == "Proxies" && !stackedProxies;
+        WorkspaceGrid.ColumnDefinitions = new ColumnDefinitions(splitProxies ? "*,20,300" : "*");
+        Grid.SetColumn(SettingsPanel, splitProxies ? 2 : 0);
+        Grid.SetRow(SettingsPanel, stackedProxies ? 1 : 0);
+        SettingsPanel.Margin = new Avalonia.Thickness(0, stackedProxies ? 20 : 0, 0, 0);
+
+        var compact = contentWidth < 620;
+        ConnectionHeader.ColumnDefinitions = new ColumnDefinitions(compact ? "*" : "*,Auto");
+        Grid.SetColumn(ConnectionAction, compact ? 0 : 1);
+        Grid.SetRow(ConnectionAction, compact ? 1 : 0);
+        ConnectionAction.Margin = new Avalonia.Thickness(0, compact ? 16 : 0, 0, 0);
+        ConnectionMetrics.ColumnDefinitions = new ColumnDefinitions(compact ? "*,*" : "2*,*,*,*");
+        Grid.SetColumn(DurationMetric, compact ? 0 : 2);
+        Grid.SetColumn(PortMetric, compact ? 1 : 3);
+        Grid.SetRow(DurationMetric, compact ? 1 : 0);
+        Grid.SetRow(PortMetric, compact ? 1 : 0);
+        DurationMetric.Margin = PortMetric.Margin = new Avalonia.Thickness(0, compact ? 16 : 0, 0, 0);
+    }
+
+    private void ClearSearch_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_viewModel is not null) _viewModel.NodeSearchText = string.Empty;
     }
 
     public NetworkAcceleratorView(IApplicationContext context, string moduleDirectory) : this()
@@ -136,9 +208,4 @@ public partial class NetworkAcceleratorView : UserControl
         await _viewModel.UpdateSubscriptionAsync(_viewModel.SubscriptionUrl);
     }
 
-    private void ViewLog_Click(object? sender, RoutedEventArgs e)
-    {
-        if (_context is null || _viewModel is null) return;
-        Dispatcher.UIThread.Post(() => _context.Windows.Show(new LogWindow(_viewModel.LastLogText)), DispatcherPriority.Background);
-    }
 }

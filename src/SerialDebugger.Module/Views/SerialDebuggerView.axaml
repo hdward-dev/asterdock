@@ -3,76 +3,52 @@
              xmlns:viewModels="using:SerialDebugger.Module.ViewModels"
              xmlns:ui="using:AsterDock.UI.Controls"
              x:Class="SerialDebugger.Module.Views.SerialDebuggerView"
-             x:CompileBindings="False"
-             Background="{DynamicResource AppPageBrush}">
+             x:CompileBindings="False" Background="{DynamicResource AppPageBrush}">
   <UserControl.Styles>
     <Style Selector="TextBox.console">
       <Setter Property="Background" Value="{DynamicResource AppChromeBrush}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
-      <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="CornerRadius" Value="6"/>
-      <Setter Property="Padding" Value="10"/>
-      <Setter Property="FontFamily" Value="Consolas"/>
-      <Setter Property="FontSize" Value="12"/>
-      <Setter Property="SelectionBrush" Value="{DynamicResource AppSelectionBrush}"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Padding" Value="14"/>
+      <Setter Property="FontFamily" Value="Menlo,Consolas,monospace"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="VerticalContentAlignment" Value="Top"/>
     </Style>
-    <Style Selector="ItemsControl.port-grid > ContentPresenter">
-      <Setter Property="Margin" Value="0"/>
-    </Style>
-    <Style Selector="TabItem">
-      <Setter Property="Padding" Value="18,8"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
+    <Style Selector="TabItem"><Setter Property="Padding" Value="18,10"/></Style>
+    <Style Selector="ComboBox"><Setter Property="HorizontalAlignment" Value="Stretch"/></Style>
+    <Style Selector="ListBox.saved-commands ListBoxItem">
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
     </Style>
   </UserControl.Styles>
-
   <UserControl.Resources>
     <DataTemplate x:Key="PortCardTemplate" x:DataType="viewModels:SerialPortSessionViewModel">
-      <Border Classes="ad-workspace-card" ClipToBounds="True">
-        <Grid RowDefinitions="52,Auto">
-          <Border Background="{DynamicResource AppChromeBrush}"
-                  BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="16,28,Auto,*,Auto,Auto,Auto,Auto">
-              <Border Width="4" Height="28" CornerRadius="2" Background="{Binding AccentBrush}"
-                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
-              <TextBlock Grid.Column="1" Text="⠿" FontSize="18" Foreground="{DynamicResource AppMutedBrush}"
-                         HorizontalAlignment="Center" VerticalAlignment="Center" ToolTip.Tip="卡片标识"/>
-              <TextBlock Grid.Column="2" Text="{Binding Title}" FontSize="17" FontWeight="SemiBold"
-                         VerticalAlignment="Center" Margin="4,0,10,0"/>
-              <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+      <Border Classes="ad-workspace-card" Padding="16" MinHeight="540">
+        <Grid RowDefinitions="Auto,*,Auto,Auto" RowSpacing="12">
+          <StackPanel Spacing="10">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <Border Width="4" Height="20" CornerRadius="2" Background="{Binding AccentBrush}"/>
+                <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 <Border Classes="ad-status-badge" Classes.connected="{Binding IsConnected}">
-                  <TextBlock Classes="ad-status-text" Classes.connected="{Binding IsConnected}"
-                             Text="{Binding ConnectionStatusText}" FontSize="11.5" VerticalAlignment="Center"/>
+                  <TextBlock Classes="ad-status-text" Classes.connected="{Binding IsConnected}" Text="{Binding ConnectionStatusText}"/>
                 </Border>
-                <TextBlock Text="{Binding PortSummary}" Foreground="{DynamicResource AppMutedBrush}" FontSize="11.5" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding PortSummary}" Foreground="{DynamicResource AppMutedBrush}" VerticalAlignment="Center"/>
               </StackPanel>
-              <Button Grid.Column="4" Classes="ad-icon" Content="▣" ToolTip.Tip="复制卡片" Tag="{Binding}" Click="DuplicatePort_Click"/>
-              <Button Grid.Column="5" Classes="ad-icon" Content="⌃" ToolTip.Tip="展开或收起卡片" Tag="{Binding}" Click="TogglePortCard_Click"/>
-              <Button Grid.Column="6" Classes="ad-icon" Content="×" FontSize="18" ToolTip.Tip="移除卡片" Tag="{Binding}" Click="RemovePort_Click"/>
-              <Border Grid.Column="7" Width="6"/>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                <Button Content="复制配置" Tag="{Binding}" Click="DuplicatePort_Click"/>
+                <Button Content="移除" Tag="{Binding}" Click="RemovePort_Click"/>
+              </StackPanel>
             </Grid>
-          </Border>
-
-          <StackPanel Grid.Row="1" IsVisible="{Binding IsCardExpanded}" Margin="10" Spacing="8">
-            <Grid ColumnDefinitions="Auto,110,8,Auto,105,*,Auto,Auto,92" Height="34">
-              <TextBlock Text="端口" VerticalAlignment="Center" Foreground="{DynamicResource AppMutedBrush}"/>
-              <ComboBox Grid.Column="1" Classes="ad-compact" ItemsSource="{Binding AvailablePorts}" SelectedItem="{Binding SelectedPort, Mode=TwoWay}"
-                        IsEnabled="{Binding IsDisconnected}" PlaceholderText="未检测到串口" Tag="{Binding}"
-                        DropDownOpened="PortComboBox_DropDownOpened">
-                <ComboBox.ItemTemplate>
-                  <DataTemplate><TextBlock Text="{Binding DisplayName}"/></DataTemplate>
-                </ComboBox.ItemTemplate>
+            <Grid ColumnDefinitions="*,110,Auto,Auto,90" ColumnSpacing="8">
+              <ComboBox Classes="ad-compact" ItemsSource="{Binding AvailablePorts}" SelectedItem="{Binding SelectedPort, Mode=TwoWay}"
+                        IsEnabled="{Binding IsDisconnected}" PlaceholderText="选择串口设备" Tag="{Binding}" DropDownOpened="PortComboBox_DropDownOpened">
+                <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis"/></DataTemplate></ComboBox.ItemTemplate>
               </ComboBox>
-              <TextBlock Grid.Column="3" Text="波特率" VerticalAlignment="Center" Foreground="{DynamicResource AppMutedBrush}"/>
-              <ComboBox Grid.Column="4" Classes="ad-compact" ItemsSource="{Binding BaudRates}" SelectedItem="{Binding BaudRate, Mode=TwoWay}"
-                        IsEnabled="{Binding IsDisconnected}"/>
-              <TextBlock Grid.Column="5" Text="{Binding StatusText}" Foreground="{DynamicResource AppMutedBrush}"
-                         Margin="10,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-              <Button Grid.Column="6" Classes="ad-icon" Content="↻" ToolTip.Tip="刷新串口" Tag="{Binding}" Click="RefreshPorts_Click"/>
-              <Button Grid.Column="7" Classes="ad-icon" Content="⚙" ToolTip.Tip="串口详细参数" Tag="{Binding}" Click="ToggleSettings_Click"/>
-              <Button Grid.Column="8" Classes="ad-accent" Content="{Binding ConnectionButtonText}" Tag="{Binding}" IsEnabled="{Binding !IsBusy}"
-                      Click="ToggleConnection_Click"/>
+              <ComboBox Grid.Column="1" Classes="ad-compact" ItemsSource="{Binding BaudRates}" SelectedItem="{Binding BaudRate, Mode=TwoWay}" IsEnabled="{Binding IsDisconnected}" ToolTip.Tip="波特率"/>
+              <Button Grid.Column="2" Content="刷新" Tag="{Binding}" Click="RefreshPorts_Click"/>
+              <Button Grid.Column="3" Content="参数" Tag="{Binding}" Click="ToggleSettings_Click"/>
+              <Button Grid.Column="4" Classes="ad-accent" Content="{Binding ConnectionButtonText}" Tag="{Binding}" IsEnabled="{Binding !IsBusy}" Click="ToggleConnection_Click"/>
             </Grid>
-
             <Border Classes="ad-section-card" IsVisible="{Binding IsSettingsExpanded}" Padding="10,8">
               <UniformGrid Columns="4" Rows="1">
                 <StackPanel Margin="4,0">
@@ -94,208 +70,151 @@
               </UniformGrid>
             </Border>
 
-            <Border Classes="ad-section-card">
-              <StackPanel>
-                <Button Classes="ad-section-header" Tag="{Binding}" Click="ToggleReceiveSection_Click">
-                  <Grid ColumnDefinitions="Auto,*,Auto">
-                    <TextBlock Text="⌄" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Column="1" Text="接收数据" FontWeight="SemiBold" Margin="8,0" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Column="2" Text="{Binding RxBytes, StringFormat='{}{0} B'}" FontSize="11" Foreground="{DynamicResource AppMutedBrush}" VerticalAlignment="Center"/>
-                  </Grid>
-                </Button>
-                <StackPanel IsVisible="{Binding IsReceiveExpanded}" Margin="9,0,9,9" Spacing="7">
-                  <Grid ColumnDefinitions="Auto,Auto,12,Auto,12,Auto,*,150,Auto">
-                    <Border Classes="ad-segmented">
-                      <StackPanel Orientation="Horizontal">
-                        <Button Classes="ad-segment-item" Classes.selected="{Binding IsTextMode}" Content="文本" Tag="{Binding}" Click="TextMode_Click"/>
-                        <Button Classes="ad-segment-item" Classes.selected="{Binding IsHexMode}" Content="HEX" Tag="{Binding}" Click="HexMode_Click"/>
-                      </StackPanel>
-                    </Border>
-                    <TextBlock Grid.Column="2"/>
-                    <ToggleSwitch Grid.Column="3" IsChecked="{Binding ShowTimestamp, Mode=TwoWay}" OnContent="时间戳" OffContent="时间戳"/>
-                    <ToggleSwitch Grid.Column="5" IsChecked="{Binding AutoScroll, Mode=TwoWay}" OnContent="自动滚动" OffContent="自动滚动"/>
-                    <TextBox Grid.Column="7" Classes="ad-compact" Text="{Binding SearchText, Mode=TwoWay}" PlaceholderText="搜索或过滤"/>
-                    <Button Grid.Column="8" Classes="ad-icon" Content="⌫" ToolTip.Tip="清空日志" Tag="{Binding}" Click="ClearLogs_Click"/>
-                  </Grid>
-                  <TextBox Classes="console" Height="{Binding ReceiveAreaHeight}" Text="{Binding ReceiveText, Mode=OneWay}" Tag="{Binding}"
-                           IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
-                           ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+
+          </StackPanel>
+          <Grid Grid.Row="1" RowDefinitions="Auto,*" RowSpacing="8">
+            <WrapPanel>
+              <TextBlock Text="通信日志" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,14,6"/>
+              <Border Classes="ad-segmented" Margin="0,0,12,6">
+                <StackPanel Orientation="Horizontal">
+                  <Button Classes="ad-segment-item" Classes.selected="{Binding IsTextMode}" Content="文本" Tag="{Binding}" Click="TextMode_Click"/>
+                  <Button Classes="ad-segment-item" Classes.selected="{Binding IsHexMode}" Content="HEX" Tag="{Binding}" Click="HexMode_Click"/>
                 </StackPanel>
-              </StackPanel>
-            </Border>
-
-            <Border Classes="ad-section-card">
-              <StackPanel>
-                <Button Classes="ad-section-header" Tag="{Binding}" Click="ToggleSendSection_Click">
-                  <Grid ColumnDefinitions="Auto,*">
-                    <TextBlock Text="⌄" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Column="1" Text="发送数据" FontWeight="SemiBold" Margin="8,0" VerticalAlignment="Center"/>
-                  </Grid>
-                </Button>
-                <StackPanel IsVisible="{Binding IsSendExpanded}" Margin="9,0,9,9" Spacing="7">
-                  <TextBox Classes="console" Height="52" Text="{Binding SendText, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap"/>
-                  <Grid ColumnDefinitions="Auto,8,100,8,84,*,Auto,80,Auto,86">
-                    <Border Classes="ad-segmented">
-                      <StackPanel Orientation="Horizontal">
-                        <Button Classes="ad-segment-item" Classes.selected="{Binding IsTextMode}" Content="文本" Tag="{Binding}" Click="TextMode_Click"/>
-                        <Button Classes="ad-segment-item" Classes.selected="{Binding IsHexMode}" Content="HEX" Tag="{Binding}" Click="HexMode_Click"/>
-                      </StackPanel>
-                    </Border>
-                    <ComboBox Grid.Column="2" Classes="ad-compact" ItemsSource="{Binding EncodingChoices}" SelectedItem="{Binding EncodingName, Mode=TwoWay}"/>
-                    <ComboBox Grid.Column="4" Classes="ad-compact" ItemsSource="{Binding LineEndingChoices}" SelectedItem="{Binding LineEnding, Mode=TwoWay}"/>
-                    <CheckBox Grid.Column="6" Content="循环" IsChecked="{Binding LoopSendEnabled, Mode=TwoWay}" VerticalAlignment="Center"/>
-                    <NumericUpDown Grid.Column="7" Height="32" Minimum="50" Maximum="60000" Increment="50" Value="{Binding CycleIntervalMs, Mode=TwoWay}" FormatString="0 ms"/>
-                    <TextBlock Grid.Column="8"/>
-                    <Button Grid.Column="9" Classes="ad-accent" Content="发送" Tag="{Binding}" Click="Send_Click"/>
-                  </Grid>
+              </Border>
+              <CheckBox Content="时间戳" IsChecked="{Binding ShowTimestamp, Mode=TwoWay}" Margin="0,0,12,6"/>
+              <CheckBox Content="自动滚动" IsChecked="{Binding AutoScroll, Mode=TwoWay}" Margin="0,0,12,6"/>
+              <TextBox Classes="ad-compact" Width="150" Text="{Binding SearchText, Mode=TwoWay}" PlaceholderText="过滤日志内容" Margin="0,0,8,6"/>
+              <Button Content="清空日志" Tag="{Binding}" Click="ClearLogs_Click" Margin="0,0,0,6"/>
+            </WrapPanel>
+            <TextBox Grid.Row="1" Classes="console" Text="{Binding ReceiveText, Mode=OneWay}" Tag="{Binding}"
+                     IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" VerticalAlignment="Stretch"
+                     ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+          </Grid>
+          <StackPanel Grid.Row="2" Spacing="8">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+            <WrapPanel>
+              <TextBlock Text="发送数据" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,14,6"/>
+              <Border Classes="ad-segmented" Margin="0,0,12,6">
+                <StackPanel Orientation="Horizontal">
+                  <Button Classes="ad-segment-item" Classes.selected="{Binding IsSendTextMode}" Content="文本" Tag="{Binding}" Click="SendTextMode_Click"/>
+                  <Button Classes="ad-segment-item" Classes.selected="{Binding IsSendHexMode}" Content="HEX" Tag="{Binding}" Click="SendHexMode_Click"/>
                 </StackPanel>
+              </Border>
+              <ComboBox Classes="ad-compact" Width="100" ItemsSource="{Binding EncodingChoices}" SelectedItem="{Binding EncodingName, Mode=TwoWay}" ToolTip.Tip="文本编码（收发共用）" Margin="0,0,8,6"/>
+              <ComboBox Classes="ad-compact" Width="90" ItemsSource="{Binding LineEndingChoices}" SelectedItem="{Binding LineEnding, Mode=TwoWay}" IsEnabled="{Binding IsSendTextMode}" ToolTip.Tip="文本发送结束符" Margin="0,0,8,6"/>
+            </WrapPanel>
+              <StackPanel Grid.Column="1" IsVisible="{Binding IsSinglePortFocus}" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                <TextBlock Text="快捷指令" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,10,6"/>
+                <TextBox Width="140" Text="{Binding QuickCommandName, Mode=TwoWay}" PlaceholderText="指令名称" Margin="0,0,8,6"/>
+                <Button Content="保存当前内容" Tag="{Binding}" Click="SaveQuickCommand_Click" Margin="0,0,0,6" ToolTip.Tip="保存发送区内容与格式；同名覆盖，改名新增"/>
               </StackPanel>
-            </Border>
-
-            <Border Classes="ad-section-card">
-              <StackPanel>
-                <Button Classes="ad-section-header" Tag="{Binding}" Click="ToggleQuickCommands_Click">
-                  <Grid ColumnDefinitions="Auto,*,Auto">
-                    <TextBlock Text="›" FontSize="18" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Column="1" Text="快捷指令（4）" FontWeight="SemiBold" Margin="8,0" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Column="2" Text="可复用" Foreground="{DynamicResource AppAccentBrush}" FontSize="11" VerticalAlignment="Center"/>
-                  </Grid>
-                </Button>
-                <ItemsControl IsVisible="{Binding IsQuickCommandsExpanded}" ItemsSource="{Binding QuickCommands}" Margin="8,0,8,8">
-                  <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
-                  </ItemsControl.ItemsPanel>
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                      <Button Content="{Binding Name}" Tag="{Binding}" Padding="10,5" Margin="3" Click="QuickCommand_Click"/>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </StackPanel>
-            </Border>
-
-            <Border Classes="ad-section-card">
-              <StackPanel>
-                <Button Classes="ad-section-header" Tag="{Binding}" Click="ToggleProtocolSection_Click">
-                  <Grid ColumnDefinitions="Auto,*">
-                    <TextBlock Text="›" FontSize="18" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Column="1" Text="协议解析与统计" FontWeight="SemiBold" Margin="8,0" VerticalAlignment="Center"/>
-                  </Grid>
-                </Button>
-                <Grid IsVisible="{Binding IsProtocolExpanded}" ColumnDefinitions="1*,1*,1*,1*" Margin="12,0,12,10">
-                  <StackPanel><TextBlock Text="发送字节" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/><TextBlock Text="{Binding TxBytes}" FontWeight="SemiBold"/></StackPanel>
-                  <StackPanel Grid.Column="1"><TextBlock Text="接收字节" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/><TextBlock Text="{Binding RxBytes}" FontWeight="SemiBold"/></StackPanel>
-                  <StackPanel Grid.Column="2"><TextBlock Text="接收帧" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/><TextBlock Text="{Binding RxFrames}" FontWeight="SemiBold"/></StackPanel>
-                  <StackPanel Grid.Column="3"><TextBlock Text="错误" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/><TextBlock Text="{Binding ErrorCount}" Foreground="{DynamicResource AppDangerBrush}" FontWeight="SemiBold"/></StackPanel>
-                </Grid>
-              </StackPanel>
-            </Border>
-
-            <Grid ColumnDefinitions="*,Auto" Margin="4,0">
-              <TextBlock Text="{Binding StatusText}" FontSize="11" Foreground="{DynamicResource AppMutedBrush}" TextTrimming="CharacterEllipsis"/>
-              <TextBlock Grid.Column="1" Text="{Binding StatisticsText}" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/>
+            </Grid>
+            <TextBox Classes="console" Height="76" Text="{Binding SendText, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap"
+                     PlaceholderText="输入要发送的内容 · Ctrl / ⌘ + Enter 发送" Tag="{Binding}" KeyDown="SendInput_KeyDown"/>
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+              <WrapPanel>
+                <CheckBox Content="定时发送" IsChecked="{Binding LoopSendEnabled, Mode=TwoWay}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <NumericUpDown Width="125" Minimum="50" Maximum="60000" Increment="50" Value="{Binding CycleIntervalMs, Mode=TwoWay}" FormatString="0" ToolTip.Tip="发送间隔（毫秒），下次启动生效"/>
+                <TextBlock Text="毫秒" VerticalAlignment="Center" Margin="6,0" Foreground="{DynamicResource AppMutedBrush}"/>
+              </WrapPanel>
+              <Button Grid.Column="1" Classes="ad-accent" MinWidth="110" Content="{Binding SendButtonText}" IsEnabled="{Binding CanSend}" Tag="{Binding}" Click="Send_Click"/>
             </Grid>
           </StackPanel>
+          <Border Grid.Row="3" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,1,0,0" Padding="0,10,0,0">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+              <TextBlock Text="{Binding StatusText}" ToolTip.Tip="{Binding StatusText}" Foreground="{DynamicResource AppMutedBrush}" TextTrimming="CharacterEllipsis"/>
+              <TextBlock Grid.Column="1" Text="{Binding StatisticsText}" Foreground="{DynamicResource AppMutedBrush}" FontSize="11"/>
+            </Grid>
+          </Border>
         </Grid>
       </Border>
     </DataTemplate>
-
     <DataTemplate x:Key="TilePortCardTemplate" x:DataType="viewModels:SerialPortSessionViewModel">
-      <Grid Width="{Binding TileWidth}" Margin="7">
-        <ContentControl Content="{Binding}" ContentTemplate="{StaticResource PortCardTemplate}" Margin="0,0,8,0"/>
-        <Border Width="14" HorizontalAlignment="Right" Background="Transparent" Cursor="SizeWestEast"
-                Tag="{Binding}" ToolTip.Tip="拖动调整卡片宽度，双击恢复默认宽度"
-                PointerPressed="ResizeHandle_PointerPressed" PointerMoved="ResizeHandle_PointerMoved"
+      <Grid Width="{Binding TileWidth}" Height="{Binding WorkspaceHeight}" Margin="0,0,12,0">
+        <ContentControl Content="{Binding}" ContentTemplate="{StaticResource PortCardTemplate}" Margin="0,0,8,0" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
+        <Border Width="12" HorizontalAlignment="Right" Background="Transparent" Cursor="SizeWestEast" Tag="{Binding}"
+                ToolTip.Tip="拖动调整宽度，双击恢复" PointerPressed="ResizeHandle_PointerPressed" PointerMoved="ResizeHandle_PointerMoved"
                 PointerReleased="ResizeHandle_PointerReleased" DoubleTapped="ResizeHandle_DoubleTapped">
-          <Border Width="2" Height="64" CornerRadius="1" Background="{DynamicResource AppBorderBrush}"
-                  HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
+          <Border Width="2" Height="48" Background="{DynamicResource AppBorderBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Border>
       </Grid>
     </DataTemplate>
   </UserControl.Resources>
-
-  <Grid RowDefinitions="64,58,*,Auto">
-    <ui:PageHeader Title="串口调试助手" Subtitle="多串口设备联调工作台">
-      <Grid Margin="20,0,0,0" ColumnDefinitions="Auto,*">
-        <Border Classes="ad-status-badge connected" VerticalAlignment="Center">
-          <TextBlock Classes="ad-status-text connected" Text="{Binding ConnectedSummary}" FontWeight="SemiBold"/>
-        </Border>
-        <TextBlock Grid.Column="1" Text="{Binding WorkspaceStatus}" HorizontalAlignment="Right" VerticalAlignment="Center"
-                   Foreground="{DynamicResource AppMutedBrush}" TextTrimming="CharacterEllipsis" MaxWidth="420"/>
-      </Grid>
+  <Grid RowDefinitions="64,Auto,*,Auto">
+    <ui:PageHeader Title="串口助手" Subtitle="连接设备，专注收发调试">
+      <TextBlock Text="{Binding ConnectedSummary}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{DynamicResource AppMutedBrush}"/>
     </ui:PageHeader>
-
-    <Border Grid.Row="1" Background="{DynamicResource AppSurfaceBrush}" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1">
-      <Grid Margin="20,0" ColumnDefinitions="Auto,12,Auto,*,Auto,10,Auto,10,Auto,10,Auto">
-        <TextBlock Text="工作区：水平平铺" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
-        <Button Grid.Column="2" Content="＋ 添加串口" Padding="13,7" VerticalAlignment="Center" Click="AddPort_Click"/>
-        <TextBlock Grid.Column="3" Text="向右无限扩展 · 拖动卡片右侧边缘调整宽度" Margin="14,0"
-                   Foreground="{DynamicResource AppMutedBrush}" VerticalAlignment="Center"/>
-        <Border Grid.Column="4" Classes="ad-segmented" VerticalAlignment="Center">
+    <Border Grid.Row="1" Background="{DynamicResource AppSurfaceBrush}" Padding="16,10">
+      <WrapPanel>
+        <Button Classes="ad-accent" Content="＋ 添加串口" Click="AddPort_Click" Margin="0,0,16,4"/>
+        <Border Classes="ad-segmented" Margin="0,0,16,4">
           <StackPanel Orientation="Horizontal">
-            <Button Classes="ad-segment-item" Classes.selected="{Binding IsTileLayout}" Content="▦  平铺" Click="TileLayout_Click"/>
-            <Button Classes="ad-segment-item" Classes.selected="{Binding IsTabLayout}" Content="☰  标签" Click="TabLayout_Click"/>
+            <Button Classes="ad-segment-item" Classes.selected="{Binding IsTabLayout}" Content="单口专注" Click="TabLayout_Click"/>
+            <Button Classes="ad-segment-item" Classes.selected="{Binding IsTileLayout}" Content="多口对照" Click="TileLayout_Click"/>
           </StackPanel>
         </Border>
-        <Button Grid.Column="6" Padding="12,7" VerticalAlignment="Center" Click="ToggleLink_Click">
-          <StackPanel Orientation="Horizontal" Spacing="6">
-            <TextBlock Text="↔"/>
-            <TextBlock Text="{Binding LinkedButtonText}"/>
-          </StackPanel>
-        </Button>
-        <Button Grid.Column="8" Content="⌃  全部收起" Padding="12,7" VerticalAlignment="Center" Click="CollapseAll_Click"/>
-        <Button Grid.Column="10" Content="▣  保存工作区" Padding="12,7" VerticalAlignment="Center" Click="SaveWorkspace_Click"/>
-      </Grid>
+        <Button Content="{Binding LinkedButtonText}" Click="ToggleLink_Click" ToolTip.Tip="开启后，同一数据也发送到其他已连接串口" Margin="0,0,8,4"/>
+        <Button Content="保存配置" Click="SaveWorkspace_Click" Margin="0,0,0,4"/>
+      </WrapPanel>
     </Border>
-
-    <Grid Grid.Row="2">
-      <ScrollViewer x:Name="TileScrollViewer" IsVisible="{Binding IsTileLayout}" Margin="7"
-                    VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-                    SizeChanged="TileScrollViewer_SizeChanged">
-        <ItemsControl Classes="port-grid" ItemsSource="{Binding Sessions}" ItemTemplate="{StaticResource TilePortCardTemplate}">
-          <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
-          </ItemsControl.ItemsPanel>
+    <Grid Grid.Row="2" SizeChanged="Workspace_SizeChanged">
+      <ScrollViewer x:Name="TileScrollViewer" IsVisible="{Binding IsTileLayout}" Margin="16,12" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+        <ItemsControl ItemsSource="{Binding Sessions}" ItemTemplate="{StaticResource TilePortCardTemplate}">
+          <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
         </ItemsControl>
       </ScrollViewer>
-
-      <TabControl IsVisible="{Binding IsTabLayout}" ItemsSource="{Binding Sessions}" ContentTemplate="{StaticResource PortCardTemplate}" Margin="12">
+      <TabControl IsVisible="{Binding IsTabLayout}" ItemsSource="{Binding Sessions}" SelectedItem="{Binding SelectedSession, Mode=TwoWay}" Margin="16,8,16,12"
+                  HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
         <TabControl.ItemTemplate>
-          <DataTemplate><TextBlock Text="{Binding Title}"/></DataTemplate>
+          <DataTemplate><StackPanel Orientation="Horizontal" Spacing="8"><TextBlock Text="{Binding Title}"/><TextBlock Text="{Binding ConnectionStatusText}" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/></StackPanel></DataTemplate>
         </TabControl.ItemTemplate>
+        <TabControl.ContentTemplate>
+          <DataTemplate>
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+              <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" Margin="0,12,0,0" SizeChanged="FocusedWorkspace_SizeChanged">
+                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource PortCardTemplate}" Height="{Binding WorkspaceHeight}"
+                                HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
+                <Border Grid.Column="1" Classes="ad-workspace-card" Width="280" Height="{Binding WorkspaceHeight}" Margin="12,0,0,0" Padding="14">
+                  <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="10">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Text="已保存的指令" FontSize="16" FontWeight="SemiBold"/>
+                      <TextBlock Grid.Column="1" Text="{Binding QuickCommands.Count, StringFormat='{}{0} 条'}" Foreground="{DynamicResource AppMutedBrush}" VerticalAlignment="Center"/>
+                    </Grid>
+                    <TextBlock Grid.Row="1" Text="选择指令后填入左侧发送区" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/>
+                    <Grid Grid.Row="3">
+                      <ListBox ItemsSource="{Binding QuickCommands}" SelectedItem="{Binding SelectedQuickCommand, Mode=TwoWay}"
+                               Classes="saved-commands" Background="Transparent" BorderThickness="0"
+                               ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                        <ListBox.ItemTemplate>
+                          <DataTemplate>
+                            <StackPanel Spacing="7" Margin="2,8" ToolTip.Tip="{Binding Payload}">
+                              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                              <TextBlock Text="{Binding Payload}" FontFamily="Menlo,Consolas,monospace" FontSize="11"
+                                         Foreground="{DynamicResource AppMutedBrush}" TextTrimming="CharacterEllipsis"/>
+                              <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="HEX" IsVisible="{Binding IsHexMode}" FontSize="10" Foreground="{DynamicResource AppMutedBrush}"/>
+                                <TextBlock Text="文本" IsVisible="{Binding !IsHexMode}" FontSize="10" Foreground="{DynamicResource AppMutedBrush}"/>
+                                <TextBlock Text="{Binding EncodingName}" IsVisible="{Binding !IsHexMode}" FontSize="10" Foreground="{DynamicResource AppMutedBrush}"/>
+                              </StackPanel>
+                            </StackPanel>
+                          </DataTemplate>
+                        </ListBox.ItemTemplate>
+                      </ListBox>
+                      <TextBlock Text="还没有保存的指令。&#10;在发送区输入内容并命名保存。" IsVisible="{Binding !QuickCommands.Count}" TextWrapping="Wrap"
+                                 Foreground="{DynamicResource AppMutedBrush}" Margin="8,16" IsHitTestVisible="False"/>
+                    </Grid>
+                    <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                      <Button Classes="ad-accent" Content="填入发送区" HorizontalAlignment="Stretch" IsEnabled="{Binding HasSelectedQuickCommand}" Tag="{Binding}" Click="LoadQuickCommand_Click"/>
+                      <Button Grid.Column="1" Content="删除" IsEnabled="{Binding HasSelectedQuickCommand}" Tag="{Binding}" Click="RemoveQuickCommand_Click"/>
+                    </Grid>
+                  </Grid>
+                </Border>
+              </Grid>
+            </ScrollViewer>
+          </DataTemplate>
+        </TabControl.ContentTemplate>
       </TabControl>
     </Grid>
-
-    <Border Grid.Row="3" Classes="ad-card" Margin="14,4,14,14">
-      <StackPanel>
-        <Button Classes="ad-section-header" HorizontalContentAlignment="Stretch" Click="ToggleOrchestration_Click">
-          <Grid ColumnDefinitions="Auto,Auto,12,Auto,*,Auto" HorizontalAlignment="Stretch">
-            <TextBlock Text="⠿" FontSize="18" Foreground="{DynamicResource AppMutedBrush}" VerticalAlignment="Center"/>
-            <TextBlock Grid.Column="1" Text="联调编排" FontSize="17" FontWeight="SemiBold" Margin="8,0" VerticalAlignment="Center"/>
-            <Border Grid.Column="3" Background="{DynamicResource AppAccentSurfaceBrush}" CornerRadius="10" Padding="8,3">
-              <TextBlock Text="共享卡片" Foreground="{DynamicResource AppAccentBrush}" FontSize="11"/>
-            </Border>
-            <TextBlock Grid.Column="5" Text="⌃" VerticalAlignment="Center"/>
-          </Grid>
-        </Button>
-        <StackPanel IsVisible="{Binding IsOrchestrationExpanded}" Margin="16,0,16,12" Spacing="10">
-          <Grid ColumnDefinitions="1.2*,34,1.2*,34,1.2*,34,1*,20,132">
-            <Border Classes="ad-section-card" Padding="12,9"><TextBlock Text="①  端口 A 发送启动命令"/></Border>
-            <TextBlock Grid.Column="1" Text="→" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource AppMutedBrush}"/>
-            <Border Grid.Column="2" Classes="ad-section-card" Padding="12,9"><TextBlock Text="②  等待响应 ≤ 500 ms"/></Border>
-            <TextBlock Grid.Column="3" Text="→" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource AppMutedBrush}"/>
-            <Border Grid.Column="4" Classes="ad-section-card" Padding="12,9"><TextBlock Text="③  端口 B 读取数据"/></Border>
-            <TextBlock Grid.Column="5" Text="→" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource AppMutedBrush}"/>
-            <Border Grid.Column="6" Classes="ad-section-card" Padding="12,9"><TextBlock Text="④  完成联调"/></Border>
-            <Button Grid.Column="8" Classes="ad-accent" Content="运行联调" IsEnabled="{Binding !IsBusy}" Click="RunOrchestration_Click"/>
-          </Grid>
-          <StackPanel Orientation="Horizontal" Spacing="22">
-            <TextBlock Text="共享快捷指令" Foreground="{DynamicResource AppAccentBrush}" FontWeight="SemiBold"/>
-            <TextBlock Text="全局日志" Foreground="{DynamicResource AppMutedBrush}"/>
-            <TextBlock Text="波形对比" Foreground="{DynamicResource AppMutedBrush}"/>
-          </StackPanel>
-        </StackPanel>
-      </StackPanel>
-    </Border>
+    <TextBlock Grid.Row="3" Text="{Binding WorkspaceStatus}" Margin="18,0,18,10" FontSize="11" Foreground="{DynamicResource AppMutedBrush}" TextTrimming="CharacterEllipsis"/>
   </Grid>
 </UserControl>

@@ -11,7 +11,7 @@ namespace SerialDebugger.Module.Views;
 
 public partial class SerialDebuggerView : UserControl
 {
-    private const double ReceiveAreaGrowthBaseline = 650;
+    private double _workspaceHeight = 600;
     private readonly SerialDebuggerViewModel _viewModel;
     private bool _disposed;
     private SerialPortSessionViewModel? _resizingSession;
@@ -55,7 +55,7 @@ public partial class SerialDebuggerView : UserControl
             foreach (SerialPortSessionViewModel session in e.NewItems)
             {
                 AttachSession(session);
-                UpdateReceiveAreaHeight(session, TileScrollViewer.Bounds.Height);
+                session.WorkspaceHeight = _workspaceHeight;
             }
             if (_viewModel.IsTileLayout)
                 Dispatcher.UIThread.Post(TileScrollViewer.ScrollToEnd, DispatcherPriority.Background);
@@ -120,16 +120,39 @@ public partial class SerialDebuggerView : UserControl
             session.TileWidth = SerialPortSessionViewModel.DefaultTileWidth;
     }
 
-    private void TileScrollViewer_SizeChanged(object? sender, SizeChangedEventArgs e)
+    private void FocusedWorkspace_SizeChanged(object? sender, SizeChangedEventArgs e)
     {
-        foreach (var session in _viewModel.Sessions)
-            UpdateReceiveAreaHeight(session, e.NewSize.Height);
+        if (sender is not Grid grid || grid.Children[1] is not Border sidebar) return;
+        var sideBySide = e.NewSize.Width >= 940;
+        Grid.SetColumn(sidebar, sideBySide ? 1 : 0);
+        Grid.SetRow(sidebar, sideBySide ? 0 : 1);
+        sidebar.Width = sideBySide ? 280 : double.NaN;
+        sidebar.Margin = sideBySide ? new Avalonia.Thickness(12, 0, 0, 0) : new Avalonia.Thickness(0, 12, 0, 0);
+        sidebar.Height = sideBySide && grid.DataContext is SerialPortSessionViewModel session ? session.WorkspaceHeight : 300;
     }
 
-    private static void UpdateReceiveAreaHeight(SerialPortSessionViewModel session, double workspaceHeight)
+    private void Workspace_SizeChanged(object? sender, SizeChangedEventArgs e)
     {
-        var growth = Math.Max(0, workspaceHeight - ReceiveAreaGrowthBaseline);
-        session.ReceiveAreaHeight = SerialPortSessionViewModel.DefaultReceiveAreaHeight + growth;
+        _workspaceHeight = Math.Max(540, e.NewSize.Height - 72);
+        foreach (var session in _viewModel.Sessions) session.WorkspaceHeight = _workspaceHeight;
+    }
+
+    private void SendHexMode_Click(object? sender, RoutedEventArgs e)
+    {
+        if (GetSession(sender) is { } session) session.IsSendHexMode = true;
+    }
+
+    private void SendTextMode_Click(object? sender, RoutedEventArgs e)
+    {
+        if (GetSession(sender) is { } session) session.IsSendHexMode = false;
+    }
+
+    private async void SendInput_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter || (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta)) == 0) return;
+        if (sender is not TextBox { Tag: SerialPortSessionViewModel session } || !session.CanSend) return;
+        e.Handled = true;
+        await _viewModel.SendFromAsync(session);
     }
 
     private void RefreshPorts_Click(object? sender, RoutedEventArgs e) => GetSession(sender)?.RefreshPorts();
@@ -186,6 +209,18 @@ public partial class SerialDebuggerView : UserControl
         if (GetSession(sender) is { } session) await _viewModel.SendFromAsync(session);
     }
 
+    private void LoadQuickCommand_Click(object? sender, RoutedEventArgs e) => GetSession(sender)?.LoadQuickCommand();
+
+    private async void SaveQuickCommand_Click(object? sender, RoutedEventArgs e)
+    {
+        if (GetSession(sender) is { } session && session.SaveQuickCommand()) await _viewModel.SaveAsync();
+    }
+
+    private async void RemoveQuickCommand_Click(object? sender, RoutedEventArgs e)
+    {
+        if (GetSession(sender) is { } session && session.RemoveQuickCommand()) await _viewModel.SaveAsync();
+    }
+
     private async void QuickCommand_Click(object? sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: QuickCommand command } button) return;
@@ -209,7 +244,7 @@ public partial class SerialDebuggerView : UserControl
         {
             var console = this.GetVisualDescendants()
                 .OfType<TextBox>()
-                .FirstOrDefault(textBox => textBox.Classes.Contains("console") && ReferenceEquals(textBox.Tag, session));
+                .FirstOrDefault(textBox => textBox.IsEffectivelyVisible && textBox.Classes.Contains("console") && ReferenceEquals(textBox.Tag, session));
             if (console is not null) console.CaretIndex = console.Text?.Length ?? 0;
         }, DispatcherPriority.Background);
     }

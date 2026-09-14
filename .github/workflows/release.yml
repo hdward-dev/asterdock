@@ -86,10 +86,6 @@ jobs:
         shell: pwsh
         run: ./scripts/package-windows.ps1 -RuntimeIdentifier ${{ matrix.rid }} -Version ${{ needs.prepare.outputs.version }}
 
-      - name: Package lightweight applications
-        shell: pwsh
-        run: ./scripts/package-apps.ps1 -RuntimeIdentifier ${{ matrix.rid }}
-
       - name: Upload Windows packages
         uses: actions/upload-artifact@v6
         with:
@@ -124,15 +120,40 @@ jobs:
       - name: Build DMG
         run: bash scripts/package-macos-release.sh ${{ matrix.rid }} ${{ needs.prepare.outputs.version }}
 
-      - name: Package lightweight applications
-        shell: pwsh
-        run: ./scripts/package-apps.ps1 -RuntimeIdentifier ${{ matrix.rid }}
-
       - name: Upload macOS packages
         uses: actions/upload-artifact@v6
         with:
           name: release-${{ matrix.rid }}
           path: artifacts/release/${{ matrix.rid }}/*
+          if-no-files-found: error
+
+  package-applications:
+    name: Package lightweight applications
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Restore dependencies
+        run: dotnet restore AsterDock.slnx
+
+      - name: Package universal lightweight applications
+        shell: pwsh
+        run: ./scripts/package-apps.ps1
+
+      - name: Upload lightweight applications
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-applications
+          path: artifacts/release/apps/*
           if-no-files-found: error
 
   publish-release:
@@ -141,6 +162,7 @@ jobs:
       - prepare
       - package-windows
       - package-macos
+      - package-applications
     if: needs.prepare.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -162,4 +184,4 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "AsterDock Nightly $RELEASE_DATE" \
-            --notes "自动构建：Windows x64/arm64 MSI、macOS x64/arm64 DMG，以及各平台独立轻应用包。macOS 包尚未签名和公证。"
+            --notes "自动构建：Windows x64/arm64 MSI、macOS x64/arm64 DMG，以及适用于所有受支持宿主的通用轻应用包。macOS 包尚未签名和公证。"

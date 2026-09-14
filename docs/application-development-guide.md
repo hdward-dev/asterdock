@@ -435,6 +435,8 @@ else if (OperatingSystem.IsMacOS())
 
 `.appbundle` 是 ZIP 格式的应用包。压缩包根目录必须直接包含 `app.json`，不能再嵌套一层应用文件夹。
 
+官方发布的轻应用采用通用包：同一个 `.appbundle` 可由所有受支持的 AsterDock 宿主加载。应用如包含按系统或 CPU 架构区分的原生依赖，应把这些文件一并放入包内，并在运行时选择当前宿主对应的文件；不要为每个设备分别发布应用包。
+
 正确：
 
 ```text

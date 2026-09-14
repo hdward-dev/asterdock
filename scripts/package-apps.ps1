@@ -1,13 +1,11 @@
 param(
-    [ValidateSet("win-x64", "win-arm64", "osx-x64", "osx-arm64")]
-    [string]$RuntimeIdentifier,
     [string]$OutputDirectory = ""
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
-    $OutputDirectory = Join-Path $repoRoot "artifacts/release/$RuntimeIdentifier"
+    $OutputDirectory = Join-Path $repoRoot "artifacts/release/apps"
 }
 
 $applications = @(
@@ -26,14 +24,12 @@ foreach ($application in $applications) {
     $projectPath = Join-Path $projectDirectory "$($application.Project).csproj"
 
     dotnet build $projectPath `
-        --configuration Release `
-        --runtime $RuntimeIdentifier `
-        --self-contained false
+        --configuration Release
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-    $sourceDirectory = Join-Path $projectDirectory "bin/Release/net10.0/$RuntimeIdentifier"
-    $bundlePath = Join-Path $OutputDirectory "AsterDock-App-$($application.Name)-$RuntimeIdentifier.appbundle"
-    $stagingDirectory = Join-Path $OutputDirectory ".staging-$($application.Name)-$RuntimeIdentifier"
+    $sourceDirectory = Join-Path $projectDirectory "bin/Release/net10.0"
+    $bundlePath = Join-Path $OutputDirectory "AsterDock-App-$($application.Name).appbundle"
+    $stagingDirectory = Join-Path $OutputDirectory ".staging-$($application.Name)"
     if (Test-Path -LiteralPath $bundlePath) {
         [System.IO.File]::Delete($bundlePath)
     }
@@ -43,7 +39,11 @@ foreach ($application in $applications) {
 
     try {
         New-Item -ItemType Directory -Path $stagingDirectory | Out-Null
-        Copy-Item -Path (Join-Path $sourceDirectory "*") -Destination $stagingDirectory -Recurse
+        # A developer machine may retain sibling RID build directories below
+        # bin/Release/net10.0. They are not part of the portable module output.
+        Get-ChildItem -Path $sourceDirectory | Where-Object {
+            $_.Name -notmatch '^(win|osx)-'
+        } | Copy-Item -Destination $stagingDirectory -Recurse
 
         # These assemblies and native assets are supplied by the AsterDock host.
         $sharedAssemblyPatterns = @(
@@ -59,6 +59,11 @@ foreach ($application in $applications) {
         Get-ChildItem -Path $stagingDirectory -File -Filter "libSkiaSharp.*" | Remove-Item -Force
         Get-ChildItem -Path $stagingDirectory -Filter "*.pdb" -File -Recurse | Remove-Item -Force
         Remove-Item -LiteralPath (Join-Path $stagingDirectory "runtimes") -Recurse -Force -ErrorAction SilentlyContinue
+        # Android Screen selects its packaged FFmpeg executable by OS and CPU at runtime.
+        # Linux is not a supported AsterDock host platform, so do not bloat the shared
+        # bundle with the package's Linux decoder assets.
+        Get-ChildItem -Path (Join-Path $stagingDirectory "ffmpeg") -Directory -Filter "linux-*" -ErrorAction SilentlyContinue |
+            Remove-Item -Recurse -Force
 
         [System.IO.Compression.ZipFile]::CreateFromDirectory(
             $stagingDirectory,

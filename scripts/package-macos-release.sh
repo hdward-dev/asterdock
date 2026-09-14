@@ -38,9 +38,16 @@ plutil -replace CFBundleShortVersionString -string "$VERSION" "$APP_DIRECTORY/Co
 cp -R "$PUBLISH_DIRECTORY/"* "$APP_DIRECTORY/Contents/MacOS/"
 chmod +x "$APP_DIRECTORY/Contents/MacOS/AsterDock.Host"
 
+# hdiutil occasionally underestimates the temporary HFS image size for a
+# self-contained single-file app on GitHub's Intel macOS runners. Reserve an
+# additional 128 MiB so copying the bundle into the mounted image cannot fail
+# before UDZO compression begins.
+APP_SIZE_KB="$(du -sk "$APP_DIRECTORY" | awk '{print $1}')"
+IMAGE_SIZE_KB=$((APP_SIZE_KB + 131072))
 hdiutil create \
   -volname "AsterDock" \
   -srcfolder "$APP_DIRECTORY" \
+  -size "${IMAGE_SIZE_KB}k" \
   -ov \
   -format UDZO \
   "$DMG_PATH"

@@ -6,9 +6,9 @@ namespace InvoicePrinter.Core.Services;
 
 public sealed class InvoiceLoader
 {
-    private const byte BackgroundThreshold = 245;
-    private const double FullPageContentWidthRatio = 0.6;
-    private const double FullPageContentHeightRatio = 0.72;
+    // A4 (including a tightly cropped half-page invoice) is roughly 1.41:1.
+    // Only genuinely receipt-like, tall documents should bypass the two-up layout.
+    private const double LongReceiptAspectRatio = 1.75;
 
     private static readonly HashSet<string> Supported = new(StringComparer.OrdinalIgnoreCase)
     { ".pdf", ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff" };
@@ -46,38 +46,8 @@ public sealed class InvoiceLoader
     private static InvoicePage CreateInvoicePage(string path, string displayName, SKBitmap bitmap, int pageIndex = 0) =>
         new(path, displayName, EncodePng(bitmap), pageIndex, OccupiesFullPage(bitmap));
 
-    private static bool OccupiesFullPage(SKBitmap bitmap)
-    {
-        var sampleStep = Math.Max(1, Math.Min(bitmap.Width, bitmap.Height) / 500);
-        var minX = bitmap.Width;
-        var minY = bitmap.Height;
-        var maxX = -1;
-        var maxY = -1;
-
-        for (var y = 0; y < bitmap.Height; y += sampleStep)
-        {
-            for (var x = 0; x < bitmap.Width; x += sampleStep)
-            {
-                var color = bitmap.GetPixel(x, y);
-                if (color.Alpha == 0 ||
-                    color.Red >= BackgroundThreshold &&
-                    color.Green >= BackgroundThreshold &&
-                    color.Blue >= BackgroundThreshold)
-                    continue;
-
-                minX = Math.Min(minX, x);
-                minY = Math.Min(minY, y);
-                maxX = Math.Max(maxX, x);
-                maxY = Math.Max(maxY, y);
-            }
-        }
-
-        if (maxX < minX || maxY < minY) return false;
-        var contentWidthRatio = (maxX - minX + sampleStep) / (double)bitmap.Width;
-        var contentHeightRatio = (maxY - minY + sampleStep) / (double)bitmap.Height;
-        return contentWidthRatio >= FullPageContentWidthRatio &&
-               contentHeightRatio >= FullPageContentHeightRatio;
-    }
+    private static bool OccupiesFullPage(SKBitmap bitmap) =>
+        bitmap.Width > 0 && bitmap.Height / (double)bitmap.Width >= LongReceiptAspectRatio;
 
     private static byte[] EncodePng(SKBitmap bitmap)
     {

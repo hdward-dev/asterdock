@@ -8,12 +8,12 @@ namespace AsterDock.Host.Modules;
 public sealed class LoadedApplication : IDisposable
 {
     private readonly IApplicationModule _module;
-    private readonly AppModuleLoadContext _loadContext;
+    private readonly AppModuleLoadContext? _loadContext;
     private Control? _view;
     private Geometry? _iconGeometry;
     private ApplicationContext? _context;
 
-    internal LoadedApplication(AppManifest manifest, string directory, IApplicationModule module, AppModuleLoadContext loadContext)
+    internal LoadedApplication(AppManifest manifest, string directory, IApplicationModule module, AppModuleLoadContext? loadContext)
     {
         Manifest = manifest;
         Directory = directory;
@@ -65,7 +65,7 @@ public sealed class LoadedApplication : IDisposable
         {
             _context?.Dispose();
             _context = null;
-            _loadContext.Unload();
+            _loadContext?.Unload();
         }
     }
 

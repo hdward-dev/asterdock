@@ -13,5 +13,10 @@
     <Project Path="src/NetworkAccelerator.Core/NetworkAccelerator.Core.csproj" />
     <Project Path="src/NetworkAccelerator.Module/NetworkAccelerator.Module.csproj" />
     <Project Path="src/SerialDebugger.Module/SerialDebugger.Module.csproj" />
+    <Project Path="src/URemote.Core/URemote.Core.csproj" />
+    <Project Path="src/URemote.Linux/URemote.Linux.csproj" />
+    <Project Path="src/URemote.Media/URemote.Media.csproj" />
+    <Project Path="src/URemote.Host/URemote.Host.csproj" />
+    <Project Path="src/URemote.Module/URemote.Module.csproj" />
   </Folder>
 </Solution>

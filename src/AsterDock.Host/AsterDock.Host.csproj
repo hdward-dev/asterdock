@@ -13,14 +13,13 @@
     <BundledModuleOutput>$(MSBuildProjectDirectory)\..\InvoicePrinter.Module\bin\$(Configuration)\net10.0</BundledModuleOutput>
     <BundledDeviceModuleProject>$(MSBuildProjectDirectory)\..\DeviceInformation.Module\DeviceInformation.Module.csproj</BundledDeviceModuleProject>
     <BundledDeviceModuleOutput>$(MSBuildProjectDirectory)\..\DeviceInformation.Module\bin\$(Configuration)\net10.0</BundledDeviceModuleOutput>
-    <BundledHomeModuleProject>$(MSBuildProjectDirectory)\..\Home.Module\Home.Module.csproj</BundledHomeModuleProject>
-    <BundledHomeModuleOutput>$(MSBuildProjectDirectory)\..\Home.Module\bin\$(Configuration)\net10.0</BundledHomeModuleOutput>
     <BundledNetworkModuleProject>$(MSBuildProjectDirectory)\..\NetworkAccelerator.Module\NetworkAccelerator.Module.csproj</BundledNetworkModuleProject>
     <BundledNetworkModuleOutput>$(MSBuildProjectDirectory)\..\NetworkAccelerator.Module\bin\$(Configuration)\net10.0</BundledNetworkModuleOutput>
     <BundledAndroidScreenModuleProject>$(MSBuildProjectDirectory)\..\AndroidScreen.Module\AndroidScreen.Module.csproj</BundledAndroidScreenModuleProject>
     <BundledAndroidScreenModuleOutput>$(MSBuildProjectDirectory)\..\AndroidScreen.Module\bin\$(Configuration)\net10.0</BundledAndroidScreenModuleOutput>
     <BundledSerialDebuggerModuleProject>$(MSBuildProjectDirectory)\..\SerialDebugger.Module\SerialDebugger.Module.csproj</BundledSerialDebuggerModuleProject>
     <BundledSerialDebuggerModuleOutput>$(MSBuildProjectDirectory)\..\SerialDebugger.Module\bin\$(Configuration)\net10.0</BundledSerialDebuggerModuleOutput>
+    <BundledURemoteModuleOutput>$(MSBuildProjectDirectory)/../URemote.Module/bin/$(Configuration)/net10.0</BundledURemoteModuleOutput>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\AsterDock.Contracts\AsterDock.Contracts.csproj" />
@@ -32,9 +31,6 @@
     <ProjectReference Include="..\DeviceInformation.Module\DeviceInformation.Module.csproj"
                       Condition="'$(BundleApplications)' == 'true'" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
-    <ProjectReference Include="..\Home.Module\Home.Module.csproj"
-                      Condition="'$(BundleApplications)' == 'true'" ReferenceOutputAssembly="false" Private="false"
-                      GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
     <ProjectReference Include="..\NetworkAccelerator.Module\NetworkAccelerator.Module.csproj"
                       Condition="'$(BundleApplications)' == 'true'" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
@@ -44,12 +40,17 @@
     <ProjectReference Include="..\SerialDebugger.Module\SerialDebugger.Module.csproj"
                       Condition="'$(BundleApplications)' == 'true'" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
+    <ProjectReference Include="../URemote.Module/URemote.Module.csproj"
+                      Condition="'$(BundleApplications)' == 'true'" ReferenceOutputAssembly="false" Private="false"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
     <PackageReference Include="Avalonia" Version="12.1.0" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.0" />
   </ItemGroup>
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
+    <Compile Include="../Home.Module/**/*.cs" Exclude="../Home.Module/bin/**;../Home.Module/obj/**" LinkBase="BuiltIn/Home" />
+    <AvaloniaXaml Include="../Home.Module/Views/*.axaml" Link="BuiltIn/Home/Views/%(Filename)%(Extension)" />
   </ItemGroup>
 
   <Target Name="BuildBundledApplications" AfterTargets="Build"
@@ -57,10 +58,10 @@
     <ItemGroup>
       <BundledModuleFiles Include="$(BundledModuleOutput)\**\*" />
       <BundledDeviceModuleFiles Include="$(BundledDeviceModuleOutput)\**\*" />
-      <BundledHomeModuleFiles Include="$(BundledHomeModuleOutput)\**\*" />
       <BundledNetworkModuleFiles Include="$(BundledNetworkModuleOutput)\**\*" />
       <BundledAndroidScreenModuleFiles Include="$(BundledAndroidScreenModuleOutput)\**\*" />
       <BundledSerialDebuggerModuleFiles Include="$(BundledSerialDebuggerModuleOutput)\**\*" />
+      <BundledURemoteModuleFiles Include="$(BundledURemoteModuleOutput)/**/*" />
     </ItemGroup>
     <Copy SourceFiles="@(BundledModuleFiles)"
           DestinationFiles="@(BundledModuleFiles->'$(OutDir)Apps\InvoicePrinter\%(RecursiveDir)%(Filename)%(Extension)')"
@@ -72,11 +73,6 @@
           SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\DeviceInformation.Module\app.json"
           DestinationFolder="$(OutDir)Apps\DeviceInformation" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(BundledHomeModuleFiles)"
-          DestinationFiles="@(BundledHomeModuleFiles->'$(OutDir)Apps\Home\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\Home.Module\app.json"
-          DestinationFolder="$(OutDir)Apps\Home" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(BundledNetworkModuleFiles)"
           DestinationFiles="@(BundledNetworkModuleFiles->'$(OutDir)Apps\NetworkAccelerator\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
@@ -92,6 +88,9 @@
           SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\SerialDebugger.Module\app.json"
           DestinationFolder="$(OutDir)Apps\SerialDebugger" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(BundledURemoteModuleFiles)"
+          DestinationFiles="@(BundledURemoteModuleFiles->'$(OutDir)Apps/URemote/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
   </Target>
 
   <Target Name="PublishBundledApplications" AfterTargets="Publish"
@@ -99,10 +98,10 @@
     <ItemGroup>
       <PublishedModuleFiles Include="$(BundledModuleOutput)\**\*" />
       <PublishedDeviceModuleFiles Include="$(BundledDeviceModuleOutput)\**\*" />
-      <PublishedHomeModuleFiles Include="$(BundledHomeModuleOutput)\**\*" />
       <PublishedNetworkModuleFiles Include="$(BundledNetworkModuleOutput)\**\*" />
       <PublishedAndroidScreenModuleFiles Include="$(BundledAndroidScreenModuleOutput)\**\*" />
       <PublishedSerialDebuggerModuleFiles Include="$(BundledSerialDebuggerModuleOutput)\**\*" />
+      <PublishedURemoteModuleFiles Include="$(BundledURemoteModuleOutput)/**/*" />
     </ItemGroup>
     <Copy SourceFiles="@(PublishedModuleFiles)"
           DestinationFiles="@(PublishedModuleFiles->'$(PublishDir)Apps\InvoicePrinter\%(RecursiveDir)%(Filename)%(Extension)')"
@@ -114,11 +113,6 @@
           SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\DeviceInformation.Module\app.json"
           DestinationFolder="$(PublishDir)Apps\DeviceInformation" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(PublishedHomeModuleFiles)"
-          DestinationFiles="@(PublishedHomeModuleFiles->'$(PublishDir)Apps\Home\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\Home.Module\app.json"
-          DestinationFolder="$(PublishDir)Apps\Home" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(PublishedNetworkModuleFiles)"
           DestinationFiles="@(PublishedNetworkModuleFiles->'$(PublishDir)Apps\NetworkAccelerator\%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
@@ -134,5 +128,8 @@
           SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\SerialDebugger.Module\app.json"
           DestinationFolder="$(PublishDir)Apps\SerialDebugger" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(PublishedURemoteModuleFiles)"
+          DestinationFiles="@(PublishedURemoteModuleFiles->'$(PublishDir)Apps/URemote/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
   </Target>
 </Project>

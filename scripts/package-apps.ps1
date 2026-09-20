@@ -9,12 +9,12 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 }
 
 $applications = @(
-    @{ Name = "home"; Project = "Home.Module" },
     @{ Name = "invoice-printer"; Project = "InvoicePrinter.Module" },
     @{ Name = "device-information"; Project = "DeviceInformation.Module" },
     @{ Name = "serial-debugger"; Project = "SerialDebugger.Module" },
     @{ Name = "network-accelerator"; Project = "NetworkAccelerator.Module" },
-    @{ Name = "android-screen"; Project = "AndroidScreen.Module" }
+    @{ Name = "android-screen"; Project = "AndroidScreen.Module" },
+    @{ Name = "u-remote"; Project = "URemote.Module" }
 )
 
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null

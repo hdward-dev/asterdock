@@ -116,7 +116,17 @@ public partial class MainWindow : Window, IApplicationShell
             return;
         }
 
-        if (activateFirst) OpenApplication(Applications[0]);
+        if (activateFirst)
+        {
+            OpenApplication(Applications.First(app => app.Manifest.Id == "home"));
+            // Initialize the installed remote host in the background without navigating away from Home.
+            var remote = Applications.FirstOrDefault(app => app.Manifest.Id == "u-remote");
+            if (remote is not null)
+            {
+                try { remote.GetOrCreateView(this, _systemMetrics); }
+                catch (Exception exception) { Console.WriteLine("remote-background-start-failed=" + exception.GetType().Name); }
+            }
+        }
     }
 
     private void OpenApplication(LoadedApplication application)

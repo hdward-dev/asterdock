@@ -43,11 +43,22 @@ public sealed class ModuleCatalog : IDisposable
             }
         }
 
-        var applicationsById = new Dictionary<string, LoadedApplication>(StringComparer.OrdinalIgnoreCase);
+        var applicationsById = new Dictionary<string, LoadedApplication>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["home"] = new LoadedApplication(new AppManifest {
+                Id = "home", Name = "主页", Description = "汇总常用应用、最近使用、设备状态和快捷操作",
+                Version = "1.0.0", EntryAssembly = "AsterDock.Host.dll", EntryType = "Home.Module.HomeApplicationModule",
+                Icon = "home", Category = "系统", Order = int.MinValue
+            }, AppContext.BaseDirectory, new Home.Module.HomeApplicationModule(), null)
+        };
         foreach (var manifestPath in manifests)
         {
             try
             {
+                // The home page belongs to the host. Ignore legacy external home packages.
+                using var manifestDocument = JsonDocument.Parse(File.ReadAllText(manifestPath), new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
+                if (manifestDocument.RootElement.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String
+                    && string.Equals(id.GetString(), "home", StringComparison.OrdinalIgnoreCase)) continue;
                 var application = LoadOne(manifestPath);
                 if (!applicationsById.TryGetValue(application.Manifest.Id, out var existing))
                 {

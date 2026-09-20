@@ -4,7 +4,7 @@
 
 # AsterDock（星栈）
 
-基于 .NET 10 与 Avalonia 12 的 Windows/macOS 跨平台应用容器。外壳只负责窗口、导航和模块加载，当前内置主页、发票打印助手、设备信息、网络加速、Android 投屏与串口调试六个独立应用模块。
+基于 .NET 10 与 Avalonia 12 的 Windows/macOS 跨平台应用容器。容器包含默认主页、窗口、导航和模块加载；发票打印助手、设备信息、网络加速、Android 投屏、串口调试和 U远程作为独立轻应用加载。主页代码与 XAML 直接编译到 AsterDock.Host，启动时始终先显示主页，不依赖 Apps/Home 或单独的 Home.Module.dll。
 
 - 发票打印助手：PDF/图片导入、A4 每页两张预览、虚线分隔及直接打印；打印或手动触发后自动识别每张小票的类型（如 A 类）、金额与编号，支持导出 CSV。
 - 设备信息：CPU、GPU、内存、磁盘与网络状态，支持桌面右上角透明常驻监控窗。
@@ -67,7 +67,7 @@ dotnet build AsterDock.slnx -c Release --no-restore
 
 从旧版“应用中心”升级时，星栈会在首次访问相应目录时，将 `%LOCALAPPDATA%\ApplicationHub`（macOS 上对应旧的 Application Support 目录）中的用户应用和模块数据复制到新的 `AsterDock` 目录。旧目录不会被删除，可用于回退。
 
-构建宿主时，内置应用模块会分别复制到 `Apps/Home`、`Apps/InvoicePrinter`、`Apps/DeviceInformation`、`Apps/NetworkAccelerator`、`Apps/AndroidScreen` 和 `Apps/SerialDebugger`。设备信息应用只依赖容器契约；硬件采集实现由宿主统一持有。设备信息应用的核心输出结构为：
+构建宿主时，内置应用模块会分别复制到 `Apps/InvoicePrinter`、`Apps/DeviceInformation`、`Apps/NetworkAccelerator`、`Apps/AndroidScreen` 和 `Apps/SerialDebugger`。设备信息应用只依赖容器契约；硬件采集实现由宿主统一持有。设备信息应用的核心输出结构为：
 
 ```text
 AsterDock.Host/bin/<Configuration>/net10.0/Apps/DeviceInformation/
@@ -119,3 +119,5 @@ bash scripts/package-macos.sh osx-x64
 ```
 
 产物位于 `artifacts/macos/<RID>/星栈.app`。正式分发前仍需 Apple Developer 证书签名和公证。
+
+主页属于容器内置页面，旧版外部 `home` 应用包不会覆盖内置主页。启动时会在后台初始化已安装的 U远程，让被控继续按其设置运行，而不切换离开主页。

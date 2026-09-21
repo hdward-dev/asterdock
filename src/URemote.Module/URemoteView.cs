@@ -41,10 +41,11 @@ public sealed partial class URemoteView : UserControl, IDisposable
     private readonly Button completeLogin = new() { Content = "登录并启用被控" };
     private readonly StackPanel loginPanel = new() { Spacing = 10, IsVisible = false };
     private CancellationTokenSource? sessionStop;
-    private bool disposed, restoreFailed;
+    private bool disposed, restoreFailed, starting;
+    private bool hostEnabled = true;
     private readonly System.Runtime.InteropServices.PosixSignalRegistration? termination;
     private readonly Task initialize;
-    private sealed record Settings(string Identity, string Encoder, bool AllowAssistance = true);
+    private sealed record Settings(string Identity, string Encoder, bool AllowAssistance = true, bool HostEnabled = true);
 
     public URemoteView(string dataDirectory)
     {
@@ -59,7 +60,7 @@ public sealed partial class URemoteView : UserControl, IDisposable
         identity.Text = Environment.GetEnvironmentVariable("UREMOTE_IDENTITY") ?? Path.Combine(dataDirectory, "identity.json");
         encoder.Text = Environment.GetEnvironmentVariable("UREMOTE_FFMPEG") ?? FindExecutable("ffmpeg");
         try { if (File.Exists(settingsFile) && JsonSerializer.Deserialize<Settings>(File.ReadAllText(settingsFile)) is { } saved)
-            { identity.Text = saved.Identity; encoder.Text = saved.Encoder; allowAssistance = saved.AllowAssistance; } } catch (IOException) { } catch (JsonException) { }
+            { identity.Text = saved.Identity; encoder.Text = saved.Encoder; allowAssistance = saved.AllowAssistance; hostEnabled = saved.HostEnabled; } } catch (IOException) { } catch (JsonException) { }
         try { URemote.Core.HostAssistance.SetEnabled(DesktopHostSession.ReadIdentity(identity.Text!).State.DeviceId, allowAssistance); } catch { }
         BuildInterface(dataDirectory);
         sendCode.Click += async (_, _) => await LoginAsync(false);
@@ -88,13 +89,47 @@ public sealed partial class URemoteView : UserControl, IDisposable
                 outputs.Add((id, check)); screens.Children.Add(check);
             }
             hostSwitch.IsEnabled = true;
-            if (Environment.GetEnvironmentVariable("UREMOTE_NO_AUTO_START") != "1") Start();
-            else { hostBadge.Text = "○  被控已关闭"; ApplyTheme(hostBadge, TextBlock.ForegroundProperty, "AppMutedBrush"); status.Text = "被控已关闭"; detail.Text = "界面检查模式，可手动启动被控。"; }
+            if (hostEnabled && Environment.GetEnvironmentVariable("UREMOTE_NO_AUTO_START") != "1") Start();
+            else { hostBadge.Text = "○  被控已关闭"; ApplyTheme(hostBadge, TextBlock.ForegroundProperty, "AppMutedBrush"); status.Text = "被控已关闭"; detail.Text = "可手动开启被控。"; }
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch { if (!disposed) { hostBadge.Text = "○  被控不可用"; ApplyTheme(hostBadge, TextBlock.ForegroundProperty, "AppMutedBrush"); status.Text = "无法访问显示器"; detail.Text = "需要在支持 screencopy 的 Wayland 桌面会话中打开。"; } }
     }
-    private void Start()
+    private async void Start()
+    {
+        if (disposed || starting || session is { IsCompleted: false }) return;
+        starting = true;
+        hostSwitch.IsEnabled = false;
+        try
+        {
+            var globals = await WaylandCapabilities.DiscoverAsync(lifetime.Token);
+            if (disposed) return;
+            var current = globals.Where(g => g.Interface == "wl_output").Select(g => g.Name).Order().Take(5).ToArray();
+            if (!outputs.Select(o => o.Id).SequenceEqual(current))
+            {
+                var allSelected = outputs.All(o => o.Check.IsChecked == true);
+                var selections = outputs.Select(o => o.Check.IsChecked == true).ToArray();
+                outputs.Clear(); screens.Children.Clear();
+                for (var i = 0; i < current.Length; i++)
+                {
+                    var check = new CheckBox { Content = "显示屏 " + (i + 1),
+                        IsChecked = allSelected || (i < selections.Length && selections[i]),
+                        Margin = new Thickness(0, 0, 16, 8) };
+                    outputs.Add((current[i], check)); screens.Children.Add(check);
+                }
+                Report("display-list-refreshed;count=" + current.Length);
+            }
+            StartCore();
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception e)
+        {
+            Console.WriteLine("host-display-discovery-failed;type=" + e.GetType().Name);
+            if (!disposed) { SetHostSwitch(false); status.Text = "无法访问显示器"; detail.Text = "请确认显示器已连接，并在 Wayland 桌面中重新开启被控。"; }
+        }
+        finally { starting = false; if (!disposed) hostSwitch.IsEnabled = true; }
+    }
+    private void StartCore()
     {
         if (disposed || session is { IsCompleted: false }) return;
         var selected = outputs.Where(x => x.Check.IsChecked == true).Select(x => x.Id).ToArray();
@@ -103,8 +138,9 @@ public sealed partial class URemoteView : UserControl, IDisposable
         {
             if (!DesktopHostSession.ReadIdentity(path).State.IsAuthenticated) throw new InvalidOperationException();
             loginPanel.IsVisible = false;
-            if (selected.Length == 0 || !File.Exists(ffmpeg) || !Path.IsPathFullyQualified(ffmpeg)) throw new InvalidOperationException();
-            File.WriteAllText(settingsFile, JsonSerializer.Serialize(new Settings(path, ffmpeg, allowAssistance)));
+            if ((outputs.Count > 0 && selected.Length == 0) || !File.Exists(ffmpeg) || !Path.IsPathFullyQualified(ffmpeg)) throw new InvalidOperationException();
+            File.WriteAllText(settingsFile, JsonSerializer.Serialize(new Settings(path, ffmpeg, allowAssistance, true)));
+            hostEnabled = true;
         }
         catch
         {
@@ -116,6 +152,7 @@ public sealed partial class URemoteView : UserControl, IDisposable
             hostBadge.Text = "○  尚未就绪"; ApplyTheme(hostBadge, TextBlock.ForegroundProperty, "AppMutedBrush");
             status.Text = "尚未就绪"; detail.Text = authenticated ? "请选择屏幕并检查编码器路径。" : "请先登录 UU 账号，验证码仅在点击发送后请求。"; return;
         }
+        var indices = outputs.Count == 0 ? null : outputs.Select((o, i) => (o, i)).Where(x => x.o.Check.IsChecked == true).Select(x => x.i).ToArray();
         var minutes = duration.SelectedIndex switch { 1 => 5, 2 => 30, 3 => 60, _ => 0 };
         var limit = minutes == 0 ? Timeout.InfiniteTimeSpan : TimeSpan.FromMinutes(minutes);
         var enabled = input.IsChecked == true; var sound = audio.IsChecked == true; var sync = clipboard.IsChecked == true;
@@ -126,9 +163,15 @@ public sealed partial class URemoteView : UserControl, IDisposable
         status.Text = "正在上线"; detail.Text = "正在连接 UU 服务…";
         session = Task.Run(async () =>
         {
-            try { await DesktopHostSession.RunAsync(path, ffmpeg, selected, enabled, limit, Report, token, sound, sync); }
+            try { await DesktopHostSession.RunAsync(path, ffmpeg, selected, enabled, limit, Report, token, sound, sync, indices); }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-            catch { Post(() => { if (!restoreFailed) { status.Text = "连接已停止"; detail.Text = "请检查网络、登录状态或是否已有另一被控实例运行。"; } }); }
+            catch (Exception e)
+            {
+                Console.WriteLine("host-start-failed;type=" + e.GetType().Name + ";site=" + e.TargetSite?.Name);
+                var displayChanged = e is InvalidOperationException && e.Message == "显示器已变化，请重新选择。";
+                Post(() => { if (!restoreFailed) { status.Text = displayChanged ? "显示器已变化" : "连接已停止";
+                    detail.Text = displayChanged ? "请重新开启被控，将自动读取当前显示器。" : "请检查网络、登录状态或是否已有另一被控实例运行。"; } });
+            }
             finally { Post(() => { session = null; SetHostSwitch(false); hostSwitch.IsEnabled = true; hostBadge.Text = "○  被控已关闭"; ApplyTheme(hostBadge, TextBlock.ForegroundProperty, "AppMutedBrush"); settings.IsEnabled = true; advancedSettings.IsEnabled = true; }); }
         });
     }
@@ -177,6 +220,7 @@ public sealed partial class URemoteView : UserControl, IDisposable
             case "clipboard-unavailable": detail.Text = "剪贴板不可用，请检查 wl-clipboard。"; break;
             case "clipboard-received": metrics.Text = "已接收文本剪贴板"; break;
             case "clipboard-sent": metrics.Text = "已发送文本剪贴板"; break;
+            case "waiting-for-display": status.Text = "等待显示器恢复"; detail.Text = "被控保持开启，显示器恢复后会自动重连。"; break;
             case "publisher-reconnecting": status.Text = "正在恢复连接"; detail.Text = "控制端断开后，本机会继续等待新的连接。"; break;
             case "capture-settings-applied": metrics.Text = "已应用客户端画质设置"; break;
             case "terminal-opened": status.Text = "远程终端已连接"; detail.Text = "以当前用户运行；停止被控会关闭终端会话。"; break;
@@ -198,6 +242,13 @@ public sealed partial class URemoteView : UserControl, IDisposable
     private void Post(Action action) => Dispatcher.UIThread.Post(() => { if (!disposed) action(); });
     private void Stop()
     {
+        try
+        {
+            File.WriteAllText(settingsFile, JsonSerializer.Serialize(new Settings(identity.Text ?? "", encoder.Text ?? "", allowAssistance, false)));
+            hostEnabled = false;
+        }
+        catch { detail.Text = "停止设置未能保存，应用重启后可能再次开启被控。"; }
+
         if (session is not { IsCompleted: false }) { SetHostSwitch(false); return; }
         hostSwitch.IsEnabled = false;
         status.Text = "正在停止";

@@ -82,6 +82,13 @@ public sealed class EmbeddedScreenSession : IAsyncDisposable
         };
         // Resolve the packaged dylibs only in this child process.
         if (OperatingSystem.IsMacOS()) info.Environment["DYLD_LIBRARY_PATH"] = Path.GetDirectoryName(_decoderPath)!;
+        // The Linux executable also ships with shared libraries beside it.
+        if (OperatingSystem.IsLinux())
+        {
+            info.Environment.TryGetValue("LD_LIBRARY_PATH", out var libraryPath);
+            info.Environment["LD_LIBRARY_PATH"] = Path.GetDirectoryName(_decoderPath)! +
+                (string.IsNullOrEmpty(libraryPath) ? "" : Path.PathSeparator + libraryPath);
+        }
         foreach (var argument in new[] { "-hide_banner", "-loglevel", "error", "-probesize", "32", "-analyzeduration", "0",
             "-flags", "low_delay", "-f", "h264", "-i", "pipe:0", "-an", "-fps_mode", "passthrough",
             "-vf", DecoderColorFilter, "-c:v", "bmp", "-pix_fmt", "bgr24", "-f", "image2pipe", "-flush_packets", "1", "pipe:1" })

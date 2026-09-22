@@ -198,6 +198,13 @@ public partial class MainWindow : Window, IApplicationShell
 
     void IApplicationShell.ShowSettings() => PostAfterInput(ShowSettings);
 
+    void IApplicationShell.ShowApplicationDiscovery() => PostAfterInput(async () =>
+    {
+        ShowSettings();
+        ShowSettingsSection(SettingsSection.Discover);
+        if (!_discoveryLoaded) await RefreshDiscoveryAsync();
+    });
+
     void IApplicationShell.ShowApplicationSwitcher() => ShowAppSwitcher();
 
     public void PrepareForShutdown() => _allowClose = true;

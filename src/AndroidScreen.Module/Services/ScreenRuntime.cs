@@ -35,7 +35,8 @@ public static class ScreenRuntime
     {
         var rid = OperatingSystem.IsWindows() ? "win-x64" :
             OperatingSystem.IsMacOS() ? RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "osx-arm64" : "osx-x64" :
-            throw new PlatformNotSupportedException("应用内投屏目前支持 Windows 和 macOS。");
+            OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.X64 ? "linux-x64" :
+            throw new PlatformNotSupportedException("应用内投屏目前支持 Windows、macOS 和 Linux x64。");
         var path = Path.Combine(moduleDirectory, "ffmpeg", rid, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg");
         if (!File.Exists(path)) throw new FileNotFoundException("应用内视频解码组件缺失，请重新安装 Android 投屏模块。", path);
         MakeExecutable(path);

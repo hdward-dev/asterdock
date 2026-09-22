@@ -1,242 +1,160 @@
-<UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:models="using:Home.Module.Models"
-             x:Class="Home.Module.Views.HomeView"
-             x:CompileBindings="False"
-             Background="{DynamicResource AppPageBrush}">
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:models="using:Home.Module.Models" x:Class="Home.Module.Views.HomeView"
+             x:CompileBindings="False" FontFamily="Microsoft YaHei, PingFang SC, Noto Sans CJK SC, Inter" Background="{DynamicResource AppPageBrush}">
   <UserControl.Styles>
-    <Style Selector="Button.app-card">
-      <Setter Property="Padding" Value="0"/>
-      <Setter Property="Margin" Value="0,0,12,12"/>
-      <Setter Property="Background" Value="Transparent"/>
-      <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="CornerRadius" Value="12"/>
-      <Setter Property="ClipToBounds" Value="True"/>
-      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-      <Setter Property="VerticalContentAlignment" Value="Stretch"/>
-      <Setter Property="HorizontalAlignment" Value="Stretch"/>
-    </Style>
-    <Style Selector="Button.app-card /template/ ContentPresenter">
-      <Setter Property="CornerRadius" Value="12"/>
-    </Style>
-    <Style Selector="Button.app-card:pointerover Border.tile-surface">
-      <Setter Property="BorderBrush" Value="#8CB5F5"/>
-      <Setter Property="Background" Value="#FBFDFF"/>
-    </Style>
-    <Style Selector="Button.quick-action">
-      <Setter Property="Height" Value="46"/>
-      <Setter Property="Padding" Value="14,0"/>
-      <Setter Property="Background" Value="Transparent"/>
-      <Setter Property="BorderThickness" Value="0,0,0,1"/>
+    <Style Selector="Border.home-card">
+      <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
-      <Setter Property="CornerRadius" Value="0"/>
+      <Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="14"/>
+    </Style>
+    <Style Selector="TextBlock.section-title"><Setter Property="FontSize" Value="20"/><Setter Property="FontWeight" Value="SemiBold"/></Style>
+    <Style Selector="TextBlock.muted"><Setter Property="Foreground" Value="{DynamicResource AppMutedBrush}"/></Style>
+    <Style Selector="Button.home-flat">
+      <Setter Property="FontWeight" Value="Normal"/>
+      <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="CornerRadius" Value="10"/><Setter Property="Padding" Value="12"/>
+    </Style>
+    <Style Selector="Button.home-flat:pointerover"><Setter Property="Background" Value="{DynamicResource AppSelectionBrush}"/></Style>
+    <Style Selector="Button.home-nav"><Setter Property="Height" Value="48"/><Setter Property="Margin" Value="0,2"/></Style>
+    <Style Selector="Button.home-tile">
+      <Setter Property="FontWeight" Value="Normal"/>
+      <Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0,0,14,14"/>
+      <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="CornerRadius" Value="14"/><Setter Property="HorizontalAlignment" Value="Stretch"/>
       <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-      <Setter Property="HorizontalAlignment" Value="Stretch"/>
     </Style>
-    <Style Selector="Button.quick-action:first-child">
-      <Setter Property="CornerRadius" Value="11,11,0,0"/>
-    </Style>
-    <Style Selector="Button.quick-action:last-child">
-      <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="CornerRadius" Value="0,0,11,11"/>
-    </Style>
-    <Style Selector="ItemsControl.recent-list > ContentPresenter">
-      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-    </Style>
-    <Style Selector="ProgressBar.overview-progress">
-      <Setter Property="Height" Value="5"/>
-      <Setter Property="CornerRadius" Value="3"/>
-      <Setter Property="Background" Value="#E5E9EF"/>
-      <Setter Property="Foreground" Value="#1267E8"/>
-    </Style>
+    <Style Selector="Button.home-tile:pointerover Border.home-card"><Setter Property="BorderBrush" Value="{DynamicResource AppAccentBrush}"/><Setter Property="Background" Value="{DynamicResource AppSelectionBrush}"/></Style>
+    <Style Selector="ProgressBar.home-progress"><Setter Property="Height" Value="8"/><Setter Property="CornerRadius" Value="4"/><Setter Property="Background" Value="{DynamicResource AppPreviewBrush}"/></Style>
   </UserControl.Styles>
-
-  <Grid RowDefinitions="64,*">
-    <Border Background="{DynamicResource AppChromeBrush}"
-            BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1">
-      <Grid Margin="26,0" VerticalAlignment="Center">
-        <StackPanel>
-          <TextBlock Text="主页" FontSize="24" FontWeight="SemiBold"/>
-          <TextBlock Text="欢迎回来，这里是你的应用工作台" Foreground="{DynamicResource AppMutedBrush}" Margin="0,2,0,0"/>
+  <Grid ColumnDefinitions="192,*">
+    <Border Background="{DynamicResource AppChromeBrush}" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,1,0" Padding="12,26,12,18">
+      <Grid RowDefinitions="Auto,*,Auto">
+        <Border CornerRadius="10" Background="{DynamicResource AppAccentSurfaceBrush}" Padding="14,13">
+          <StackPanel Orientation="Horizontal" Spacing="14">
+            <PathIcon Data="M3,11 L12,3 L21,11 V21 H14 V15 H10 V21 H3 Z" Width="19" Height="19" Foreground="{DynamicResource AppAccentBrush}"/>
+            <TextBlock Text="主页" Foreground="{DynamicResource AppAccentBrush}" FontWeight="SemiBold"/>
+          </StackPanel>
+        </Border>
+        <ScrollViewer Grid.Row="1" Margin="0,24,0,12" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="10">
+            <TextBlock Text="应用" Classes="muted" Margin="12,0" FontSize="12"/>
+            <ItemsControl ItemsSource="{Binding Applications}">
+              <ItemsControl.ItemTemplate><DataTemplate x:DataType="models:HomeApplicationItem">
+                <Button Classes="home-flat home-nav" Tag="{Binding}" Click="ApplicationTile_Click" ToolTip.Tip="{Binding Name}">
+                  <Grid ColumnDefinitions="20,*">
+                    <PathIcon Data="{Binding IconGeometry}" Foreground="{Binding IconForeground}" Width="19" Height="19"/>
+                    <TextBlock Grid.Column="1" Text="{Binding Name}" Margin="12,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                  </Grid>
+                </Button>
+              </DataTemplate></ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </ScrollViewer>
+        <StackPanel Grid.Row="2" Spacing="4">
+          <Border Height="1" Background="{DynamicResource AppBorderBrush}" Margin="0,0,0,12"/>
+          <Button Classes="home-flat home-nav" Content="⊞   应用管理" Click="ShowSettings_Click"/>
+          <Button Classes="home-flat home-nav" Content="⚙   设置" Click="ShowSettings_Click"/>
         </StackPanel>
       </Grid>
     </Border>
-
-    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled"
-                  HorizontalContentAlignment="Stretch">
-      <StackPanel Margin="24" Spacing="18" HorizontalAlignment="Stretch">
-        <Grid ColumnDefinitions="1.7*,16,1*">
-          <Border Classes="card" Background="#EEF5FF" BorderBrush="#B8D1F8" Padding="26" MinHeight="184">
-            <Grid ColumnDefinitions="128,*">
-              <Border Width="92" Height="92" CornerRadius="22" Background="#DCEAFF" VerticalAlignment="Center">
-                <UniformGrid Rows="2" Columns="2" Margin="20">
-                  <Border Background="#6FA5F3" CornerRadius="5" Margin="2"/>
-                  <Border Background="#8CB5F5" CornerRadius="5" Margin="2"/>
-                  <Border Background="#8CB5F5" CornerRadius="5" Margin="2"/>
-                  <Border Background="#A9C9F8" CornerRadius="5" Margin="2"/>
-                </UniformGrid>
-              </Border>
-              <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="10">
-                <TextBlock Text="今天想做什么？" FontSize="24" FontWeight="SemiBold"/>
-                <TextBlock Text="快速打开应用，继续处理你的工作。" Foreground="#526174"/>
-                <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,5,0,0">
-                  <Button Classes="primary" Content="打印发票" Click="OpenInvoicePrinter_Click"/>
-                  <Button Content="查看设备状态" Padding="18,9" CornerRadius="8" Click="OpenDeviceInformation_Click"/>
-                </StackPanel>
-              </StackPanel>
-            </Grid>
-          </Border>
-
-          <Border Grid.Column="2" Classes="card" Padding="20">
-            <Grid RowDefinitions="Auto,*,Auto">
-              <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Text="设备概览" FontSize="18" FontWeight="SemiBold"/>
-                <Button Grid.Column="1" Content="查看详情" Background="Transparent" BorderThickness="0"
-                        Foreground="#1267E8" Padding="8,3" Click="OpenDeviceInformation_Click"/>
-              </Grid>
-              <StackPanel Grid.Row="1" Spacing="13" VerticalAlignment="Center">
-                <Grid ColumnDefinitions="44,*,46">
-                  <TextBlock Text="CPU"/>
-                  <ProgressBar Grid.Column="1" Classes="overview-progress" Value="{Binding CpuUsage}" Margin="10,0"/>
-                  <TextBlock Grid.Column="2" Text="{Binding CpuUsageText}" HorizontalAlignment="Right"/>
-                </Grid>
-                <Grid ColumnDefinitions="44,*,46">
-                  <TextBlock Text="GPU"/>
-                  <ProgressBar Grid.Column="1" Classes="overview-progress" Value="{Binding GpuUsage}" Margin="10,0" Foreground="#7C4DDE"/>
-                  <TextBlock Grid.Column="2" Text="{Binding GpuUsageText}" HorizontalAlignment="Right"/>
-                </Grid>
-                <Grid ColumnDefinitions="44,*,46">
-                  <TextBlock Text="内存"/>
-                  <ProgressBar Grid.Column="1" Classes="overview-progress" Value="{Binding MemoryUsage}" Margin="10,0" Foreground="#00A3BF"/>
-                  <TextBlock Grid.Column="2" Text="{Binding MemoryUsageText}" HorizontalAlignment="Right"/>
-                </Grid>
-              </StackPanel>
-              <TextBlock Grid.Row="2" Text="共享数据 · 每秒刷新" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/>
-            </Grid>
-          </Border>
+    <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
+      <StackPanel Margin="28" Spacing="24">
+        <Grid ColumnDefinitions="*,Auto" MinHeight="72">
+          <StackPanel Spacing="6" VerticalAlignment="Center">
+            <TextBlock Text="欢迎回来" FontSize="30" FontWeight="Bold"/>
+            <TextBlock Text="你的工具，各就其位。" Classes="muted" FontSize="16"/>
+          </StackPanel>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+            <TextBox Width="192" Height="42" PlaceholderText="搜索应用" Text="{Binding SearchText, Mode=TwoWay}" VerticalContentAlignment="Center" CornerRadius="9" Background="{DynamicResource AppInputBrush}" BorderBrush="{DynamicResource AppInputBorderBrush}" BorderThickness="1"/>
+            <Button Classes="primary" Content="＋ 添加应用" Height="42" Padding="16,0" Click="ShowSettings_Click"/>
+          </StackPanel>
         </Grid>
-
-        <StackPanel Spacing="10">
-          <Grid Margin="2,0" ColumnDefinitions="*,Auto">
-            <TextBlock Text="常用应用" FontSize="18" FontWeight="SemiBold"/>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-              <Border Width="7" Height="7" CornerRadius="4" Background="#22A447"/>
-              <TextBlock Text="{Binding AvailableApplicationsText}" FontSize="12"
-                         Foreground="{DynamicResource AppMutedBrush}"/>
+        <Grid ColumnDefinitions="*,24,292">
+          <StackPanel Spacing="14">
+            <StackPanel Orientation="Horizontal" Spacing="16">
+              <TextBlock Text="常用应用" Classes="section-title"/>
+              <TextBlock Text="{Binding AvailableApplicationsText}" Classes="muted" VerticalAlignment="Center" FontSize="12"/>
             </StackPanel>
-          </Grid>
-          <ItemsControl ItemsSource="{Binding Applications}" HorizontalAlignment="Stretch">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate><UniformGrid Columns="3"/></ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="models:HomeApplicationItem">
-                <Button Classes="app-card" Tag="{Binding}" Click="ApplicationTile_Click">
-                  <Grid Height="132">
-                    <Border Classes="card tile-surface" IsVisible="{Binding IsApplication}" Padding="18">
-                      <Grid ColumnDefinitions="76,*,Auto">
-                        <Border Width="62" Height="62" CornerRadius="14" Background="{Binding IconBackground}" VerticalAlignment="Center">
-                          <PathIcon Data="{Binding IconGeometry}" Foreground="{Binding IconForeground}" Width="30" Height="30"/>
-                        </Border>
-                        <StackPanel Grid.Column="1" Margin="12,0" Spacing="6" VerticalAlignment="Center">
-                          <TextBlock Text="{Binding Name}" Foreground="{DynamicResource AppStrongTextBrush}" FontSize="17" FontWeight="SemiBold"/>
-                          <TextBlock Text="{Binding Description}" Foreground="{DynamicResource AppMutedBrush}"
-                                     TextWrapping="Wrap" MaxHeight="40"/>
-                        </StackPanel>
-                        <TextBlock Grid.Column="2" Text="打开  ›" Foreground="#1267E8" VerticalAlignment="Center"/>
-                      </Grid>
-                    </Border>
-                    <Border Classes="card tile-surface" IsVisible="{Binding IsAddTile}" Padding="18"
-                            Background="Transparent" BorderBrush="#B8C0CC">
-                      <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
-                        <Border Width="48" Height="48" CornerRadius="24" BorderBrush="#AAB2BF" BorderThickness="1">
-                          <PathIcon Data="{Binding IconGeometry}" Width="22" Height="22" Foreground="#667085"/>
-                        </Border>
-                        <StackPanel VerticalAlignment="Center" Spacing="3">
-                          <TextBlock Text="加载新应用" FontSize="16" FontWeight="SemiBold"/>
-                          <TextBlock Text="目录或 .appbundle" FontSize="12" Foreground="{DynamicResource AppMutedBrush}"/>
-                        </StackPanel>
-                      </StackPanel>
-                    </Border>
-                  </Grid>
-                </Button>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </StackPanel>
-
-        <Grid ColumnDefinitions="1.45*,16,1*">
-          <StackPanel Spacing="10">
-            <TextBlock Text="最近使用" FontSize="18" FontWeight="SemiBold" Margin="2,0"/>
-            <Border Classes="card" MinHeight="148">
-              <Grid>
-                <TextBlock Text="还没有最近使用的应用" Foreground="{DynamicResource AppMutedBrush}"
-                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                           IsVisible="{Binding !HasRecentApplications}"/>
-                <ItemsControl Classes="recent-list" ItemsSource="{Binding RecentApplications}"
-                              IsVisible="{Binding HasRecentApplications}" HorizontalAlignment="Stretch">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="models:RecentApplicationItem">
-                      <Border BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1"
-                              HorizontalAlignment="Stretch">
-                        <Button Tag="{Binding}" Click="RecentApplication_Click" Height="54" Margin="4,2"
-                                Padding="10,0" Background="Transparent" BorderThickness="0" CornerRadius="8"
-                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
-                          <Grid ColumnDefinitions="38,*,Auto">
-                            <Border Width="32" Height="32" CornerRadius="8" Background="#E8F0FE">
-                              <PathIcon Data="{Binding IconGeometry}" Width="17" Height="17" Foreground="#1267E8"/>
-                            </Border>
-                            <TextBlock Grid.Column="1" Text="{Binding Name}" Foreground="{DynamicResource AppStrongTextBrush}" Margin="10,0" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Column="2" Text="{Binding RelativeTime}" Foreground="{DynamicResource AppMutedBrush}"
-                                       VerticalAlignment="Center"/>
-                          </Grid>
-                        </Button>
+            <ItemsControl ItemsSource="{Binding FilteredApplications}" Margin="0,0,-14,-14">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="3"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate><DataTemplate x:DataType="models:HomeApplicationItem">
+                <Button Classes="home-tile" Tag="{Binding}" Click="ApplicationTile_Click" ToolTip.Tip="{Binding Description}">
+                  <Border Classes="home-card" Padding="18" MinHeight="168">
+                    <Grid RowDefinitions="56,Auto,Auto">
+                      <Border Width="48" Height="48" CornerRadius="12" Background="{Binding IconBackground}" HorizontalAlignment="Left" VerticalAlignment="Top">
+                        <PathIcon Data="{Binding IconGeometry}" Foreground="{Binding IconForeground}" Width="26" Height="26"/>
                       </Border>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
+                      <TextBlock Text="↗" Classes="muted" HorizontalAlignment="Right" FontSize="18"/>
+                      <TextBlock Grid.Row="1" Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" Margin="0,12,0,6" TextTrimming="CharacterEllipsis"/>
+                      <TextBlock Grid.Row="2" Text="{Binding ShortDescription}" Classes="muted" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                    </Grid>
+                  </Border>
+                </Button>
+              </DataTemplate></ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Border Classes="home-card" Padding="24" IsVisible="{Binding HasNoSearchResults}">
+              <TextBlock Text="{Binding EmptyApplicationsText}" Classes="muted" TextWrapping="Wrap"/>
+            </Border>
+            <TextBlock Text="最近使用" Classes="section-title" Margin="0,8,0,0"/>
+            <Border Classes="home-card" Padding="10" MinHeight="154">
+              <Grid>
+                <TextBlock Text="打开一个应用，从这里继续工作" Classes="muted" IsVisible="{Binding !HasRecentApplications}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <ItemsControl ItemsSource="{Binding RecentApplications}" IsVisible="{Binding HasRecentApplications}">
+                  <ItemsControl.ItemTemplate><DataTemplate x:DataType="models:RecentApplicationItem">
+                    <Button Classes="home-flat" Tag="{Binding}" Click="RecentApplication_Click" Height="46">
+                      <Grid ColumnDefinitions="30,*,Auto,22">
+                        <Border Background="{Binding IconBackground}" CornerRadius="8" Width="30" Height="30">
+                          <PathIcon Data="{Binding IconGeometry}" Foreground="{Binding IconForeground}" Width="17" Height="17"/>
+                        </Border>
+                        <TextBlock Grid.Column="1" Text="{Binding Name}" Margin="12,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Grid.Column="2" Text="{Binding RelativeTime}" Classes="muted" FontSize="12" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="3" Text="›" Classes="muted" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                      </Grid>
+                    </Button>
+                  </DataTemplate></ItemsControl.ItemTemplate>
                 </ItemsControl>
               </Grid>
             </Border>
+            <Button Classes="home-flat" Background="{DynamicResource AppAccentSurfaceBrush}" Padding="18" Click="BrowseApplications_Click">
+              <Grid ColumnDefinitions="36,*,Auto">
+                <TextBlock Text="＋" FontSize="28" Foreground="{DynamicResource AppAccentBrush}" VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="1" Spacing="4"><TextBlock Text="扩展你的工具箱" FontWeight="SemiBold"/><TextBlock Text="发现更多轻应用" Classes="muted" FontSize="12"/></StackPanel>
+                <TextBlock Grid.Column="2" Text="浏览应用 →" Foreground="{DynamicResource AppAccentBrush}" VerticalAlignment="Center"/>
+              </Grid>
+            </Button>
           </StackPanel>
-
-          <StackPanel Grid.Column="2" Spacing="10">
-            <TextBlock Text="快捷操作" FontSize="18" FontWeight="SemiBold" Margin="2,0"/>
-            <Border Classes="card" MinHeight="148" HorizontalAlignment="Stretch">
-              <StackPanel HorizontalAlignment="Stretch">
-                <Button Classes="quick-action" Click="ShowApplicationSwitcher_Click">
-                  <Grid ColumnDefinitions="28,*,Auto,20">
-                    <PathIcon Data="M4,4 H10 V10 H4 Z M14,4 H20 V10 H14 Z M4,14 H10 V20 H4 Z M14,14 H20 V20 H14 Z" Width="17" Height="17"/>
-                    <TextBlock Grid.Column="1" Text="应用选择" Margin="8,0" VerticalAlignment="Center"/>
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-                      <Border Background="#F7F8FA" BorderBrush="#D5DAE2" BorderThickness="1"
-                              CornerRadius="4" Padding="7,2" MinWidth="44">
-                        <TextBlock Text="Space" FontSize="10.5" TextAlignment="Center" Foreground="#475467"/>
-                      </Border>
-                      <TextBlock Text="+" FontSize="11" Foreground="#667085" VerticalAlignment="Center"/>
-                      <Border Background="#F7F8FA" BorderBrush="#D5DAE2" BorderThickness="1"
-                              CornerRadius="4" Padding="7,2" MinWidth="24">
-                        <TextBlock Text="A" FontSize="10.5" TextAlignment="Center" Foreground="#475467"/>
-                      </Border>
-                    </StackPanel>
-                    <TextBlock Grid.Column="3" Text="›" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-                  </Grid>
-                </Button>
-                <Button Classes="quick-action" Click="ShowSettings_Click">
-                  <Grid ColumnDefinitions="28,*,20">
-                    <PathIcon Data="M12,8 A4,4 0 1 0 12,16 A4,4 0 1 0 12,8 M12,2 V5 M12,19 V22 M2,12 H5 M19,12 H22" Width="17" Height="17"/>
-                    <TextBlock Grid.Column="1" Text="打开设置" Margin="8,0" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Column="2" Text="›" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-                  </Grid>
-                </Button>
-                <Button Classes="quick-action" Click="ToggleDeviceWidget_Click">
-                  <Grid ColumnDefinitions="28,*,20">
-                    <PathIcon Data="M3,4 H21 V17 H3 Z M9,20 H15 M12,17 V20 M7,12 L10,9 L13,12 L18,7" Width="17" Height="17"/>
-                    <TextBlock Grid.Column="1" Text="显示设备监控窗" Margin="8,0" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Column="2" Text="›" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-                  </Grid>
-                </Button>
+          <StackPanel Grid.Column="2" Spacing="20" Margin="0,44,0,0">
+            <Border Classes="home-card" Padding="20">
+              <StackPanel Spacing="26">
+                <Grid ColumnDefinitions="*,Auto"><TextBlock Text="设备概览" Classes="section-title"/><TextBlock Grid.Column="1" Text="{Binding MetricsStatus}" Classes="muted" FontSize="11" VerticalAlignment="Center"/></Grid>
+                <StackPanel Spacing="10">
+                  <Grid ColumnDefinitions="*,Auto"><TextBlock Text="CPU"/><TextBlock Grid.Column="1" Text="{Binding CpuUsageText}"/></Grid>
+                  <ProgressBar Classes="home-progress" Value="{Binding CpuUsage}" Foreground="#3474F5"/>
+                </StackPanel>
+                <StackPanel Spacing="10">
+                  <Grid ColumnDefinitions="*,Auto"><TextBlock Text="GPU"/><TextBlock Grid.Column="1" Text="{Binding GpuUsageText}"/></Grid>
+                  <ProgressBar Classes="home-progress" Value="{Binding GpuUsage}" Foreground="#9556E9"/>
+                </StackPanel>
+                <StackPanel Spacing="10">
+                  <Grid ColumnDefinitions="*,Auto"><TextBlock Text="内存"/><TextBlock Grid.Column="1" Text="{Binding MemoryUsageText}"/></Grid>
+                  <ProgressBar Classes="home-progress" Value="{Binding MemoryUsage}" Foreground="#25BFA9"/>
+                </StackPanel>
+                <Border Height="1" Background="{DynamicResource AppBorderBrush}"/>
+                <Button Classes="home-flat" Content="查看设备详情 →" Foreground="{DynamicResource AppAccentBrush}" HorizontalContentAlignment="Right" Padding="0" Click="OpenDeviceInformation_Click"/>
               </StackPanel>
             </Border>
+            <Border Classes="home-card" Padding="16">
+              <StackPanel Spacing="10">
+                <TextBlock Text="快捷操作" Classes="section-title" Margin="4,2,0,8"/>
+                <Button Classes="home-flat" Click="ShowApplicationSwitcher_Click" Height="48">
+                  <Grid ColumnDefinitions="*,Auto"><TextBlock Text="⊞  应用选择" VerticalAlignment="Center"/><Border Grid.Column="1" CornerRadius="5" Background="{DynamicResource AppSubtleBrush}" Padding="6,4"><TextBlock Text="Space + A" FontSize="11"/></Border></Grid>
+                </Button>
+                <Button Classes="home-flat" Content="▣  显示 / 隐藏设备监控窗  ›" Click="ToggleDeviceWidget_Click" Height="48" FontSize="12"/>
+                <Button Classes="home-flat" Content="⚙  打开设置  ›" Click="ShowSettings_Click" Height="48"/>
+              </StackPanel>
+            </Border>
+            <TextBlock Text="⊞  让日常操作更简单" Classes="muted" HorizontalAlignment="Center" FontSize="12" Margin="0,10"/>
           </StackPanel>
         </Grid>
       </StackPanel>

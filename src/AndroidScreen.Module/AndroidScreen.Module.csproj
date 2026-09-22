@@ -25,6 +25,9 @@
     <None Include="$(PkgDevEnvy_FFmpeg_Binaries_LGPL)/ffmpeg/osx-arm64/**/*"
           Condition="'$(RuntimeIdentifier)' == '' Or '$(RuntimeIdentifier)' == 'osx-arm64'"
           Link="ffmpeg/osx-arm64/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="$(PkgDevEnvy_FFmpeg_Binaries_LGPL)/ffmpeg/linux-x64/**/*"
+          Condition="'$(RuntimeIdentifier)' == '' Or '$(RuntimeIdentifier)' == 'linux-x64'"
+          Link="ffmpeg/linux-x64/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Include="$(PkgDevEnvy_FFmpeg_Binaries_LGPL)/THIRD_PARTY_NOTICES.md" Link="ffmpeg/THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

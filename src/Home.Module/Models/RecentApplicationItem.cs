@@ -12,12 +12,17 @@ public sealed class RecentApplicationItem
         Id = recent.Application.Id;
         Name = recent.Application.Name;
         _lastOpenedAt = recent.LastOpenedAt;
-        IconGeometry = new HomeApplicationItem(recent.Application).IconGeometry;
+        var item = new HomeApplicationItem(recent.Application);
+        IconGeometry = item.IconGeometry;
+        IconBackground = item.IconBackground;
+        IconForeground = item.IconForeground;
     }
 
     public string Id { get; }
     public string Name { get; }
     public Geometry IconGeometry { get; }
+    public IBrush IconBackground { get; }
+    public IBrush IconForeground { get; }
     public string RelativeTime => FormatRelativeTime(_lastOpenedAt);
 
     private static string FormatRelativeTime(DateTimeOffset timestamp)

@@ -17,9 +17,9 @@ public sealed class HomeViewModel : INotifyPropertyChanged, IDisposable
     private double _cpuUsage;
     private double _gpuUsage;
     private double _memoryUsage;
-    private string _cpuUsageText = "0%";
+    private string _cpuUsageText = "--";
     private string _gpuUsageText = "--";
-    private string _memoryUsageText = "0%";
+    private string _memoryUsageText = "--";
     private bool _hasApplications;
     private bool _hasRecentApplications;
 
@@ -34,6 +34,31 @@ public sealed class HomeViewModel : INotifyPropertyChanged, IDisposable
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public ObservableCollection<HomeApplicationItem> Applications { get; } = [];
+    public ObservableCollection<HomeApplicationItem> FilteredApplications { get; } = [];
+    private string _searchText = "";
+    private string _metricsStatus = "等待采样";
+    public string MetricsStatus { get => _metricsStatus; private set => SetField(ref _metricsStatus, value); }
+    public bool HasNoSearchResults => FilteredApplications.Count == 0;
+    public string EmptyApplicationsText => Applications.Count == 0
+        ? "还没有安装应用，点击添加应用开始使用"
+        : "没有找到匹配的应用，试试其他关键词";
+    public string SearchText
+    {
+        get => _searchText;
+        set { SetField(ref _searchText, value ?? ""); FilterApplications(); }
+    }
+
+    private void FilterApplications()
+    {
+        var query = SearchText.Trim();
+        FilteredApplications.Clear();
+        foreach (var item in Applications.Where(item =>
+                     item.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                     item.Description.Contains(query, StringComparison.OrdinalIgnoreCase)))
+            FilteredApplications.Add(item);
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasNoSearchResults)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(EmptyApplicationsText)));
+    }
     public ObservableCollection<RecentApplicationItem> RecentApplications { get; } = [];
     public string AvailableApplicationsText { get => _availableApplicationsText; private set => SetField(ref _availableApplicationsText, value); }
     public double CpuUsage { get => _cpuUsage; private set => SetField(ref _cpuUsage, value); }
@@ -60,6 +85,7 @@ public sealed class HomeViewModel : INotifyPropertyChanged, IDisposable
     public void OpenApplication(string applicationId) => _context.Shell.OpenApplication(applicationId);
     public void OpenInvoicePrinter() => _context.Shell.OpenApplication("invoice-printer");
     public void OpenDeviceInformation() => _context.Shell.OpenApplication("device-information");
+    public void BrowseApplications() => _context.Shell.ShowApplicationDiscovery();
     public void ShowSettings() => _context.Shell.ShowSettings();
     public void ShowApplicationSwitcher() => _context.Shell.ShowApplicationSwitcher();
 
@@ -87,11 +113,11 @@ public sealed class HomeViewModel : INotifyPropertyChanged, IDisposable
             Applications.Add(new HomeApplicationItem(application));
 
         var applicationCount = Applications.Count;
-        Applications.Add(HomeApplicationItem.CreateAddTile());
+        FilterApplications();
 
         RecentApplications.Clear();
         foreach (var recent in _context.Shell.RecentApplications.Where(recent =>
-                     !string.Equals(recent.Application.Id, _context.ApplicationId, StringComparison.OrdinalIgnoreCase)).Take(4))
+                     !string.Equals(recent.Application.Id, _context.ApplicationId, StringComparison.OrdinalIgnoreCase)).Take(3))
             RecentApplications.Add(new RecentApplicationItem(recent));
 
         HasApplications = applicationCount > 0;
@@ -103,12 +129,13 @@ public sealed class HomeViewModel : INotifyPropertyChanged, IDisposable
     {
         void Apply()
         {
+            MetricsStatus = "实时更新";
             CpuUsage = snapshot.CpuUsage;
             GpuUsage = snapshot.GpuUsage ?? 0;
             MemoryUsage = snapshot.TotalMemoryBytes <= 0 ? 0 : snapshot.UsedMemoryBytes * 100d / snapshot.TotalMemoryBytes;
             CpuUsageText = FormatPercent(snapshot.CpuUsage);
             GpuUsageText = snapshot.GpuUsage is null ? "--" : FormatPercent(snapshot.GpuUsage.Value);
-            MemoryUsageText = FormatPercent(MemoryUsage);
+            MemoryUsageText = snapshot.TotalMemoryBytes <= 0 ? "--" : FormatPercent(MemoryUsage);
         }
         if (Dispatcher.UIThread.CheckAccess()) Apply();
         else Dispatcher.UIThread.Post(Apply);
@@ -116,8 +143,8 @@ public sealed class HomeViewModel : INotifyPropertyChanged, IDisposable
 
     private void HandleMetricsError(Exception exception)
     {
-        // The homepage keeps the last successful values. The detailed device
-        // page surfaces sampling errors to the user.
+        if (Dispatcher.UIThread.CheckAccess()) MetricsStatus = "更新暂停";
+        else Dispatcher.UIThread.Post(() => MetricsStatus = "更新暂停");
     }
 
     private static string FormatPercent(double value) => $"{Math.Round(value):0}%";

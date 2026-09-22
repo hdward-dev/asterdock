@@ -53,7 +53,7 @@ public sealed class ScrcpyInstallerService : IDisposable
 
             var executable = FindExecutable(stagingDirectory)
                 ?? throw new InvalidDataException("scrcpy 下载包中未找到可执行文件");
-            if (OperatingSystem.IsMacOS())
+            if (!OperatingSystem.IsWindows())
             {
                 File.SetUnixFileMode(executable,
                     UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
@@ -95,10 +95,10 @@ public sealed class ScrcpyInstallerService : IDisposable
 
     private async Task<ReleaseAsset> GetReleaseAssetAsync(CancellationToken cancellationToken)
     {
+        var prefix = GetAssetPrefix();
         const string releaseUrl = "https://api.github.com/repos/Genymobile/scrcpy/releases/tags/v" + ServerVersion;
         var text = await _httpClient.GetStringAsync(releaseUrl, cancellationToken).ConfigureAwait(false);
         var root = JsonNode.Parse(text)?.AsObject() ?? throw new InvalidDataException("GitHub Release 信息格式无效");
-        var prefix = GetAssetPrefix();
         foreach (var value in root["assets"]?.AsArray() ?? [])
         {
             if (value is not JsonObject asset) continue;
@@ -213,7 +213,12 @@ public sealed class ScrcpyInstallerService : IDisposable
     private static string GetAssetPrefix()
     {
         if (OperatingSystem.IsWindows()) return "scrcpy-win64-";
-        if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("当前只支持在 Windows 或 macOS 安装 scrcpy");
+        if (OperatingSystem.IsLinux())
+        {
+            if (RuntimeInformation.ProcessArchitecture == Architecture.X64) return "scrcpy-linux-x86_64-";
+            throw new PlatformNotSupportedException("当前 scrcpy 核心仅提供 Linux x64 下载包。");
+        }
+        if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("当前只支持在 Windows、macOS 或 Linux x64 安装 scrcpy");
         return RuntimeInformation.ProcessArchitecture switch
         {
             Architecture.X64 => "scrcpy-macos-x86_64-",

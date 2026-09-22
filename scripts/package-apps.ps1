@@ -42,7 +42,7 @@ foreach ($application in $applications) {
         # A developer machine may retain sibling RID build directories below
         # bin/Release/net10.0. They are not part of the portable module output.
         Get-ChildItem -Path $sourceDirectory | Where-Object {
-            $_.Name -notmatch '^(win|osx)-'
+            $_.Name -notmatch '^(win|osx|linux)-'
         } | Copy-Item -Destination $stagingDirectory -Recurse
 
         # These assemblies and native assets are supplied by the AsterDock host.
@@ -59,11 +59,6 @@ foreach ($application in $applications) {
         Get-ChildItem -Path $stagingDirectory -File -Filter "libSkiaSharp.*" | Remove-Item -Force
         Get-ChildItem -Path $stagingDirectory -Filter "*.pdb" -File -Recurse | Remove-Item -Force
         Remove-Item -LiteralPath (Join-Path $stagingDirectory "runtimes") -Recurse -Force -ErrorAction SilentlyContinue
-        # Android Screen selects its packaged FFmpeg executable by OS and CPU at runtime.
-        # Linux is not a supported AsterDock host platform, so do not bloat the shared
-        # bundle with the package's Linux decoder assets.
-        Get-ChildItem -Path (Join-Path $stagingDirectory "ffmpeg") -Directory -Filter "linux-*" -ErrorAction SilentlyContinue |
-            Remove-Item -Recurse -Force
 
         [System.IO.Compression.ZipFile]::CreateFromDirectory(
             $stagingDirectory,

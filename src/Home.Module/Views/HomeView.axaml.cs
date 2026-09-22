@@ -28,6 +28,7 @@ public partial class HomeView : UserControl
 
     private void OpenInvoicePrinter_Click(object? sender, RoutedEventArgs e) => _viewModel?.OpenInvoicePrinter();
     private void OpenDeviceInformation_Click(object? sender, RoutedEventArgs e) => _viewModel?.OpenDeviceInformation();
+    private void BrowseApplications_Click(object? sender, RoutedEventArgs e) => _viewModel?.BrowseApplications();
     private void ShowSettings_Click(object? sender, RoutedEventArgs e) => _viewModel?.ShowSettings();
     private void ShowApplicationSwitcher_Click(object? sender, RoutedEventArgs e) => _viewModel?.ShowApplicationSwitcher();
     private void ToggleDeviceWidget_Click(object? sender, RoutedEventArgs e) => _viewModel?.ToggleDeviceWidget();

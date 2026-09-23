@@ -88,7 +88,7 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
     public event EventHandler? ReceiveTextUpdated;
 
     public static IReadOnlyList<int> BaudRateOptions { get; } =
-        [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600];
+        [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600, 1500000];
     public static IReadOnlyList<int> DataBitsOptions { get; } = [5, 6, 7, 8];
     public static IReadOnlyList<string> StopBitsOptions { get; } = ["1", "1.5", "2"];
     public static IReadOnlyList<string> ParityOptions { get; } = ["无", "奇校验", "偶校验", "Mark", "Space"];

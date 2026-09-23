@@ -17,7 +17,8 @@ public sealed record DiscoverableApplication(
 
 internal sealed class GitHubApplicationDiscoveryService : IDisposable
 {
-    private const string CatalogUrl = "https://raw.githubusercontent.com/hdward-dev/asterdock/main/app-catalog.json";
+    private const string CatalogUrl = "https://github.com/hdward-dev/asterdock/releases/latest/download/app-catalog.json";
+    private const string LegacyCatalogUrl = "https://raw.githubusercontent.com/hdward-dev/asterdock/main/app-catalog.json";
     private const string ReleaseByTagUrl = "https://api.github.com/repos/hdward-dev/asterdock/releases/tags/";
     private const long MaximumPackageBytes = 512L * 1024 * 1024;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
@@ -36,7 +37,16 @@ internal sealed class GitHubApplicationDiscoveryService : IDisposable
     public async Task<IReadOnlyList<DiscoverableApplication>> GetCatalogAsync(
         CancellationToken cancellationToken = default)
     {
-        var text = await _httpClient.GetStringAsync(CatalogUrl, cancellationToken).ConfigureAwait(false);
+        using var response = await _httpClient.GetAsync(CatalogUrl, cancellationToken).ConfigureAwait(false);
+        // Older releases did not publish a catalog. Keep them usable during migration.
+        string text;
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            text = await _httpClient.GetStringAsync(LegacyCatalogUrl, cancellationToken).ConfigureAwait(false);
+        else
+        {
+            response.EnsureSuccessStatusCode();
+            text = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        }
         var catalog = JsonSerializer.Deserialize<ApplicationCatalog>(text, JsonOptions)
             ?? throw new InvalidDataException("轻应用目录内容为空");
         if (catalog.SchemaVersion != 1) throw new InvalidDataException("不支持的轻应用目录版本");
@@ -107,6 +117,7 @@ internal sealed class GitHubApplicationDiscoveryService : IDisposable
                 if (length is > 0) progress?.Report((double)total / length.Value);
             }
             await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+            await output.DisposeAsync().ConfigureAwait(false);
 
             await using (var package = File.OpenRead(temporary))
             {

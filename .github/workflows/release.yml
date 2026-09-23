@@ -42,14 +42,16 @@ jobs:
           commit_timestamp="$(git log -1 --format=%ct)"
           commit_date="$(TZ=Asia/Shanghai date -d "@$commit_timestamp" +%Y%m%d)"
           short_sha="${GITHUB_SHA:0:7}"
-          tag="nightly-${release_date}-${short_sha}"
           version="1.0.${GITHUB_RUN_NUMBER}"
+          # Existing clients parse the numeric prefix before the first hyphen.
+          tag="v${version}-nightly-${release_date}-${short_sha}"
           should_release="false"
 
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" || "$commit_date" == "$release_date" ]]; then
             should_release="true"
           fi
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+             gh release view "nightly-${release_date}-${short_sha}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             should_release="false"
           fi
 
@@ -149,6 +151,9 @@ jobs:
         shell: pwsh
         run: ./scripts/package-apps.ps1
 
+      - name: Generate discovery catalog from packaged manifests
+        run: python scripts/generate-app-catalog.py artifacts/release/apps --release-tag ${{ needs.prepare.outputs.tag }}
+
       - name: Upload lightweight applications
         uses: actions/upload-artifact@v6
         with:
@@ -183,5 +188,6 @@ jobs:
           gh release create "$RELEASE_TAG" release-assets/* \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
+            --latest \
             --title "AsterDock Nightly $RELEASE_DATE" \
             --notes "自动构建：Windows x64/arm64 MSI、macOS x64/arm64 DMG，以及适用于所有受支持宿主的通用轻应用包。macOS 包尚未签名和公证。"

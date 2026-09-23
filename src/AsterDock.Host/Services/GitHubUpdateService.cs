@@ -12,8 +12,8 @@ internal sealed record ApplicationUpdate(
     string ReleaseName,
     string ReleaseNotes,
     Uri ReleasePage,
-    Uri DownloadUri,
-    string AssetName,
+    Uri? DownloadUri,
+    string? AssetName,
     string? Sha256);
 
 internal sealed class GitHubUpdateService : IDisposable
@@ -21,13 +21,14 @@ internal sealed class GitHubUpdateService : IDisposable
     private const string LatestReleaseUrl = "https://api.github.com/repos/hdward-dev/asterdock/releases/latest";
     private static readonly TimeSpan AutomaticCheckInterval = TimeSpan.FromHours(24);
     private const long MaximumInstallerBytes = 1024L * 1024 * 1024;
-    private readonly HttpClient _httpClient = new(new HttpClientHandler { MaxAutomaticRedirections = 5 })
-    {
-        Timeout = TimeSpan.FromMinutes(10)
-    };
+    private readonly HttpClient _httpClient;
 
-    public GitHubUpdateService()
+    public GitHubUpdateService(HttpMessageHandler? handler = null)
     {
+        _httpClient = new HttpClient(handler ?? new HttpClientHandler { MaxAutomaticRedirections = 5 })
+        {
+            Timeout = TimeSpan.FromMinutes(10)
+        };
         _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("AsterDock-Updater/1.0");
         _httpClient.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
         _httpClient.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
@@ -64,7 +65,15 @@ internal sealed class GitHubUpdateService : IDisposable
             throw new InvalidDataException("GitHub Release 缺少有效的版本号");
         if (releaseVersion <= CurrentVersion) return null;
 
+        var releasePageText = root["html_url"]?.GetValue<string>();
+        if (!Uri.TryCreate(releasePageText, UriKind.Absolute, out var releasePage) ||
+            releasePage.Scheme != Uri.UriSchemeHttps)
+            releasePage = new Uri("https://github.com/hdward-dev/asterdock/releases");
         var expectedAssetName = GetAssetName();
+        if (expectedAssetName is null)
+            return new ApplicationUpdate(releaseVersion, tag ?? releaseVersion.ToString(),
+                root["name"]?.GetValue<string>() ?? tag ?? releaseVersion.ToString(),
+                root["body"]?.GetValue<string>() ?? string.Empty, releasePage, null, null, null);
         var asset = (root["assets"]?.AsArray() ?? [])
             .OfType<JsonObject>()
             .FirstOrDefault(candidate => string.Equals(
@@ -74,9 +83,6 @@ internal sealed class GitHubUpdateService : IDisposable
         if (!Uri.TryCreate(downloadUrl, UriKind.Absolute, out var downloadUri) || downloadUri.Scheme != Uri.UriSchemeHttps)
             throw new InvalidDataException("GitHub Release 下载地址无效");
 
-        var releasePageText = root["html_url"]?.GetValue<string>();
-        if (!Uri.TryCreate(releasePageText, UriKind.Absolute, out var releasePage))
-            releasePage = new Uri("https://github.com/hdward-dev/asterdock/releases");
         var digest = asset["digest"]?.GetValue<string>();
         var sha256 = digest?.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase) == true
             ? digest["sha256:".Length..]
@@ -100,6 +106,8 @@ internal sealed class GitHubUpdateService : IDisposable
         IProgress<double>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        if (update.DownloadUri is null || update.AssetName is null)
+            throw new PlatformNotSupportedException("当前平台暂无自动安装包，请查看发布页面");
         var updateDirectory = Path.Combine(ApplicationPaths.ProductDataDirectory, "Updates", update.DisplayVersion);
         Directory.CreateDirectory(updateDirectory);
         var destination = Path.Combine(updateDirectory, update.AssetName);
@@ -129,6 +137,8 @@ internal sealed class GitHubUpdateService : IDisposable
                 if (length is > 0) progress?.Report((double)total / length.Value);
             }
             await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+            // Release the exclusive handle before verification and moving the file.
+            await output.DisposeAsync().ConfigureAwait(false);
 
             if (!string.IsNullOrWhiteSpace(update.Sha256))
             {
@@ -161,17 +171,18 @@ internal sealed class GitHubUpdateService : IDisposable
 
     public void Dispose() => _httpClient.Dispose();
 
-    private static string GetAssetName()
+    private static string? GetAssetName()
     {
         var platform = OperatingSystem.IsWindows() ? "win" :
             OperatingSystem.IsMacOS() ? "osx" :
-            throw new PlatformNotSupportedException("更新功能目前仅支持 Windows 和 macOS");
+            null;
         var architecture = RuntimeInformation.ProcessArchitecture switch
         {
             Architecture.X64 => "x64",
             Architecture.Arm64 => "arm64",
-            _ => throw new PlatformNotSupportedException("更新功能目前仅支持 x64 和 arm64")
+            _ => null
         };
+        if (platform is null || architecture is null) return null;
         var extension = OperatingSystem.IsWindows() ? "msi" : "dmg";
         return $"AsterDock-{platform}-{architecture}.{extension}";
     }
@@ -179,7 +190,7 @@ internal sealed class GitHubUpdateService : IDisposable
     private static string GetLastCheckMarkerPath() =>
         Path.Combine(ApplicationPaths.ProductDataDirectory, "Updates", "last-check");
 
-    private static bool TryParseVersion(string? value, out Version version)
+    internal static bool TryParseVersion(string? value, out Version version)
     {
         var normalized = value?.Trim().TrimStart('v', 'V');
         var suffixIndex = normalized?.IndexOfAny(['-', '+']) ?? -1;

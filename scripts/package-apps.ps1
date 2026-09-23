@@ -8,14 +8,13 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $OutputDirectory = Join-Path $repoRoot "artifacts/release/apps"
 }
 
-$applications = @(
-    @{ Name = "invoice-printer"; Project = "InvoicePrinter.Module" },
-    @{ Name = "device-information"; Project = "DeviceInformation.Module" },
-    @{ Name = "serial-debugger"; Project = "SerialDebugger.Module" },
-    @{ Name = "network-accelerator"; Project = "NetworkAccelerator.Module" },
-    @{ Name = "android-screen"; Project = "AndroidScreen.Module" },
-    @{ Name = "u-remote"; Project = "URemote.Module" }
-)
+$applications = @(Get-ChildItem -Path (Join-Path $repoRoot "src/*.Module/app.json") | Sort-Object FullName | ForEach-Object {
+    $manifest = Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json
+    # Home is supplied by the host and is not an installable application.
+    if ($manifest.id -ne "home") {
+        @{ Name = $manifest.id; Project = $_.Directory.Name }
+    }
+})
 
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 

@@ -44,5 +44,11 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore AsterDock.slnx
 
+      - name: Check application catalog generation
+        run: python -m unittest discover -s tests -p test_app_catalog.py
+
+      - name: Check update versions and installer downloads
+        run: dotnet run --project tests/Update.Checks --configuration Release
+
       - name: Build solution
         run: dotnet build AsterDock.slnx --configuration Release --no-restore

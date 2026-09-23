@@ -17,6 +17,10 @@
 
 容器启动后每天至多静默检查一次 AsterDock 官方 GitHub Releases，也可以在“设置 → 软件更新”中手动检查。发现新版本后会按当前系统与架构下载对应的 MSI 或 DMG；安装包必须带有 GitHub Release 提供的 SHA-256 digest，下载完成并校验通过后才会打开系统安装程序。
 
+Nightly Release 标签使用 `v1.0.<运行编号>-nightly-<日期>-<提交号>`，数字版本与 MSI、DMG 和宿主程序集保持一致，供已有客户端比较版本。只有日期和提交号的旧 `nightly-*` 标签不能被更新器解析；修复后的发布会显式标记为 Latest。
+
+Linux 等尚无官方安装包的平台可以检查新版本并打开发布页面，暂不提供自动下载安装。
+
 应用开发与打包要求请参阅：[星栈应用开发规范](docs/application-development-guide.md)。
 
 ## 环境要求
@@ -96,7 +100,7 @@ powershell -ExecutionPolicy Bypass -File scripts/package-invoice-app.ps1 -Runtim
 bash scripts/package-invoice-app.sh Release 1.0.0 osx-arm64
 ```
 
-也可以在“设置 → 应用管理 → 发现”中浏览仓库发布的轻应用并直接下载安装。发现页读取仓库根目录的 `app-catalog.json`，安装时从目录指定的 GitHub Release 下载 `.appbundle`，校验 Release 的 SHA-256 digest 以及包内 `app.json` 的应用 id 和版本后再安装。
+也可以在“设置 → 应用管理 → 发现”中浏览仓库发布的轻应用并直接下载安装。发现页读取最新 GitHub Release 附带的 `app-catalog.json`，安装时从目录指定的 GitHub Release 下载 `.appbundle`，校验 Release 的 SHA-256 digest 以及包内 `app.json` 的应用 id 和版本后再安装。旧 Release 尚未附带目录时，兼容读取仓库根目录的旧目录。
 
 把应用目录或 `.appbundle` 放入用户应用目录后重启容器：
 
@@ -105,10 +109,10 @@ bash scripts/package-invoice-app.sh Release 1.0.0 osx-arm64
 
 应用包会经过路径与大小检查，安全解包到用户缓存后加载。
 
-仓库发布轻应用时，使用 `app-<应用 id>-v<版本>` 形式的 prerelease Tag，并采用 `AsterDockApp-<应用 id>-<版本>.appbundle` 资产名；prerelease 不会被主程序更新所使用的 GitHub `releases/latest` 选中。发布后同步更新 `app-catalog.json`。例如：
+Nightly 发布会自动打包 `src/*.Module/app.json` 中除内置主页之外的所有轻应用，文件名为 `AsterDock-App-<应用 id>.appbundle`。发布流程从实际包内的清单生成目录，与应用包一起上传到同一个 Release；新增应用、更新版本无需手工维护目录。可在本地打包后生成目录，例如：
 
 ```bash
-bash scripts/package-invoice-app.sh Release 1.0.0 osx-arm64
+python scripts/generate-app-catalog.py artifacts/release/apps --release-tag v1.0.123-nightly-YYYYMMDD-COMMIT
 ```
 
 ## macOS 容器

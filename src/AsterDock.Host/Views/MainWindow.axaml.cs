@@ -518,7 +518,11 @@ public partial class MainWindow : Window, IApplicationShell
                 return;
             }
 
-            UpdateStatusText.Text = $"发现新版本 {_availableUpdate.DisplayVersion}，可下载适用于当前设备的安装包。";
+            DownloadUpdateButton.IsVisible = _availableUpdate.DownloadUri is not null;
+            DownloadUpdateButton.IsEnabled = true;
+            UpdateStatusText.Text = _availableUpdate.DownloadUri is not null
+                ? $"发现新版本 {_availableUpdate.DisplayVersion}，可下载适用于当前设备的安装包。"
+                : $"发现新版本 {_availableUpdate.DisplayVersion}。当前平台暂无自动安装包，可打开发布页面查看更新。";
             ReleaseNameText.Text = _availableUpdate.ReleaseName;
             ReleaseNotesText.Text = string.IsNullOrWhiteSpace(_availableUpdate.ReleaseNotes)
                 ? "此版本没有发布说明。"

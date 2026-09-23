@@ -3,6 +3,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.IO.Compression;
 
 static void Check(bool condition, string message)
 {
@@ -61,6 +62,28 @@ try
         Check(!File.Exists(path + ".download"), "Failed download was not cleaned up");
         Check(File.ReadAllBytes(path).SequenceEqual(payload), "Failed download replaced verified installer");
     }
+
+    using var packageStream = new MemoryStream();
+    using (var archive = new ZipArchive(packageStream, ZipArchiveMode.Create, leaveOpen: true))
+    using (var writer = new StreamWriter(archive.CreateEntry("app.json").Open()))
+        writer.Write("""{"id":"fixture","name":"Fixture","version":"1.0.0","entryAssembly":"Fixture.dll","entryType":"Fixture.Module"}""");
+    var packageBytes = packageStream.ToArray();
+    var application = new DiscoverableApplication("fixture", "Fixture", "", "Tools", "1.0.0", "v1.0.36-test", "fixture.appbundle");
+    var packageAsset = JsonSerializer.Serialize(new[] { new {
+        name = application.AssetName, state = "uploaded", digest = "sha256:" + Convert.ToHexString(SHA256.HashData(packageBytes)),
+        browser_download_url = "https://github.com/hdward-dev/asterdock/releases/download/test/fixture.appbundle"
+    }});
+    using var discovery = new GitHubApplicationDiscoveryService(new RoutedHandler(request =>
+        request.RequestUri!.AbsolutePath switch
+        {
+            "/repos/hdward-dev/asterdock/releases/tags/v1.0.36-test" => Encoding.UTF8.GetBytes("""{"id":123,"draft":false,"assets":[]}"""),
+            "/repos/hdward-dev/asterdock/releases/123/assets" => Encoding.UTF8.GetBytes(packageAsset),
+            "/hdward-dev/asterdock/releases/download/test/fixture.appbundle" => packageBytes,
+            _ => throw new Exception("Unexpected request: " + request.RequestUri)
+        }));
+    var packagePath = await discovery.DownloadAsync(application);
+    Check(File.ReadAllBytes(packagePath).SequenceEqual(packageBytes), "Empty embedded assets must fall back to the release asset list");
+    Check(!File.Exists(packagePath + ".download"), "Application download was not finalized");
 }
 finally
 {
@@ -72,6 +95,12 @@ sealed class FakeHandler(byte[] payload) : HttpMessageHandler
 {
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(payload) });
+}
+
+sealed class RoutedHandler(Func<HttpRequestMessage, byte[]> response) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(response(request)) });
 }
 
 namespace AsterDock.Host.Services

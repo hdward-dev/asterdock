@@ -5,5 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../src/AsterDock.Host/Services/GitHubUpdateService.cs" Link="GitHubUpdateService.cs" />
+    <Compile Include="../../src/AsterDock.Host/Services/GitHubApplicationDiscoveryService.cs" Link="GitHubApplicationDiscoveryService.cs" />
+    <Compile Include="../../src/AsterDock.Contracts/AppManifest.cs" Link="AppManifest.cs" />
   </ItemGroup>
 </Project>

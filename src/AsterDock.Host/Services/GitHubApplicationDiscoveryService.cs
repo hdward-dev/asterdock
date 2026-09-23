@@ -22,13 +22,14 @@ internal sealed class GitHubApplicationDiscoveryService : IDisposable
     private const string ReleaseByTagUrl = "https://api.github.com/repos/hdward-dev/asterdock/releases/tags/";
     private const long MaximumPackageBytes = 512L * 1024 * 1024;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
-    private readonly HttpClient _httpClient = new(new HttpClientHandler { MaxAutomaticRedirections = 5 })
-    {
-        Timeout = TimeSpan.FromMinutes(10)
-    };
+    private readonly HttpClient _httpClient;
 
-    public GitHubApplicationDiscoveryService()
+    public GitHubApplicationDiscoveryService(HttpMessageHandler? handler = null)
     {
+        _httpClient = new HttpClient(handler ?? new HttpClientHandler { MaxAutomaticRedirections = 5 })
+        {
+            Timeout = TimeSpan.FromMinutes(10)
+        };
         _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("AsterDock-AppDiscovery/1.0");
         _httpClient.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
         _httpClient.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
@@ -75,11 +76,23 @@ internal sealed class GitHubApplicationDiscoveryService : IDisposable
         if (release["draft"]?.GetValue<bool>() == true)
             throw new InvalidDataException("轻应用 Release 尚未发布");
 
-        var asset = (release["assets"]?.AsArray() ?? [])
-            .OfType<JsonObject>()
-            .FirstOrDefault(candidate => string.Equals(
-                candidate["name"]?.GetValue<string>(), application.AssetName, StringComparison.OrdinalIgnoreCase))
-            ?? throw new InvalidDataException($"Release 中没有找到 {application.AssetName}");
+        var asset = FindAsset(release["assets"]?.AsArray(), application.AssetName);
+        // The tag endpoint can retain an incomplete embedded asset list after upload.
+        // Read the release's dedicated, paginated asset endpoint before reporting a missing package.
+        if (asset is null && release["id"]?.GetValue<long>() is > 0 and var releaseId)
+        {
+            for (var page = 1; ; page++)
+            {
+                var assetsText = await _httpClient.GetStringAsync(
+                    $"https://api.github.com/repos/hdward-dev/asterdock/releases/{releaseId}/assets?per_page=100&page={page}",
+                    cancellationToken).ConfigureAwait(false);
+                var assets = JsonNode.Parse(assetsText)?.AsArray()
+                    ?? throw new InvalidDataException("GitHub Release 附件列表格式无效");
+                asset = FindAsset(assets, application.AssetName);
+                if (asset is not null || assets.Count < 100) break;
+            }
+        }
+        if (asset is null) throw new InvalidDataException($"Release 中没有找到 {application.AssetName}");
         if (!string.Equals(asset["state"]?.GetValue<string>(), "uploaded", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("轻应用包尚未上传完成");
         var digest = asset["digest"]?.GetValue<string>();
@@ -138,6 +151,11 @@ internal sealed class GitHubApplicationDiscoveryService : IDisposable
     }
 
     public void Dispose() => _httpClient.Dispose();
+
+    private static JsonObject? FindAsset(JsonArray? assets, string name) => assets?
+        .OfType<JsonObject>()
+        .FirstOrDefault(candidate => string.Equals(
+            candidate["name"]?.GetValue<string>(), name, StringComparison.OrdinalIgnoreCase));
 
     private static void ValidatePackageManifest(string packagePath, DiscoverableApplication expected)
     {

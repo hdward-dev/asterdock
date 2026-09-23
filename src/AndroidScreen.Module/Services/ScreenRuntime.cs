@@ -25,14 +25,17 @@ public static class ScreenRuntime
         var root = Path.GetDirectoryName(scrcpy)!;
         string Find(string name) => Directory.EnumerateFiles(root, name, SearchOption.AllDirectories).FirstOrDefault()
             ?? throw new FileNotFoundException($"投屏核心缺少 {name}，请重新安装核心。");
-        var adb = Find(OperatingSystem.IsWindows() ? "adb.exe" : "adb");
+        var systemAdb = OperatingSystem.IsLinux() ? FindOnPath("adb") : null;
+        var adb = systemAdb ?? Find(OperatingSystem.IsWindows() ? "adb.exe" : "adb");
         var server = Find("scrcpy-server");
-        MakeExecutable(adb);
+        if (systemAdb is null) MakeExecutable(adb);
         return (adb, server);
     }
 
     public static string ResolveDecoder(string moduleDirectory)
     {
+        // Distribution tools carry the correct loader and dependencies (notably on NixOS).
+        if (OperatingSystem.IsLinux() && FindOnPath("ffmpeg") is { } systemDecoder) return systemDecoder;
         var rid = OperatingSystem.IsWindows() ? "win-x64" :
             OperatingSystem.IsMacOS() ? RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "osx-arm64" : "osx-x64" :
             OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.X64 ? "linux-x64" :
@@ -41,6 +44,20 @@ public static class ScreenRuntime
         if (!File.Exists(path)) throw new FileNotFoundException("应用内视频解码组件缺失，请重新安装 Android 投屏模块。", path);
         MakeExecutable(path);
         return path;
+    }
+
+    private static string? FindOnPath(string name)
+    {
+        foreach (var directory in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (!Path.IsPathFullyQualified(directory)) continue;
+            var path = Path.Combine(directory, name);
+            if (!File.Exists(path)) continue;
+            if (!OperatingSystem.IsWindows() &&
+                (File.GetUnixFileMode(path) & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) == 0) continue;
+            return path;
+        }
+        return null;
     }
 
     private static void MakeExecutable(string path)

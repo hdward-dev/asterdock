@@ -50,6 +50,7 @@ public sealed class UuSignalClient : IAsyncDisposable
         if (string.IsNullOrWhiteSpace(room.Token)) throw new ArgumentException("Room authorization is required.");
         var timeout = TimeSpan.FromMilliseconds(Math.Clamp(room.WebSocketConnectTimeoutMs, 1000, 60000));
         var ws = new ClientWebSocket();
+        ws.Options.Proxy = null; // Direct transport; do not inherit HTTP/SOCKS proxy settings.
         ws.Options.KeepAliveInterval = Timeout.InfiniteTimeSpan; // Engine.IO owns its heartbeat.
         ws.Options.SetRequestHeader("X-NRD-AUTH", room.Token);
         ws.Options.SetRequestHeader("X-NRD-CONTROLLING", "0");
@@ -79,6 +80,12 @@ public sealed class UuSignalClient : IAsyncDisposable
 
     public Task<UuSignalFrame> GetRoomInfoAsync(CancellationToken ct = default) =>
         EmitWithAckAsync("room_info", null, TimeSpan.FromSeconds(10), ct);
+
+    // Official publisher ClearRoom emits clear_out with no arguments and no ACK callback.
+    // It clears subscribers in this room, not the publisher's signaling connection.
+    // HostPreview currently permits one active incoming peer; this is not a per-peer API.
+    public Task ClearControlRoomAsync(CancellationToken ct = default) =>
+        SendEventAsync("clear_out", null, ct: ct);
 
     public async Task<UuSignalFrame> EmitWithAckAsync(string name, JsonNode? payload,
         TimeSpan timeout, CancellationToken ct = default, IReadOnlyList<byte[]>? attachments = null)

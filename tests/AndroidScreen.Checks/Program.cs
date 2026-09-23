@@ -24,6 +24,66 @@ try { await EmbeddedScreenSession.ReadBitmapAsync(new MemoryStream(invalid), def
 try { await EmbeddedScreenSession.ReadBitmapAsync(new MemoryStream([1, 2]), default); throw new Exception("Truncated frame accepted"); } catch (EndOfStreamException) { }
 Console.WriteLine("PASS protocol vectors, device states, letterbox/rotation coordinates, malformed frames and address validation");
 
+if (!OperatingSystem.IsWindows())
+{
+    var verificationRoot = Path.Combine(Path.GetTempPath(), "asterdock-core-verification-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(verificationRoot);
+    var originalPath = Environment.GetEnvironmentVariable("PATH");
+    try
+    {
+        // Isolate the bundled-tool failure cases from tools installed on the test host.
+        Environment.SetEnvironmentVariable("PATH", verificationRoot);
+        var client = Path.Combine(verificationRoot, "scrcpy");
+        var adb = Path.Combine(verificationRoot, "adb");
+        var server = Path.Combine(verificationRoot, "scrcpy-server");
+        // An unusable desktop client must not block the embedded session.
+        File.WriteAllText(client, "not an executable");
+        File.WriteAllText(server, "server fixture");
+        File.WriteAllText(adb, "#!/bin/sh\n[ \"$1\" = version ] || exit 1\necho 'Android Debug Bridge version 1.0.41'\n");
+        await ScrcpyInstallerService.VerifyAsync(client, default);
+        File.WriteAllText(adb, "#!/bin/sh\necho 'missing-test-library.so' >&2\nexit 127\n");
+        try { await ScrcpyInstallerService.VerifyAsync(client, default); throw new Exception("Broken ADB accepted"); }
+        catch (InvalidDataException ex) { Check(ex.ToString().Contains("missing-test-library.so"), "ADB diagnostics lost"); }
+        File.WriteAllText(adb, "#!/bin/sh\necho 'unexpected version output'\n");
+        try { await ScrcpyInstallerService.VerifyAsync(client, default); throw new Exception("Invalid ADB version accepted"); }
+        catch (InvalidDataException) { }
+        File.Delete(server);
+        try { await ScrcpyInstallerService.VerifyAsync(client, default); throw new Exception("Missing server accepted"); }
+        catch (FileNotFoundException) { }
+        File.WriteAllText(server, "");
+        try { await ScrcpyInstallerService.VerifyAsync(client, default); throw new Exception("Empty server accepted"); }
+        catch (InvalidDataException) { }
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        try { await ScrcpyInstallerService.VerifyAsync(client, cancellation.Token); throw new Exception("Cancellation ignored"); }
+        catch (OperationCanceledException) { }
+        if (OperatingSystem.IsLinux())
+        {
+            var systemBin = Path.Combine(verificationRoot, "system-bin");
+            Directory.CreateDirectory(systemBin);
+            var systemAdb = Path.Combine(systemBin, "adb");
+            var systemDecoder = Path.Combine(systemBin, "ffmpeg");
+            File.WriteAllText(systemAdb, "#!/bin/sh\necho 'Android Debug Bridge version 1.0.41'\n");
+            File.WriteAllText(systemDecoder, "#!/bin/sh\nexit 0\n");
+            File.SetUnixFileMode(systemAdb, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+            File.SetUnixFileMode(systemDecoder, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+            File.WriteAllText(server, "server fixture");
+            Environment.SetEnvironmentVariable("PATH", systemBin);
+            Check(ScreenRuntime.ResolveCore(client).Adb == systemAdb, "Linux must prefer system ADB");
+            Check(ScreenRuntime.ResolveDecoder(verificationRoot) == systemDecoder, "Linux must prefer system FFmpeg");
+            await ScrcpyInstallerService.VerifyAsync(client, default);
+            File.SetUnixFileMode(systemAdb, UnixFileMode.UserRead);
+            Check(ScreenRuntime.ResolveCore(client).Adb == adb, "Non-executable PATH entry must be skipped");
+        }
+        Console.WriteLine("PASS embedded core verification without desktop client, ADB diagnostics, missing/empty server and cancellation");
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable("PATH", originalPath);
+        Directory.Delete(verificationRoot, recursive: true);
+    }
+}
+
 if (args.Contains("--install-smoke"))
 {
     var installRoot = Path.Combine(Path.GetTempPath(), "asterdock-core-check-" + Guid.NewGuid().ToString("N"));
@@ -36,7 +96,7 @@ if (args.Contains("--install-smoke"))
         Check(File.Exists(core.Server), "Server missing from release archive");
         var version = await new AndroidBridge(core.Adb).RunAsync(deadline.Token, "version");
         Check(version.Contains("Android Debug Bridge"), "ADB executable cannot run");
-        Console.WriteLine("PASS official release download, SHA-256, extraction, scrcpy/ADB executability and server discovery");
+        Console.WriteLine("PASS official release download, SHA-256, extraction, ADB executability and server discovery");
     }
     finally { if (Directory.Exists(installRoot)) Directory.Delete(installRoot, recursive: true); }
 }

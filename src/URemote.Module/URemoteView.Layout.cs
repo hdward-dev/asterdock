@@ -74,8 +74,11 @@ public sealed partial class URemoteView
         ApplyTheme(this, BackgroundProperty, "AppPageBrush");
         ApplyTheme(status, TextBlock.ForegroundProperty, "AppStrongTextBrush"); status.FontSize = 19; status.TextWrapping = TextWrapping.Wrap;
         ApplyTheme(detail, TextBlock.ForegroundProperty, "AppMutedBrush"); detail.FontSize = 13;
+        detail.IsVisible = !string.IsNullOrWhiteSpace(detail.Text);
+        detail.PropertyChanged += (_, e) => { if (e.Property == TextBlock.TextProperty) detail.IsVisible = !string.IsNullOrWhiteSpace(detail.Text); };
         ApplyTheme(metrics, TextBlock.ForegroundProperty, "AppMutedBrush"); metrics.FontSize = 12; metrics.Text = "双屏桌面 · 远程终端";
         ApplyTheme(hostBadge, TextBlock.ForegroundProperty, "AppPositiveBrush");
+        status.PropertyChanged += (_, e) => { if (e.Property == TextBlock.TextProperty) UpdateHostBadge(); };
         var brand = new StackPanel { Spacing = 5, Margin = new Thickness(14, 12, 0, 30), Children = { Text("U远程", 25), Text("远程工作空间", 12, true) } };
         var tabs = new StackPanel { Spacing = 8 };
         foreach (var item in new[] { ("我的设备", "▤", 0), ("本机被控", "▣", 1), ("账号与设置", "⚙", 2), ("远程协助", "♧", 3), ("文件传输", "⇄", 4) })
@@ -128,15 +131,22 @@ public sealed partial class URemoteView
             Card(new Expander { Header = "高级设置", HorizontalContentAlignment = HorizontalAlignment.Stretch, Content = advancedSettings }),
             Card(new StackPanel { Spacing = 8, Children = { Text("功能状态", 16), Text("已实测：双屏桌面、键鼠控制、退出后重连、远程终端命令执行。", 13, true),
                 Text("待验证：双向文本剪贴板、系统声音和画质切换效果。", 13, true) } }) } };
-        var assistancePage = new StackPanel { Spacing = 16, Children = { Text("远程协助", 26), Text("本机协助码与权限开关位于右侧。将协助码和验证码交给对方即可发起协助。", 14, true) } };
+        var assistancePage = BuildConnectAssistancePage();
         pages = [devicePage, hostPage, accountPage, assistancePage, new StackPanel { Spacing = 16, Children = { Text("文件传输", 26), BuildFileTransferCard() } }];
         var hostActions = new Grid { ColumnDefinitions = new("*,Auto"), Margin = new Thickness(0, 8) };
         hostActions.Children.Add(Text("允许本机被控", 14)); Grid.SetColumn(hostSwitch, 1); hostActions.Children.Add(hostSwitch);
         hostSwitch.MinWidth = 0;
         var screenLink = new Button { Content = "显示器与共享设置", HorizontalAlignment = HorizontalAlignment.Stretch };
         screenLink.Click += (_, _) => ShowPage(1);
-        var right = new StackPanel { Spacing = 18, Children = { Text("本机被控", 20), Text(LinuxDeviceProfile.DeviceName, 17), hostBadge, hostActions,
-            localScreens, status, detail, metrics, screenLink, new Separator(), Text("远程协助", 20), BuildAssistanceCard() } };
+        var hostHeading = new Grid { ColumnDefinitions = new("Auto,*") };
+        hostHeading.Children.Add(Text("本机被控", 20));
+        hostBadge.HorizontalAlignment = HorizontalAlignment.Right;
+        hostBadge.VerticalAlignment = VerticalAlignment.Center;
+        hostBadge.Margin = new Thickness(8, 0, 0, 0);
+        hostBadge.TextTrimming = TextTrimming.CharacterEllipsis;
+        Grid.SetColumn(hostBadge, 1); hostHeading.Children.Add(hostBadge);
+        var right = new StackPanel { Spacing = 18, Children = { hostHeading, hostActions,
+            localScreens, detail, screenLink, new Separator(), Text("让他人协助我", 20), BuildAssistanceCard(), BuildConnectionCard() } };
         status.FontSize = 14; detail.FontSize = 12;
         var body = new Grid { ColumnDefinitions = new("190,*,300"), RowDefinitions = new("*,Auto") };
         var leftBorder = new Border { Child = sidebar, BorderThickness = new Thickness(0, 0, 1, 0) };
@@ -216,7 +226,6 @@ public sealed partial class URemoteView
     private void ShowPage(int index)
     {
         if (pages.Length == 0) return;
-        if (index == 3 && Bounds.Width < 850) index = 1;
         page.Content = pages[index];
         for (var i = 0; i < navigation.Count; i++)
         {

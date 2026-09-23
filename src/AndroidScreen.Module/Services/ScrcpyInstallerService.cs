@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Formats.Tar;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
@@ -190,24 +189,28 @@ public sealed class ScrcpyInstallerService : IDisposable
         return Convert.ToHexString(hash);
     }
 
-    private static async Task VerifyAsync(string executable, CancellationToken cancellationToken)
+    internal static async Task VerifyAsync(string executable, CancellationToken cancellationToken)
     {
-        var startInfo = new ProcessStartInfo(executable)
+        // Embedded sessions use ADB + the Android server, not the SDL desktop client.
+        // Running scrcpy --version unnecessarily requires the client's native dependencies.
+        cancellationToken.ThrowIfCancellationRequested();
+        var core = ScreenRuntime.ResolveCore(executable);
+        if (new FileInfo(core.Server).Length == 0)
+            throw new InvalidDataException("投屏核心的 scrcpy-server 文件为空，请重新安装核心。");
+        try
         {
-            WorkingDirectory = Path.GetDirectoryName(executable)!,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true
-        };
-        startInfo.ArgumentList.Add("--version");
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("无法验证 scrcpy");
-        using var registration = cancellationToken.Register(() => AndroidBridge.Kill(process));
-        var output = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var error = process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-        await Task.WhenAll(output, error).ConfigureAwait(false);
-        if (process.ExitCode != 0) throw new InvalidDataException("下载的 scrcpy 无法运行");
+            var version = await new AndroidBridge(core.Adb).RunAsync(cancellationToken, "version").ConfigureAwait(false);
+            if (!version.Contains("Android Debug Bridge", StringComparison.Ordinal))
+                throw new InvalidDataException("ADB 版本信息无效：" + version);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new IOException("投屏核心的 ADB 验证超时，请重试。");
+        }
+        catch (Exception ex) when (ex is IOException or System.ComponentModel.Win32Exception)
+        {
+            throw new InvalidDataException($"投屏核心的 ADB 无法运行（{core.Adb}）：{ex.Message}", ex);
+        }
     }
 
     private static string GetAssetPrefix()

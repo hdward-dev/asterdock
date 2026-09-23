@@ -17,6 +17,8 @@
 - 取消/断线/模块卸载时关闭 socket、终止本会话进程、移除自己的转发端口和设备临时 jar。不停止共享 ADB 服务。
 - 平台解码文件随模块分发。Windows ARM64 使用 x64 工具进程兼容模式。macOS 子进程设置局部 dylib 搜索路径，适配分发包中的动态库安装名。
 - Linux x64 下载官方 `scrcpy-linux-x86_64` 核心并恢复 scrcpy/ADB 执行权限；模块携带 `ffmpeg/linux-x64`，解码子进程通过局部 `LD_LIBRARY_PATH` 加载随附共享库。固定版本没有 Linux ARM64 官方核心包，安装前会给出架构提示。
+- Linux 优先使用应用进程 `PATH` 中可执行的 `adb` 和 `ffmpeg`，未找到时回退到随包工具；系统工具不会被修改权限。NixOS 需要在启动应用的环境中提供原生 `android-tools` 和 FFmpeg，避免通用 Linux 程序被 `stub-ld` 拒绝。手机端 server 仍取自经过 SHA-256 校验的固定版本核心包。
+- 安装验证检查 ADB `version` 输出和非空的 `scrcpy-server`，不启动未被应用内投屏使用的桌面 scrcpy 客户端。ADB 运行失败时保留底层错误输出。
 - Linux 解码器仍依赖发行版系统库：`libdrm.so.2`、`libva.so.2`、`libva-drm.so.2`、`libvpl.so.2`、`libvdpau.so.1` 和 `libX11.so.6`。最小化系统需先提供这些依赖；可通过 `LD_LIBRARY_PATH=<模块目录>/ffmpeg/linux-x64 ldd <模块目录>/ffmpeg/linux-x64/ffmpeg` 检查缺失项。
 
 ## 验证与边界

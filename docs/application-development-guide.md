@@ -9,7 +9,7 @@
 - 应用通过 `AsterDock.Contracts` 与容器交互；内置应用可额外引用 `AsterDock.UI` 复用统一设计系统，但不能引用 `AsterDock.Host`。
 - 应用主界面必须是 Avalonia `Control`，推荐使用 `UserControl`。
 - 应用必须释放自身创建的资源、后台任务和事件订阅。
-- 应用应同时兼容 Windows 和 macOS；平台专用功能必须显式保护。
+- 应用应同时兼容 Windows、macOS 和 Linux；平台专用功能必须显式保护。
 
 ## 2. 推荐工程结构
 
@@ -405,14 +405,19 @@ else if (OperatingSystem.IsMacOS())
 {
     // macOS 实现
 }
+else if (OperatingSystem.IsLinux())
+{
+    // Linux 实现
+}
 ```
 
 要求：
 
 - 不使用 WPF、WinForms 或仅 Windows 可用的 UI 类型。
 - Windows P/Invoke 必须位于 Windows 分支之后。
-- macOS 外部命令使用参数列表传参，不拼接未转义的用户输入。
-- 发布前至少验证 `win-x64`、`osx-x64` 和 `osx-arm64`。
+- macOS 与 Linux 外部命令使用参数列表传参，不拼接未转义的用户输入。
+- Linux 的 P/Invoke 只能出现在 `OperatingSystem.IsLinux()` 分支之后。
+- 发布前至少验证 `win-x64`、`osx-x64`、`osx-arm64`、`linux-x64` 和 `linux-arm64`。
 
 ## 11. 应用加载位置
 
@@ -428,6 +433,7 @@ else if (OperatingSystem.IsMacOS())
 
 - Windows：`%LOCALAPPDATA%\AsterDock\Apps`
 - macOS：`~/Library/Application Support/AsterDock/Apps`
+- Linux：`~/.local/share/AsterDock/Apps`
 
 用户可以在设置页加载应用目录或 `.appbundle` 文件。
 
@@ -508,7 +514,7 @@ dotnet build src/MyApplication.Module/MyApplication.Module.csproj
 - [ ] `version` 已更新
 - [ ] 描述、分类和显示顺序已填写
 - [ ] 入口 DLL 和所有依赖已复制
-- [ ] Windows/macOS 本机运行库完整
+- [ ] Windows/macOS/Linux 本机运行库完整
 - [ ] UI 不阻塞主线程
 - [ ] 新窗口通过 `IWindowService` 打开并由容器跟踪
 - [ ] 容器导航仅通过 `IApplicationContext.Shell` 完成
@@ -517,7 +523,7 @@ dotnet build src/MyApplication.Module/MyApplication.Module.csproj
 - [ ] 托盘快捷动作 ID 唯一且执行过程不阻塞 UI
 - [ ] `Dispose()` 能释放所有资源
 - [ ] `.appbundle` 根目录结构正确
-- [ ] 已完成 Windows 和 macOS 验证
+- [ ] 已完成 Windows、macOS 和 Linux 验证
 
 ## 15. 参考实现
 

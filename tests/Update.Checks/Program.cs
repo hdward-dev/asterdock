@@ -24,7 +24,9 @@ var release = JsonSerializer.Serialize(new
 {
     tag_name = "v99.0.123-nightly-20260923-abcdef0",
     html_url = "https://github.com/hdward-dev/asterdock/releases/tag/test",
-    assets = new[] { "win-x64.msi", "win-arm64.msi", "osx-x64.dmg", "osx-arm64.dmg" }
+    assets = new[] {
+            "win-x64.msi", "win-arm64.msi", "osx-x64.dmg", "osx-arm64.dmg",
+            "linux-x64.tar.gz", "linux-arm64.tar.gz" }
         .Select(suffix => new { name = "AsterDock-" + suffix,
             browser_download_url = "https://github.com/hdward-dev/asterdock/releases/download/test/AsterDock-" + suffix,
             digest = "sha256:" + new string('a', 64) })
@@ -34,10 +36,8 @@ using (var newerRelease = new GitHubUpdateService(new FakeHandler(Encoding.UTF8.
     var available = await newerRelease.CheckAsync();
     Check(available?.Version == new Version(99, 0, 123), "New nightly must be detected");
     Check(available!.ReleasePage.AbsolutePath.EndsWith("/tag/test"), "Release page must be retained");
-    if (OperatingSystem.IsLinux())
-        Check(available.DownloadUri is null, "Linux must offer a release page without an incompatible installer");
-    else
-        Check(available.DownloadUri is not null, "Windows/macOS must offer an installer");
+    Check(available.DownloadUri is not null, "Every supported host must offer an installer");
+    Check(available.Sha256 == new string('a', 64), "Release digest must be trusted");
 }
 
 var payload = Encoding.UTF8.GetBytes("installer fixture");

@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Formats.Tar;
+using System.IO.Compression;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -21,6 +23,11 @@ internal sealed class GitHubUpdateService : IDisposable
     private const string LatestReleaseUrl = "https://api.github.com/repos/hdward-dev/asterdock/releases/latest";
     private static readonly TimeSpan AutomaticCheckInterval = TimeSpan.FromHours(24);
     private const long MaximumInstallerBytes = 1024L * 1024 * 1024;
+    private const string HostExecutableName = "AsterDock.Host";
+    private const UnixFileMode ExecutableFileMode =
+        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+        UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+        UnixFileMode.OtherRead | UnixFileMode.OtherExecute;
     private readonly HttpClient _httpClient;
 
     public GitHubUpdateService(HttpMessageHandler? handler = null)
@@ -158,15 +165,89 @@ internal sealed class GitHubUpdateService : IDisposable
         }
     }
 
-    public static void OpenInstaller(string path)
+    public static async Task<string> OpenInstaller(string path)
     {
         if (!File.Exists(path)) throw new FileNotFoundException("更新安装包不存在", path);
         if (OperatingSystem.IsMacOS())
+        {
             Process.Start(new ProcessStartInfo("open", path) { UseShellExecute = false });
-        else if (OperatingSystem.IsWindows())
+            return "已打开安装包，请按系统提示完成安装。";
+        }
+        if (OperatingSystem.IsWindows())
+        {
             Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
-        else
-            throw new PlatformNotSupportedException("当前平台不支持自动打开安装包");
+            return "已打开安装包，请按系统提示完成安装。";
+        }
+        if (OperatingSystem.IsLinux())
+            return await InstallLinuxPackage(path).ConfigureAwait(false);
+
+        throw new PlatformNotSupportedException("当前平台不支持自动打开安装包");
+    }
+
+    /// <summary>
+    /// Installs a verified release tarball into the per-user prefix used by
+    /// <c>scripts/package-linux.sh</c> and repoints the installed launcher at it.
+    /// </summary>
+    private static async Task<string> InstallLinuxPackage(string archivePath)
+    {
+        if (!OperatingSystem.IsLinux()) throw new PlatformNotSupportedException("当前平台不支持自动安装更新包");
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrEmpty(home)) throw new PlatformNotSupportedException("无法确定用户主目录");
+        // The archive is downloaded to Updates/<version>/, which already names the release.
+        var version = Path.GetFileName(Path.GetDirectoryName(archivePath));
+        var installDirectory = Path.Combine(home, ".local", "opt", "asterdock",
+            string.IsNullOrEmpty(version) ? "latest" : version);
+        if (Directory.Exists(installDirectory)) Directory.Delete(installDirectory, recursive: true);
+        Directory.CreateDirectory(installDirectory);
+
+        // The release tarball wraps everything in a single architecture directory.
+        var prefix = Path.GetFullPath(installDirectory) + Path.DirectorySeparatorChar;
+        await using (var archiveStream = File.OpenRead(archivePath))
+        await using (var gzip = new GZipStream(archiveStream, CompressionMode.Decompress))
+        using (var reader = new TarReader(gzip, leaveOpen: false))
+        {
+            while (reader.GetNextEntry(copyData: false) is { } entry)
+            {
+                if (entry.DataStream is null) continue;
+                var relativePath = StripArchivePrefix(entry.Name);
+                if (relativePath.Length == 0) continue;
+                var destination = Path.GetFullPath(Path.Combine(installDirectory, relativePath));
+                if (!destination.StartsWith(prefix, StringComparison.Ordinal))
+                    throw new InvalidDataException("更新包包含不安全的文件路径");
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                await using var input = entry.DataStream;
+                await using var output = File.Create(destination);
+                await input.CopyToAsync(output);
+                // Tar records the mode bits, but a tarball rebuilt on Windows does not.
+                File.SetUnixFileMode(destination, ExecutableFileMode);
+            }
+        }
+
+        var executable = Path.Combine(installDirectory, HostExecutableName);
+        if (!File.Exists(executable)) throw new InvalidDataException("更新包中缺少星栈主程序");
+        File.SetUnixFileMode(executable, ExecutableFileMode);
+        RepointLauncher(home, executable);
+        return $"已更新到 {installDirectory}，重新启动星栈后生效。";
+    }
+
+    private static void RepointLauncher(string home, string executable)
+    {
+        var launcher = Path.Combine(home, ".local", "share", "applications", "AsterDock.desktop");
+        if (!File.Exists(launcher)) return;
+        // A launcher installed by hand or by a previous update keeps pointing at the
+        // old build until its Exec and TryExec lines name the new one.
+        var lines = File.ReadAllLines(launcher)
+            .Select(line => line.StartsWith("Exec=", StringComparison.Ordinal) ? $"Exec={executable}"
+                : line.StartsWith("TryExec=", StringComparison.Ordinal) ? $"TryExec={executable}"
+                : line);
+        File.WriteAllLines(launcher, lines);
+    }
+
+    private static string StripArchivePrefix(string entryName)
+    {
+        var normalized = entryName.Replace('\\', '/').TrimStart('/');
+        var separator = normalized.IndexOf('/');
+        return separator < 0 ? string.Empty : normalized[(separator + 1)..];
     }
 
     public void Dispose() => _httpClient.Dispose();
@@ -175,6 +256,7 @@ internal sealed class GitHubUpdateService : IDisposable
     {
         var platform = OperatingSystem.IsWindows() ? "win" :
             OperatingSystem.IsMacOS() ? "osx" :
+            OperatingSystem.IsLinux() ? "linux" :
             null;
         var architecture = RuntimeInformation.ProcessArchitecture switch
         {
@@ -183,7 +265,12 @@ internal sealed class GitHubUpdateService : IDisposable
             _ => null
         };
         if (platform is null || architecture is null) return null;
-        var extension = OperatingSystem.IsWindows() ? "msi" : "dmg";
+        var extension = platform switch
+        {
+            "win" => "msi",
+            "osx" => "dmg",
+            _ => "tar.gz"
+        };
         return $"AsterDock-{platform}-{architecture}.{extension}";
     }
 

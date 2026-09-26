@@ -43,6 +43,7 @@ internal static class AppPackageExtractor
 
                 Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
                 entry.ExtractToFile(outputPath, overwrite: true);
+                RestoreExecutableBit(outputPath);
             }
 
             if (!File.Exists(Path.Combine(temporary, "app.json")))
@@ -57,6 +58,21 @@ internal static class AppPackageExtractor
             if (Directory.Exists(temporary)) Directory.Delete(temporary, recursive: true);
             throw;
         }
+    }
+
+    /// <summary>
+    /// ZIP has no standard place for Unix permissions, so a bundle produced on Windows
+    /// arrives without execute bits. Extension-less files in a bundle are the .NET
+    /// apphosts, which need one to be launchable through pkexec on Linux.
+    /// </summary>
+    private static void RestoreExecutableBit(string path)
+    {
+        if (OperatingSystem.IsWindows()) return;
+        if (!string.IsNullOrEmpty(Path.GetExtension(path))) return;
+        File.SetUnixFileMode(path,
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+            UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+            UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
     }
 
     private static string SanitizeName(string name)

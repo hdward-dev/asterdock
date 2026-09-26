@@ -4,7 +4,7 @@
 
 # AsterDock（星栈）
 
-基于 .NET 10 与 Avalonia 12 的 Windows/macOS 跨平台应用容器。容器包含默认主页、窗口、导航和模块加载；发票打印助手、设备信息、网络加速、Android 投屏、串口调试和 U远程作为独立轻应用加载。主页代码与 XAML 直接编译到 AsterDock.Host，启动时始终先显示主页，不依赖 Apps/Home 或单独的 Home.Module.dll。
+基于 .NET 10 与 Avalonia 12 的 Windows/macOS/Linux 跨平台应用容器。容器包含默认主页、窗口、导航和模块加载；发票打印助手、设备信息、网络加速、Android 投屏、串口调试和 U远程作为独立轻应用加载。主页代码与 XAML 直接编译到 AsterDock.Host，启动时始终先显示主页，不依赖 Apps/Home 或单独的 Home.Module.dll。
 
 - 发票打印助手：PDF/图片导入、A4 每页两张预览、虚线分隔及直接打印；打印或手动触发后自动识别每张小票的类型（如 A 类）、金额与编号，支持导出 CSV。
 - 设备信息：CPU、GPU、内存、磁盘与网络状态，支持桌面右上角透明常驻监控窗。
@@ -13,21 +13,22 @@
 - Android 投屏：在应用内显示并控制 Android 设备，支持 USB、无线配对、设备选择、截图与剪贴板；核心自动下载，声音保留在手机。
 - 串口调试：支持单口标签页与多口对照、独立的收发 HEX/文本格式、日志过滤、自定义快捷指令、定时发送与停止、Ctrl/⌘ + Enter 发送和工作区配置保存。
 
-容器提供系统托盘入口。关闭主窗口时程序隐藏到托盘；通过托盘可以重新打开星栈、显示或隐藏设备监控窗，选择“退出”才会结束进程。
+容器提供系统托盘入口。Windows 与 macOS 上关闭主窗口时程序隐藏到托盘；通过托盘可以重新打开星栈、显示或隐藏设备监控窗，选择“退出”才会结束进程。Linux 桌面不一定提供系统托盘宿主（GNOME 与部分窗口管理器需要额外的 AppIndicator 扩展），因此在 Linux 上关闭主窗口会结束进程，避免程序运行中却无法再唤起。
 
-容器启动后每天至多静默检查一次 AsterDock 官方 GitHub Releases，也可以在“设置 → 软件更新”中手动检查。发现新版本后会按当前系统与架构下载对应的 MSI 或 DMG；安装包必须带有 GitHub Release 提供的 SHA-256 digest，下载完成并校验通过后才会打开系统安装程序。
+容器启动后每天至多静默检查一次 AsterDock 官方 GitHub Releases，也可以在“设置 → 软件更新”中手动检查。发现新版本后会按当前系统与架构下载对应的 MSI、DMG 或 tar.gz；安装包必须带有 GitHub Release 提供的 SHA-256 digest，下载完成并校验通过后才会打开系统安装程序。
 
-Nightly Release 标签使用 `v1.0.<运行编号>-nightly-<日期>-<提交号>`，数字版本与 MSI、DMG 和宿主程序集保持一致，供已有客户端比较版本。只有日期和提交号的旧 `nightly-*` 标签不能被更新器解析；修复后的发布会显式标记为 Latest。
+Nightly Release 标签使用 `v1.0.<运行编号>-nightly-<日期>-<提交号>`，数字版本与 MSI、DMG、tar.gz 和宿主程序集保持一致，供已有客户端比较版本。只有日期和提交号的旧 `nightly-*` 标签不能被更新器解析；修复后的发布会显式标记为 Latest。
 
-Linux 等尚无官方安装包的平台可以检查新版本并打开发布页面，暂不提供自动下载安装。
+Linux 上的更新会把校验通过的新版本解压到 `~/.local/opt/asterdock/<版本>/`，并改写已安装启动器的 `Exec`，重启星栈后生效；不需要 root 权限。
 
 应用开发与打包要求请参阅：[星栈应用开发规范](docs/application-development-guide.md)。
 
 ## 环境要求
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
-- Windows 10/11，或受支持的 macOS 版本
+- Windows 10/11、受支持的 macOS 版本，或带 X11 环境的 Linux 桌面
 - Windows TUN 模式需要在启动加速时允许一次 UAC 提权
+- Linux TUN 模式需要 polkit（提供 `pkexec`）与可用的授权代理
 - macOS 正式分发需要 Apple Developer 签名与公证
 
 项目不要求预先安装 sing-box。网络加速应用可以在界面内下载与当前平台和架构匹配的核心，并校验官方 Release 资产提供的 SHA-256 摘要。
@@ -40,7 +41,7 @@ asterdock/
 │  ├─ AsterDock.Contracts/  # 容器与应用之间的稳定契约
 │  ├─ AsterDock.UI/         # Semi/Ursa 主题、设计令牌与共享控件
 │  ├─ AsterDock.Host/       # Avalonia 容器外壳与模块加载器
-│  ├─ AsterDock.NetworkElevatedHost/ # Windows TUN 最小权限辅助进程
+│  ├─ AsterDock.NetworkElevatedHost/ # TUN 最小权限辅助进程（Windows UAC / Linux polkit）
 │  ├─ AndroidScreen.Module/      # 基于 scrcpy 的 Android 投屏与控制
 │  ├─ DeviceInformation.Module/  # 设备信息 UI 与透明悬浮窗
 │  ├─ DeviceInformation.Core/    # 容器共享的跨平台硬件采集实现
@@ -84,7 +85,7 @@ AsterDock.Host/bin/<Configuration>/net10.0/Apps/DeviceInformation/
 
 界面基线由 `AsterDock.UI` 统一提供：宿主加载 Semi.Avalonia 与 Ursa Semi 主题，模块通过共享控件、`App*` 设计令牌和 `ad-*` 语义样式复用页面标题、卡片、分段按钮、状态徽标、紧凑输入等外观。页面只保留业务专属样式。
 
-网络加速应用首次使用时，可在页面内点击“安装核心”。应用会从 SagerNet 官方 Release 下载与当前 Windows/macOS 架构匹配的 sing-box 稳定版，并使用 GitHub Release 资产自带的 digest 校验 SHA-256；核心安装在该应用的数据目录，不写入容器安装目录。订阅输入支持 HTTPS 地址或本地 sing-box JSON 配置文件。
+网络加速应用首次使用时，可在页面内点击“安装核心”。应用会从 SagerNet 官方 Release 下载与当前 Windows/macOS/Linux 架构匹配的 sing-box 稳定版，并使用 GitHub Release 资产自带的 digest 校验 SHA-256；核心安装在该应用的数据目录，不写入容器安装目录。订阅输入支持 HTTPS 地址或本地 sing-box JSON 配置文件。
 
 Windows 开启 TUN 后，在“开始加速”时会弹出一次 UAC。应用容器本身保持普通权限，只有独立的网络辅助进程和 sing-box 获得管理员权限；停止加速通过受控信号完成，不会再次弹出 UAC。
 
@@ -106,6 +107,7 @@ bash scripts/package-invoice-app.sh Release 1.0.0 osx-arm64
 
 - Windows：`%LOCALAPPDATA%\AsterDock\Apps`
 - macOS：`~/Library/Application Support/AsterDock/Apps`
+- Linux：`~/.local/share/AsterDock/Apps`
 
 应用包会经过路径与大小检查，安全解包到用户缓存后加载。
 
@@ -123,5 +125,30 @@ bash scripts/package-macos.sh osx-x64
 ```
 
 产物位于 `artifacts/macos/<RID>/星栈.app`。正式分发前仍需 Apple Developer 证书签名和公证。
+
+## Linux 容器
+
+```bash
+bash scripts/package-linux.sh linux-x64
+bash scripts/package-linux.sh linux-arm64
+```
+
+产物为 `artifacts/release/<RID>/AsterDock-<RID>.tar.gz`，内含自包含的 `AsterDock.Host`、`AsterDock.desktop`、图标和安装脚本。安装到当前用户目录，不需要 root：
+
+```bash
+tar -xzf AsterDock-linux-x64.tar.gz
+cd AsterDock-linux-x64
+./install.sh
+```
+
+`install.sh` 把程序放到 `~/.local/opt/asterdock/<版本>/`，写入 `~/.local/share/applications/AsterDock.desktop` 与 hicolor 图标，`./install.sh --uninstall`（或 `uninstall.sh`）可以完整移除。用户数据仍在 `~/.local/share/AsterDock`。
+
+Linux 上的几点差异：
+
+- 界面基于 X11；Wayland 会话通过 XWayland 运行。
+- 关闭主窗口会结束程序，因为多数桌面没有托盘宿主，隐藏窗口后无法唤起。
+- 打印通过 CUPS 的 `lpstat`/`lp`，需要已安装 CUPS 与打印队列。
+- TUN 模式通过 polkit 的 `pkexec` 提权运行 sing-box；没有 polkit 时请关闭 TUN，或以 root 运行星栈。
+- Android 投屏的 scrcpy 与 ffmpeg 使用 `linux-x64` 构建，arm64 主机需要系统自行提供。
 
 主页属于容器内置页面，旧版外部 `home` 应用包不会覆盖内置主页。启动时会在后台初始化已安装的 U远程，让被控继续按其设置运行，而不切换离开主页。

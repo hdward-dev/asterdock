@@ -54,6 +54,12 @@ public partial class MainWindow : Window, IApplicationShell
 
     IReadOnlyList<RecentApplication> IApplicationShell.RecentApplications => GetRecentApplications();
 
+    /// <summary>
+    /// Hides the container instead of exiting when the window is closed. Only valid
+    /// where a tray icon is guaranteed to be reachable; see <see cref="App"/>.
+    /// </summary>
+    public bool HideOnClose { get; init; } = true;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -556,8 +562,7 @@ public partial class MainWindow : Window, IApplicationShell
         {
             var progress = new Progress<double>(value => UpdateProgress.Value = value * 100);
             var path = await _updateService.DownloadAsync(_availableUpdate, progress, _updateCancellation.Token);
-            UpdateStatusText.Text = "下载完成，正在打开安装包。安装时请按系统提示操作。";
-            GitHubUpdateService.OpenInstaller(path);
+            UpdateStatusText.Text = await GitHubUpdateService.OpenInstaller(path);
         }
         catch (OperationCanceledException) when (_updateCancellation.IsCancellationRequested)
         {
@@ -742,14 +747,19 @@ public partial class MainWindow : Window, IApplicationShell
 
     private void Minimize_Click(object? sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
     private void Maximize_Click(object? sender, RoutedEventArgs e) => ToggleMaximize();
-    private void Close_Click(object? sender, RoutedEventArgs e) => PostAfterInput(Hide);
+    private void Close_Click(object? sender, RoutedEventArgs e)
+    {
+        if (HideOnClose) PostAfterInput(Hide);
+        else Close();
+    }
 
     private static void PostAfterInput(Action action) =>
         Dispatcher.UIThread.Post(action, DispatcherPriority.Background);
 
     private void MainWindow_Closing(object? sender, WindowClosingEventArgs e)
     {
-        if (_allowClose || e.CloseReason is WindowCloseReason.ApplicationShutdown or WindowCloseReason.OSShutdown)
+        if (_allowClose || !HideOnClose ||
+            e.CloseReason is WindowCloseReason.ApplicationShutdown or WindowCloseReason.OSShutdown)
             return;
         e.Cancel = true;
         Hide();

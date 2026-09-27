@@ -129,6 +129,40 @@ jobs:
           path: artifacts/release/${{ matrix.rid }}/*
           if-no-files-found: error
 
+  package-linux:
+    name: Package Linux (${{ matrix.rid }})
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        rid:
+          - linux-x64
+          - linux-arm64
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.400
+
+      - name: Restore dependencies
+        run: dotnet restore AsterDock.slnx --runtime ${{ matrix.rid }}
+
+      - name: Build tarball
+        run: bash scripts/package-linux.sh ${{ matrix.rid }} ${{ needs.prepare.outputs.version }}
+
+      - name: Upload Linux packages
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-${{ matrix.rid }}
+          path: artifacts/release/${{ matrix.rid }}/*
+          if-no-files-found: error
+
   package-applications:
     name: Package lightweight applications
     needs: prepare
@@ -167,6 +201,7 @@ jobs:
       - prepare
       - package-windows
       - package-macos
+      - package-linux
       - package-applications
     if: needs.prepare.outputs.should_release == 'true'
     runs-on: ubuntu-latest
@@ -190,4 +225,4 @@ jobs:
             --target "$GITHUB_SHA" \
             --latest \
             --title "AsterDock Nightly $RELEASE_DATE" \
-            --notes "自动构建：Windows x64/arm64 MSI、macOS x64/arm64 DMG，以及适用于所有受支持宿主的通用轻应用包。macOS 包尚未签名和公证。"
+            --notes "自动构建：Windows x64/arm64 MSI、macOS x64/arm64 DMG、Linux x64/arm64 tar.gz，以及适用于所有受支持宿主的通用轻应用包。macOS 包尚未签名和公证。"

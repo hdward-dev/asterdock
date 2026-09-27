@@ -158,7 +158,8 @@ public sealed class SingBoxInstallerService : IDisposable
     private static string GetPackageName()
     {
         var os = OperatingSystem.IsWindows() ? "windows" : OperatingSystem.IsMacOS() ? "darwin" :
-            throw new PlatformNotSupportedException("当前只支持在 Windows 或 macOS 安装 sing-box 核心");
+            OperatingSystem.IsLinux() ? "linux" :
+            throw new PlatformNotSupportedException("当前只支持在 Windows、macOS 或 Linux 安装 sing-box 核心");
         var architecture = RuntimeInformation.ProcessArchitecture switch
         {
             Architecture.X64 => "amd64",

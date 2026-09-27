@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -34,7 +35,12 @@ public sealed class SingBoxEngineService : IDisposable
 
     public string? ExecutablePath => FindExecutable();
     public bool IsCoreAvailable => ExecutablePath is not null;
-    public bool RequiresAdministratorForTun => OperatingSystem.IsWindows() && !IsWindowsAdministrator();
+
+    /// <summary>
+    /// TUN needs elevated privileges on every supported platform: an administrator
+    /// token on Windows, and root or CAP_NET_ADMIN on Linux.
+    /// </summary>
+    public bool RequiresAdministratorForTun => (OperatingSystem.IsWindows() || OperatingSystem.IsLinux()) && !HasTunPrivilege();
 
     public async Task<string?> GetVersionAsync(CancellationToken cancellationToken = default)
     {
@@ -112,7 +118,7 @@ public sealed class SingBoxEngineService : IDisposable
 
     private async Task StartElevatedAsync(string executable, string configPath, CancellationToken cancellationToken)
     {
-        var helperPath = Path.Combine(_moduleDirectory, "AsterDock.NetworkElevatedHost.exe");
+        var helperPath = Path.Combine(_moduleDirectory, ElevatedHostFileName);
         if (!File.Exists(helperPath))
             throw new FileNotFoundException("缺少网络加速权限辅助程序，请重新构建或安装应用。", helperPath);
 
@@ -123,20 +129,7 @@ public sealed class SingBoxEngineService : IDisposable
         TryDelete(readySignalPath);
         TryDelete(logPath);
 
-        var info = new ProcessStartInfo(helperPath)
-        {
-            UseShellExecute = true,
-            Verb = "runas",
-            WorkingDirectory = _moduleDirectory,
-            WindowStyle = ProcessWindowStyle.Hidden
-        };
-        AddArgument(info, "--core", executable);
-        AddArgument(info, "--config", configPath);
-        AddArgument(info, "--stop-signal", stopSignalPath);
-        AddArgument(info, "--ready-signal", readySignalPath);
-        AddArgument(info, "--log", logPath);
-        AddArgument(info, "--parent-pid", Environment.ProcessId.ToString());
-
+        var info = CreateElevatedStartInfo(helperPath, executable, configPath, stopSignalPath, readySignalPath, logPath);
         var process = new Process { StartInfo = info, EnableRaisingEvents = true };
         process.Exited += (_, _) =>
         {
@@ -148,10 +141,10 @@ public sealed class SingBoxEngineService : IDisposable
         {
             if (!process.Start()) throw new InvalidOperationException("无法启动 TUN 权限辅助程序");
         }
-        catch (Win32Exception exception) when (exception.NativeErrorCode == 1223)
+        catch (Win32Exception exception) when (IsAuthorizationUnavailable(exception))
         {
             process.Dispose();
-            throw new OperationCanceledException("已取消管理员授权，TUN 模式未启动。", exception);
+            throw new OperationCanceledException(AuthorizationUnavailableMessage, exception);
         }
 
         lock (_sync)
@@ -160,6 +153,11 @@ public sealed class SingBoxEngineService : IDisposable
             _elevatedSession = true;
         }
 
+        await WaitForElevatedStartAsync(process, readySignalPath, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task WaitForElevatedStartAsync(Process process, string readySignalPath, CancellationToken cancellationToken)
+    {
         try
         {
             var startedAt = Stopwatch.StartNew();
@@ -174,6 +172,7 @@ public sealed class SingBoxEngineService : IDisposable
                 if (process.HasExited)
                 {
                     PublishElevatedLog();
+                    if (CreateAuthorizationFailure(process) is { } failure) throw failure;
                     throw new InvalidOperationException(ReadElevatedFailure() ?? "sing-box TUN 启动失败");
                 }
                 await Task.Delay(100, cancellationToken).ConfigureAwait(false);
@@ -185,6 +184,36 @@ public sealed class SingBoxEngineService : IDisposable
             await StopAsync().ConfigureAwait(false);
             throw;
         }
+    }
+
+    private ProcessStartInfo CreateElevatedStartInfo(
+        string helperPath,
+        string executable,
+        string configPath,
+        string stopSignalPath,
+        string readySignalPath,
+        string logPath)
+    {
+        // On Linux the helper is launched through polkit instead of a UAC prompt.
+        // pkexec forwards argv only and clears the environment, so every path has to
+        // be absolute and no working directory can be relied on.
+        var info = OperatingSystem.IsLinux()
+            ? new ProcessStartInfo("pkexec") { UseShellExecute = false, CreateNoWindow = true }
+            : new ProcessStartInfo(helperPath)
+            {
+                UseShellExecute = true,
+                Verb = "runas",
+                WorkingDirectory = _moduleDirectory,
+                WindowStyle = ProcessWindowStyle.Hidden
+            };
+        if (OperatingSystem.IsLinux()) info.ArgumentList.Add(helperPath);
+        AddArgument(info, "--core", Path.GetFullPath(executable));
+        AddArgument(info, "--config", Path.GetFullPath(configPath));
+        AddArgument(info, "--stop-signal", Path.GetFullPath(stopSignalPath));
+        AddArgument(info, "--ready-signal", Path.GetFullPath(readySignalPath));
+        AddArgument(info, "--log", Path.GetFullPath(logPath));
+        AddArgument(info, "--parent-pid", Environment.ProcessId.ToString());
+        return info;
     }
 
     public async Task StopAsync()
@@ -362,6 +391,52 @@ public sealed class SingBoxEngineService : IDisposable
         if (!OperatingSystem.IsWindows()) return false;
         using var identity = WindowsIdentity.GetCurrent();
         return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+    }
+
+    [DllImport("libc", EntryPoint = "geteuid")]
+    private static extern uint GetEffectiveUserId();
+
+    private static bool HasTunPrivilege()
+    {
+        if (OperatingSystem.IsWindows()) return IsWindowsAdministrator();
+        // sing-box opens /dev/net/tun and configures routes, which needs uid 0 in the
+        // current user namespace; that is exactly what geteuid reports.
+        if (OperatingSystem.IsLinux()) return GetEffectiveUserId() == 0;
+        return true;
+    }
+
+    /// <summary>The apphost of the helper has no file extension outside Windows.</summary>
+    private static string ElevatedHostFileName => OperatingSystem.IsWindows()
+        ? "AsterDock.NetworkElevatedHost.exe"
+        : "AsterDock.NetworkElevatedHost";
+
+    private static string AuthorizationUnavailableMessage => OperatingSystem.IsLinux()
+        ? "未找到 pkexec，无法为 TUN 模式提权。请安装 polkit，或以管理员权限运行星栈。"
+        : "已取消管理员授权，TUN 模式未启动。";
+
+    private const string AuthorizationDeclinedMessage = "已取消管理员授权，TUN 模式未启动。";
+
+    private static bool IsAuthorizationUnavailable(Win32Exception exception) => OperatingSystem.IsLinux()
+        // ENOENT: polkit is not installed on this desktop.
+        ? exception.NativeErrorCode == 2
+        // ERROR_CANCELLED: the UAC prompt was declined.
+        : exception.NativeErrorCode == 1223;
+
+    /// <summary>
+    /// Maps the exit codes pkexec uses to report an authorization problem, so a
+    /// declined or unattainable policy prompt does not read as a core crash.
+    /// </summary>
+    private static Exception? CreateAuthorizationFailure(Process process)
+    {
+        if (!OperatingSystem.IsLinux()) return null;
+        return SafeExitCode(process) switch
+        {
+            // The authentication dialog was dismissed.
+            126 => new OperationCanceledException(AuthorizationDeclinedMessage),
+            // Authorization could not be obtained, for instance without a running agent.
+            127 => new InvalidOperationException("无法获得管理员授权，请确认系统已安装并正在运行 polkit 授权代理。"),
+            _ => null
+        };
     }
 
     private static void AddArgument(ProcessStartInfo info, string name, string value)

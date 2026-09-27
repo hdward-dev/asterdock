@@ -20,6 +20,9 @@
              RemoveProperties="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
     <ItemGroup>
       <ElevatedHostFiles Include="$(ElevatedHostOutput)\AsterDock.NetworkElevatedHost.*" />
+      <!-- Unix apphosts carry no file extension, so the wildcard above never matches them. -->
+      <ElevatedHostFiles Include="$(ElevatedHostOutput)\AsterDock.NetworkElevatedHost"
+                        Condition="'$(OS)' != 'Windows_NT' and Exists('$(ElevatedHostOutput)\AsterDock.NetworkElevatedHost')" />
       <LegacyElevatedHostFiles Include="$(OutDir)ApplicationHub.NetworkElevatedHost.*" />
     </ItemGroup>
     <Delete Files="@(LegacyElevatedHostFiles)" />

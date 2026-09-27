@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=星栈 AsterDock
+Name[en]=AsterDock
+Comment=模块化桌面应用容器：主页、设备信息、网络加速、串口调试与远程协助
+Comment[en]=Modular desktop container: home, device information, network acceleration, serial debugging and remote assistance
+Exec=AsterDock.Host
+TryExec=AsterDock.Host
+Icon=AsterDock
+Terminal=false
+Categories=Utility;System;
+Keywords=星栈;AsterDock;container;
+StartupNotify=true

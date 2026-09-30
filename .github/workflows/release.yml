@@ -129,6 +129,36 @@ jobs:
           path: artifacts/release/${{ matrix.rid }}/*
           if-no-files-found: error
 
+  package-linux:
+    name: Package Linux (${{ matrix.rid }})
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        rid: [linux-x64, linux-arm64]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.400
+      - name: Install packaging tools
+        run: sudo apt-get update && sudo apt-get install -y rpm desktop-file-utils
+      - name: Build deb and rpm packages
+        run: bash scripts/package-linux-release.sh ${{ matrix.rid }} ${{ needs.prepare.outputs.version }}
+      - name: Validate desktop integration
+        run: |
+          dpkg-deb -x artifacts/release/${{ matrix.rid }}/AsterDock-${{ matrix.rid }}.deb /tmp/asterdock-package
+          desktop-file-validate /tmp/asterdock-package/usr/share/applications/asterdock.desktop
+          test -x /tmp/asterdock-package/opt/asterdock/AsterDock.Host
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-${{ matrix.rid }}
+          path: artifacts/release/${{ matrix.rid }}/*
+          if-no-files-found: error
+
   package-applications:
     name: Package lightweight applications
     needs: prepare
@@ -167,6 +197,7 @@ jobs:
       - prepare
       - package-windows
       - package-macos
+      - package-linux
       - package-applications
     if: needs.prepare.outputs.should_release == 'true'
     runs-on: ubuntu-latest
@@ -190,4 +221,4 @@ jobs:
             --target "$GITHUB_SHA" \
             --latest \
             --title "AsterDock Nightly $RELEASE_DATE" \
-            --notes "自动构建：Windows x64/arm64 MSI、macOS x64/arm64 DMG，以及适用于所有受支持宿主的通用轻应用包。macOS 包尚未签名和公证。"
+            --notes "自动构建：Windows x64/arm64 MSI、macOS x64/arm64 DMG、Linux x64/arm64 deb/rpm，以及适用于所有受支持宿主的通用轻应用包。macOS 包尚未签名和公证。"

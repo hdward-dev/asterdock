@@ -57,6 +57,27 @@ AppBuilder.Configure<App>().UsePlatformDetect().WithInterFont().AfterSetup(build
             Console.WriteLine("PASS: native device list online filter and name search");
         }
         var selected = args.Contains("--settings") ? 2 : args.Contains("--host") ? 1 : 0;
+        if (args.Contains("--sms-cooldown"))
+        {
+            var owner = URemote.Host.DesktopHostLogin.Open(Path.Combine(dir, "identity.json"));
+            typeof(URemote.Host.DesktopHostLogin).GetField("sentAt", flags)!.SetValue(owner, DateTimeOffset.UtcNow.AddSeconds(-58));
+            type.GetField("login", flags)!.SetValue(view, owner);
+            type.GetMethod("UpdateSendCodeState", flags)!.Invoke(view, null);
+            var send = (Avalonia.Controls.Button)type.GetField("sendCode", flags)!.GetValue(view)!;
+            if (send.IsEnabled || !send.Content!.ToString()!.Contains("重新发送")) throw new Exception("SMS cooldown did not disable the button.");
+            DispatcherTimer.RunOnce(() =>
+            {
+                if (!send.IsEnabled || send.Content?.ToString() != "发送验证码") throw new Exception("SMS cooldown did not restore the button.");
+                Console.WriteLine("PASS: SMS countdown disables resending and restores the button on expiry; no SMS was sent.");
+            }, TimeSpan.FromSeconds(3));
+        }
+        if (args.Contains("--account-signed-in"))
+        {
+            var profile = new URemote.Core.HostDeviceProfile("fixture", "client", "system", "", "", "", "", "", "", "", "", "", "", [], 96);
+            var saved = new URemote.Host.SavedHostIdentity(new(Token: "fixture-token", UserId: "fixture-uu-user-0001", ClientId: "client", DeviceId: "fixture-device"),
+                profile, "logged-in", 1, args.Contains("--account-id-only") ? "" : "138****1234");
+            type.GetMethod("UpdateAccountDisplay", flags)!.Invoke(view, [saved]);
+        }
         type.GetMethod("ShowPage", flags)!.Invoke(view, [selected]);
     }, TimeSpan.FromSeconds(2));
     if (!args.Contains("--controller-window")) DispatcherTimer.RunOnce(() =>

@@ -133,12 +133,16 @@ jobs:
     name: Package Linux (${{ matrix.rid }})
     needs: prepare
     if: needs.prepare.outputs.should_release == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        rid: [linux-x64, linux-arm64]
+        include:
+          - rid: linux-x64
+            runner: ubuntu-24.04
+          - rid: linux-arm64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6

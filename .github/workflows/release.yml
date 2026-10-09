@@ -163,9 +163,34 @@ jobs:
           path: artifacts/release/${{ matrix.rid }}/*
           if-no-files-found: error
 
+  build-uremote-rdp:
+    name: Build URemote RDP (${{ matrix.rid }})
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: linux-x64
+            runner: ubuntu-24.04
+          - rid: linux-arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install FreeRDP development libraries
+        run: sudo apt-get update && sudo apt-get install -y cmake pkg-config freerdp3-dev libwinpr3-dev
+      - name: Build embedded RDP bridge
+        run: bash scripts/build-uremote-rdp.sh
+      - uses: actions/upload-artifact@v6
+        with:
+          name: uremote-rdp-${{ matrix.rid }}
+          path: src/URemote.Module/Native/bin/${{ matrix.rid }}/*
+          if-no-files-found: error
+
   package-applications:
     name: Package lightweight applications
-    needs: prepare
+    needs: [prepare, build-uremote-rdp]
     if: needs.prepare.outputs.should_release == 'true'
     runs-on: windows-latest
     timeout-minutes: 30
@@ -180,6 +205,21 @@ jobs:
 
       - name: Restore dependencies
         run: dotnet restore AsterDock.slnx
+
+      - name: Download Linux RDP bridges
+        uses: actions/download-artifact@v7
+        with:
+          pattern: uremote-rdp-*
+          path: artifacts/uremote-native
+
+      - name: Stage embedded RDP components
+        shell: pwsh
+        run: |
+          foreach ($rid in @("linux-x64", "linux-arm64")) {
+            $target = "src/URemote.Module/Native/bin/$rid"
+            New-Item -ItemType Directory -Path $target -Force | Out-Null
+            Copy-Item "artifacts/uremote-native/uremote-rdp-$rid/*" $target
+          }
 
       - name: Package universal lightweight applications
         shell: pwsh

@@ -43,7 +43,7 @@ AppBuilder.Configure<App>().UsePlatformDetect().WithInterFont().AfterSetup(build
                 new("fixture-ios", "iPhone", "mobile", 3, "DISCONNECTED", false, false, "4.41.0", false) });
             type.GetMethod("RenderDevices", flags)!.Invoke(view, null);
             var filter = (Avalonia.Controls.ComboBox)type.GetField("filter", flags)!.GetValue(view)!;
-            var rows = (Avalonia.Controls.StackPanel)type.GetField("deviceRows", flags)!.GetValue(view)!;
+            var rows = (Avalonia.Controls.Grid)type.GetField("deviceRows", flags)!.GetValue(view)!;
             filter.SelectedIndex = 1;
             if (rows.Children.Count != 2) throw new Exception("Online filter failed.");
             filter.SelectedIndex = 0;
@@ -56,7 +56,27 @@ AppBuilder.Configure<App>().UsePlatformDetect().WithInterFont().AfterSetup(build
             ((Avalonia.Controls.TextBlock)type.GetField("catalogHint", flags)!.GetValue(view)!).Text = "演示设备 · 4 台设备 · 2 台在线";
             Console.WriteLine("PASS: native device list online filter and name search");
         }
-        var selected = args.Contains("--settings") ? 2 : args.Contains("--host") ? 1 : 0;
+        var selected = args.Contains("--local") ? 5 : args.Contains("--settings") ? 2 : args.Contains("--host") ? 1 : 0;
+        if (args.Contains("--local"))
+        {
+            type.GetMethod("ShowPage", flags)!.Invoke(view, [5]);
+            var page = (Avalonia.Controls.ContentControl)type.GetField("page", flags)!.GetValue(view)!;
+            var local = (Avalonia.Controls.StackPanel)page.Content!;
+            var tabs = (Avalonia.Controls.StackPanel)local.Children[2];
+            var content = (Avalonia.Controls.ContentControl)local.Children[3];
+            var rdp = (Avalonia.Controls.StackPanel)((Avalonia.Controls.Border)content.Content!).Child!;
+            var endpoint = (Avalonia.Controls.Grid)rdp.Children[1];
+            var address = (Avalonia.Controls.TextBox)endpoint.Children[0]; address.Text = "desktop.local";
+            if (((Avalonia.Controls.NumericUpDown)endpoint.Children[1]).Value != 3389) throw new Exception("RDP port failed.");
+            ((Avalonia.Controls.Button)tabs.Children[1]).RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+            var vnc = (Avalonia.Controls.StackPanel)((Avalonia.Controls.Border)content.Content!).Child!;
+            if (ReferenceEquals(vnc, rdp) || ((Avalonia.Controls.NumericUpDown)((Avalonia.Controls.Grid)vnc.Children[1]).Children[1]).Value != 5900)
+                throw new Exception("VNC page switch failed.");
+            ((Avalonia.Controls.Button)tabs.Children[0]).RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+            if (!ReferenceEquals(((Avalonia.Controls.Border)content.Content!).Child, rdp) || address.Text != "desktop.local") throw new Exception("RDP form retention failed.");
+            if (args.Contains("--vnc")) ((Avalonia.Controls.Button)tabs.Children[1]).RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+            Console.WriteLine("PASS: local connection page switches RDP/VNC, sets correct ports and retains form input without UU login");
+        }
         if (args.Contains("--sms-cooldown"))
         {
             var owner = URemote.Host.DesktopHostLogin.Open(Path.Combine(dir, "identity.json"));

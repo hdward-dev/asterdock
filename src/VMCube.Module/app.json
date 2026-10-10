@@ -1,0 +1,5 @@
+{
+  "id": "vmcube", "name": "VMCUBE", "description": "KVM 虚拟机管理与内置 VNC 桌面控制台",
+  "version": "0.2.0", "entryAssembly": "VMCube.Module.dll", "entryType": "VMCube.Module.VMCubeApplicationModule",
+  "icon": "monitor", "category": "开发", "order": 70
+}

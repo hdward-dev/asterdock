@@ -18,6 +18,7 @@ public partial class MainWindow : Window, IApplicationShell
 {
     private const double CollapsedCapsuleWidth = 124;
     private const double HostBackCapsuleWidth = 176;
+    private const double HomeInfoCapsuleWidth = 176;
     private const double ExpandedCapsuleWidth = 261;
     private const double ExpandedBackCapsuleWidth = 304;
     private enum SettingsSection
@@ -262,26 +263,15 @@ public partial class MainWindow : Window, IApplicationShell
 
     private async void ShowAppInfo()
     {
-        if (_currentApplication is null ||
-            string.Equals(_currentApplication.Manifest.Id, "home", StringComparison.OrdinalIgnoreCase)) return;
+        if (_currentApplication is null) return;
         CapsuleInfoButton.Classes.Set("selected", true);
         AppInfoIcon.Data = _currentApplication.IconGeometry;
         AppInfoName.Text = _currentApplication.Name;
         AppInfoDescription.Text = _currentApplication.Description;
         AppInfoVersion.Text = _currentApplication.Version;
         AppInfoCategory.Text = _currentApplication.Category;
-        var recentApplications = _recentApplications
-            .Where(item => !string.Equals(item.Key, _currentApplication.Manifest.Id, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(item => item.Value)
-            .Select(item => Applications.FirstOrDefault(application =>
-                string.Equals(application.Manifest.Id, item.Key, StringComparison.OrdinalIgnoreCase)))
-            .Where(application => application is not null)
-            .Cast<LoadedApplication>()
-            .Take(4)
-            .ToList();
-        AppInfoRecentApplications.ItemsSource = recentApplications;
-        AppInfoRecentApplications.IsVisible = recentApplications.Count > 0;
-        AppInfoRecentEmpty.IsVisible = recentApplications.Count == 0;
+        AppInfoStopError.IsVisible = false;
+        RefreshRunningApplications();
         var animationVersion = ++_appInfoAnimationVersion;
         AppInfoOverlay.IsVisible = true;
         await Task.Delay(20);
@@ -303,11 +293,68 @@ public partial class MainWindow : Window, IApplicationShell
 
     private void CloseAppInfo_Click(object? sender, RoutedEventArgs e) => PostAfterInput(HideAppInfo);
 
-    private void AppInfoRecentApplication_Click(object? sender, RoutedEventArgs e)
+    private void AppInfoRunningApplication_Click(object? sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: LoadedApplication application }) return;
         HideAppInfo();
         PostAfterInput(() => OpenApplication(application));
+    }
+
+    private void RefreshRunningApplications()
+    {
+        var running = Applications.Where(application => application.IsRunning &&
+            !string.Equals(application.Manifest.Id, "home", StringComparison.OrdinalIgnoreCase)).ToList();
+        AppInfoRunningApplications.ItemsSource = running;
+        AppInfoRunningApplications.IsVisible = running.Count > 0;
+        AppInfoRunningEmpty.IsVisible = running.Count == 0;
+    }
+
+    private void StopRunningApplication_Click(object? sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is not Button { Tag: LoadedApplication application }) return;
+        PostAfterInput(() => StopRunningApplication(application));
+    }
+
+    private void StopRunningApplication(LoadedApplication application)
+    {
+        if (!application.IsRunning || application.Manifest.Id == "home") return;
+        AppInfoStopError.IsVisible = false;
+        try
+        {
+            if (ReferenceEquals(_currentApplication, application))
+            {
+                DetachApplicationNavigation();
+                _currentApplication = null;
+                ApplicationContent.Content = null;
+                var home = Applications.FirstOrDefault(item => item.Manifest.Id == "home");
+                if (home is not null) OpenApplication(home);
+            }
+            // Prevent the detached-window close handler from restoring a disposed view.
+            if (_detachedApplications.TryGetValue(application, out var window))
+            {
+                _closingDetachedApplications = true;
+                try { window.Close(); }
+                finally { _closingDetachedApplications = false; }
+            }
+            application.Stop();
+        }
+        catch (Exception exception)
+        {
+            AppInfoStopError.Text = $"{application.Name} 停止失败：{exception.GetBaseException().Message}";
+            AppInfoStopError.IsVisible = true;
+            // Keep the error visible even when stopping the foreground app returned to Home.
+            ++_appInfoAnimationVersion;
+            AppInfoOverlay.IsVisible = true;
+            AppInfoOverlay.Opacity = 1;
+            if (AppInfoDrawer.RenderTransform is TranslateTransform transform) transform.X = 0;
+        }
+        finally
+        {
+            RefreshRunningApplications();
+            UpdateCapsuleState();
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     private void AppInfoOverlay_PointerPressed(object? sender, PointerPressedEventArgs e)
@@ -345,15 +392,16 @@ public partial class MainWindow : Window, IApplicationShell
 
         CapsuleBackButton.IsVisible = hostCanGoBack || applicationCanGoBack;
         CapsuleBackSeparator.IsVisible = applicationCanGoBack;
-        CapsuleInfoButton.IsVisible = !hostCanGoBack && !isHome;
+        CapsuleInfoButton.IsVisible = !hostCanGoBack && _currentApplication is not null;
         CapsuleInfoHomeSeparator.IsVisible = !hostCanGoBack && !isHome;
         CapsuleHomeButton.IsVisible = !hostCanGoBack && !isHome;
         CapsulePopOutButton.IsVisible = !hostCanGoBack && !isHome;
         CapsulePopOutSeparator.IsVisible = !hostCanGoBack && !isHome;
 
-        var visible = hostCanGoBack || !isHome;
+        var visible = hostCanGoBack || _currentApplication is not null;
         var width = hostCanGoBack
             ? HostBackCapsuleWidth
+            : isHome ? HomeInfoCapsuleWidth
             : applicationCanGoBack ? ExpandedBackCapsuleWidth : ExpandedCapsuleWidth;
         SetMiniAppCapsuleVisible(visible, width);
     }

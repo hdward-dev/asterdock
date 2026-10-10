@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../AsterDock.Contracts/AsterDock.Contracts.csproj" />
+    <ProjectReference Include="../AsterDock.UI/AsterDock.UI.csproj" Private="false" />
+    <PackageReference Include="Avalonia" Version="12.1.0" />
+  </ItemGroup>
+  <!-- Reuse U远程's managed VNC transport and key mapping without loading its application module. -->
+  <ItemGroup>
+    <Compile Include="../URemote.Core/LocalDesktopSession.cs" Link="Remote/LocalDesktopSession.cs" />
+    <Compile Include="../URemote.Core/VncDesktopSession.cs" Link="Remote/VncDesktopSession.cs" />
+    <Compile Include="../URemote.Core/VncAuthentication.cs" Link="Remote/VncAuthentication.cs" />
+    <Compile Include="../URemote.Module/LocalDesktopKeys.cs" Link="Remote/LocalDesktopKeys.cs" />
+  </ItemGroup>
+  <ItemGroup><None Update="app.json" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+</Project>

@@ -7,7 +7,9 @@ namespace AsterDock.Host.Modules;
 
 public sealed class LoadedApplication : IDisposable
 {
-    private readonly IApplicationModule _module;
+    private IApplicationModule? _module;
+    private readonly Type _moduleType;
+    private bool _disposed;
     private readonly AppModuleLoadContext? _loadContext;
     private Control? _view;
     private Geometry? _iconGeometry;
@@ -18,6 +20,7 @@ public sealed class LoadedApplication : IDisposable
         Manifest = manifest;
         Directory = directory;
         _module = module;
+        _moduleType = module.GetType();
         _loadContext = loadContext;
     }
 
@@ -27,6 +30,7 @@ public sealed class LoadedApplication : IDisposable
     public string Description => Manifest.Description;
     public string Version => Manifest.Version;
     public string Category => Manifest.Category;
+    public bool IsRunning => _context is not null;
     public IApplicationNavigationProvider? Navigation => _module as IApplicationNavigationProvider;
     public Geometry IconGeometry => _iconGeometry ??= Geometry.Parse(Manifest.Icon switch
     {
@@ -41,7 +45,7 @@ public sealed class LoadedApplication : IDisposable
     {
         if (_view is not null) return _view;
         EnsureInitialized(owner, systemMetrics);
-        return _view = _module.CreateView();
+        return _view = _module!.CreateView();
     }
 
     public IReadOnlyList<ApplicationQuickAction> GetQuickActions(Window owner, ISystemMetricsService systemMetrics)
@@ -54,24 +58,41 @@ public sealed class LoadedApplication : IDisposable
 
     public void SetWindowOwner(Window owner) => _context?.SetWindowOwner(owner);
 
-    public void Dispose()
+    // Stop the instance without removing the installed app or unloading its assembly.
+    // A fresh module instance is created on the next launch.
+    public void Stop()
     {
-        _view = null;
+        if (_disposed) return;
         try
         {
-            _module.Dispose();
+            _module?.Dispose();
         }
         finally
         {
             _context?.Dispose();
-            _context = null;
+        }
+        _view = null;
+        _context = null;
+        _module = null;
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        try { Stop(); }
+        finally
+        {
+            _disposed = true;
             _loadContext?.Unload();
         }
     }
 
     private void EnsureInitialized(Window owner, ISystemMetricsService systemMetrics)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         if (_context is not null) return;
+        _module ??= Activator.CreateInstance(_moduleType) as IApplicationModule
+            ?? throw new InvalidOperationException("无法重新创建轻应用实例");
         if (owner is not IApplicationShell shell)
             throw new InvalidOperationException("宿主窗口未提供应用导航服务");
         var context = new ApplicationContext(Manifest.Id, owner, shell, systemMetrics);

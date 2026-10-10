@@ -6,6 +6,28 @@
         Title="星栈" Width="1440" Height="900" MinWidth="1100" MinHeight="700"
         WindowStartupLocation="CenterScreen" Background="{DynamicResource AppPageBrush}">
   <Window.Styles>
+    <Style Selector="Button.stop-running">
+      <Setter Property="Width" Value="20"/>
+      <Setter Property="Height" Value="20"/>
+      <Setter Property="MinWidth" Value="0"/>
+      <Setter Property="MinHeight" Value="0"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="CornerRadius" Value="10"/>
+      <Setter Property="Background" Value="#EF4444"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.stop-running /template/ ContentPresenter">
+      <Setter Property="CornerRadius" Value="10"/>
+      <Setter Property="Background" Value="#EF4444"/>
+      <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+    <Style Selector="Button.stop-running:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#DC2626"/>
+    </Style>
+    <Style Selector="Button.stop-running:pressed /template/ ContentPresenter">
+      <Setter Property="Background" Value="#B91C1C"/>
+    </Style>
     <Style Selector="Border.settings-card">
       <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
@@ -157,7 +179,7 @@
                 </Button>
                 <Border x:Name="CapsuleBackSeparator" IsVisible="False" Width="1" Height="17"
                         VerticalAlignment="Center" Background="{DynamicResource AppBorderBrush}"/>
-                <Button x:Name="CapsuleInfoButton" Classes="capsule-action" ToolTip.Tip="微应用信息" Click="CapsuleMore_Click">
+                <Button x:Name="CapsuleInfoButton" Classes="capsule-action" ToolTip.Tip="轻应用信息" Click="CapsuleMore_Click">
                   <PathIcon Data="M6,12 A1.6,1.6 0 1 0 6,12.1 Z M12,12 A1.6,1.6 0 1 0 12,12.1 Z M18,12 A1.6,1.6 0 1 0 18,12.1 Z"
                             Width="19" Height="19" Foreground="{DynamicResource AppStrongTextBrush}"/>
                 </Button>
@@ -550,7 +572,7 @@
         </Border.RenderTransform>
         <Grid RowDefinitions="Auto,Auto,*,Auto">
           <Grid ColumnDefinitions="*,Auto">
-            <TextBlock Text="微应用信息" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
+            <TextBlock Text="轻应用信息" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
             <Button Grid.Column="1" Width="34" Height="34" Padding="0" CornerRadius="17"
                     Background="Transparent" BorderThickness="0" ToolTip.Tip="关闭" Click="CloseAppInfo_Click">
               <Path Data="M6,6 L18,18 M18,6 L6,18" Width="13" Height="13" Stretch="Uniform"
@@ -585,14 +607,16 @@
           </StackPanel>
 
           <StackPanel Grid.Row="3" Spacing="10">
-            <TextBlock Text="最近打开" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource AppMutedBrush}"/>
-            <ItemsControl x:Name="AppInfoRecentApplications">
+            <TextBlock Text="运行中轻应用" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource AppMutedBrush}"/>
+            <ScrollViewer MaxHeight="204" HorizontalScrollBarVisibility="Disabled">
+            <ItemsControl x:Name="AppInfoRunningApplications">
               <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="10"/></ItemsPanelTemplate>
+                <ItemsPanelTemplate><WrapPanel Orientation="Horizontal"/></ItemsPanelTemplate>
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="modules:LoadedApplication">
-                  <Button Classes="recent-app" Tag="{Binding}" ToolTip.Tip="{Binding Name}" Click="AppInfoRecentApplication_Click">
+                  <Grid Width="78" Height="94">
+                  <Button Classes="recent-app" Tag="{Binding}" ToolTip.Tip="{Binding Name}" Click="AppInfoRunningApplication_Click">
                     <StackPanel Spacing="7" HorizontalAlignment="Center">
                       <Border Width="48" Height="48" CornerRadius="12" Background="{DynamicResource AppSubtleBrush}">
                         <PathIcon Data="{Binding IconGeometry}" Width="23" Height="23"
@@ -603,10 +627,19 @@
                                  TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
                     </StackPanel>
                   </Button>
+                  <Button Classes="stop-running" Tag="{Binding}" Click="StopRunningApplication_Click" ToolTip.Tip="结束此轻应用的后台运行"
+                          AutomationProperties.Name="结束轻应用运行"
+                          HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,0,3,0">
+                    <Path Data="M4,4 L12,12 M12,4 L4,12" Width="9" Height="9" Stretch="Uniform"
+                          Stroke="White" StrokeThickness="1.6"/>
+                  </Button>
+                  </Grid>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
-            <TextBlock x:Name="AppInfoRecentEmpty" Text="暂无其他最近打开的应用" FontSize="12"
+            </ScrollViewer>
+            <TextBlock x:Name="AppInfoStopError" IsVisible="False" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource AppDangerBrush}"/>
+            <TextBlock x:Name="AppInfoRunningEmpty" Text="暂无运行中的轻应用" FontSize="12"
                        Foreground="{DynamicResource AppMutedBrush}" IsVisible="False"/>
           </StackPanel>
         </Grid>

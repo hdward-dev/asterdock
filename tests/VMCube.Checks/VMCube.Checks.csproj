@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/VMCube.Module/Services/ConsoleEndpoint.cs" Link="ConsoleEndpoint.cs" />
+    <Compile Include="../../src/VMCube.Module/Services/ConsoleTunnel.cs" Link="ConsoleTunnel.cs" />
+    <Compile Include="../../src/URemote.Core/LocalDesktopSession.cs" Link="LocalDesktopSession.cs" />
+    <Compile Include="../../src/URemote.Core/VncDesktopSession.cs" Link="VncDesktopSession.cs" />
+    <Compile Include="../../src/URemote.Core/VncAuthentication.cs" Link="VncAuthentication.cs" />
+  </ItemGroup>
+  <ItemGroup><Compile Include="../../src/VMCube.Module/Services/LibvirtService.cs" Link="LibvirtService.cs" /></ItemGroup>
+</Project>

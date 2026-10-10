@@ -149,7 +149,7 @@ public sealed partial class URemoteView
         advancedSettings.Children.Add(Text("路径在下次启动被控时保存。正常使用无需修改。", 12, true));
         var accountPage = BuildAccountPage();
         var assistancePage = BuildConnectAssistancePage();
-        pages = [devicePage, hostPage, accountPage, assistancePage, new StackPanel { Spacing = 16, Children = { Text("文件传输", 26), BuildFileTransferCard() } }, BuildLocalConnectionPage()];
+        pages = [devicePage, hostPage, accountPage, assistancePage, new StackPanel { Spacing = 16, Children = { Text("文件传输", 26), BuildFileTransferCard() } }, BuildLocalConnectionPage(dataDirectory)];
         var hostActions = new Grid { ColumnDefinitions = new("*,Auto"), Margin = new Thickness(0, 2) };
         hostActions.Children.Add(Text("允许本机被控", 14)); Grid.SetColumn(hostSwitch, 1); hostActions.Children.Add(hostSwitch);
         hostSwitch.MinWidth = 0;

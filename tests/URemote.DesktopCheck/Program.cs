@@ -65,6 +65,8 @@ AppBuilder.Configure<App>().UsePlatformDetect().WithInterFont().AfterSetup(build
             var tabs = (Avalonia.Controls.StackPanel)local.Children[2];
             var content = (Avalonia.Controls.ContentControl)local.Children[3];
             var rdp = (Avalonia.Controls.StackPanel)((Avalonia.Controls.Border)content.Content!).Child!;
+            if (((Avalonia.Controls.TextBlock)rdp.Children[2]).Text != "域" || ((Avalonia.Controls.TextBlock)rdp.Children[4]).Text != "用户名")
+                throw new Exception("RDP domain must precede username.");
             var endpoint = (Avalonia.Controls.Grid)rdp.Children[1];
             var address = (Avalonia.Controls.TextBox)endpoint.Children[0]; address.Text = "desktop.local";
             if (((Avalonia.Controls.NumericUpDown)endpoint.Children[1]).Value != 3389) throw new Exception("RDP port failed.");

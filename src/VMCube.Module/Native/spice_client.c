@@ -69,7 +69,7 @@ static void primary_create(SpiceChannel *channel, gint format, gint width, gint 
 static void primary_destroy(SpiceChannel *channel, gpointer unused) { dirty = FALSE; }
 static void mark(SpiceChannel *channel, gint value, gpointer unused) { dirty = TRUE; }
 static void unsupported_gl(SpiceChannel *channel, guint x, guint y, guint width, guint height, gpointer unused) {
-    spice_display_gl_draw_done(SPICE_DISPLAY_CHANNEL(channel));
+    spice_display_channel_gl_draw_done(SPICE_DISPLAY_CHANNEL(channel));
     fail("此 SPICE 控制台需要 GL scanout，请关闭虚拟机的 SPICE OpenGL 显示后连接。");
 }
 static void channel_new(SpiceSession *s, SpiceChannel *channel, gpointer unused) {
@@ -101,7 +101,7 @@ static gboolean paint(gpointer unused) {
     if (g_atomic_int_get(&stopping)) return G_SOURCE_REMOVE;
     if (!display || !dirty) return G_SOURCE_CONTINUE;
     SpiceDisplayPrimary primary;
-    if (!spice_display_get_primary(SPICE_CHANNEL(display), 0, &primary)) return G_SOURCE_CONTINUE;
+    if (!spice_display_channel_get_primary(SPICE_CHANNEL(display), 0, &primary)) return G_SOURCE_CONTINUE;
     if (primary.width < 1 || primary.height < 1 || primary.width > 8192 || primary.height > 8192 ||
         (guint64)primary.width * primary.height > 16 * 1024 * 1024 || !primary.data) {
         fail("SPICE 画面尺寸超出支持范围。"); return G_SOURCE_REMOVE;

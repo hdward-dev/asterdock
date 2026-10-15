@@ -33,7 +33,7 @@ jobs:
         with:
           msystem: UCRT64
           update: true
-          install: mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-python mingw-w64-ucrt-x86_64-spice-gtk mingw-w64-ucrt-x86_64-qemu
+          install: mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-python mingw-w64-ucrt-x86_64-spice-gtk mingw-w64-ucrt-x86_64-gobject-introspection mingw-w64-ucrt-x86_64-qemu
       - name: Build and stage native components
         if: runner.os != 'Windows'
         run: bash scripts/build-vmcube-native.sh

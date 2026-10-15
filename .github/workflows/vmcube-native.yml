@@ -22,6 +22,8 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
         with: {dotnet-version: 10.0.400}
+      - name: Check packaging path resolution
+        run: python -m unittest discover -s tests -p test_vmcube_bundle_paths.py
       - name: Linux dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y cmake pkg-config patchelf libspice-client-glib-2.0-dev qemu-system-x86 qemu-utils xvfb
@@ -34,6 +36,9 @@ jobs:
           msystem: UCRT64
           update: true
           install: mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-python mingw-w64-ucrt-x86_64-spice-gtk mingw-w64-ucrt-x86_64-gobject-introspection mingw-w64-ucrt-x86_64-qemu
+      - name: Verify signed macOS relocation
+        if: runner.os == 'macOS'
+        run: python3 -m unittest discover -s tests -p test_vmcube_macos_bundle.py
       - name: Build and stage native components
         if: runner.os != 'Windows'
         run: bash scripts/build-vmcube-native.sh

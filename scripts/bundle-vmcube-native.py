@@ -18,6 +18,15 @@ def copy_file(source, destination):
 
 def run(*command): return subprocess.check_output(command, text=True, stderr=subprocess.STDOUT)
 
+def executable_path(value):
+    source = pathlib.Path(value)
+    # MSYS command -v may omit .exe, but native Windows Python does not.
+    if not source.is_file() and windows and source.suffix.lower() != '.exe':
+        candidate = source.with_name(source.name + '.exe')
+        if candidate.is_file(): source = candidate
+    if not source.is_file(): raise FileNotFoundError('Missing native executable: ' + str(source))
+    return source.resolve()
+
 def stage(source, target):
     original_name = pathlib.Path(source).name
     source = pathlib.Path(source).resolve()
@@ -59,15 +68,20 @@ def stage(source, target):
     for dst, dependencies in links.items():
         if windows: continue
         if system == 'Darwin':
-            subprocess.run(['codesign', '--remove-signature', str(dst)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            if dst.suffix == '.dylib': subprocess.check_call(['install_name_tool', '-id', '@rpath/' + dst.name, str(dst)])
-            for original, path in dependencies: subprocess.check_call(['install_name_tool', '-change', original, '@loader_path/' + pathlib.Path(original).name, str(dst)])
+            # Preserve the original __LINKEDIT layout while editing load commands.
+            # Removing a modern linker signature first can leave a layout that
+            # install_name_tool rejects. Replace the invalidated signature last.
+            command = ['install_name_tool']
+            if dst.suffix == '.dylib': command += ['-id', '@rpath/' + dst.name]
+            for original, path in dependencies:
+                command += ['-change', original, '@loader_path/' + pathlib.Path(original).name]
+            if len(command) > 1: subprocess.check_call([*command, str(dst)])
             subprocess.check_call(['codesign', '--force', '--sign', '-', str(dst)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else: subprocess.check_call(['patchelf', '--set-rpath', '$ORIGIN', str(dst)])
 
-stage(args.worker, out)
+stage(executable_path(args.worker), out)
 if args.qemu:
-    qemu = pathlib.Path(args.qemu).resolve(); target = out / 'qemu'
+    qemu = executable_path(args.qemu); target = out / 'qemu'
     stage(qemu, target); stage(qemu.with_name('qemu-img' + qemu.suffix), target)
     # Nix may provide SDL2 via sdl2-compat, which dlopens SDL3 rather than linking it.
     if system == 'Linux' and any('sdl2-compat' in x['source'] for x in manifest):

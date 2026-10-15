@@ -118,17 +118,23 @@
               </Border>
               <Border Grid.Row="4" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
                 <Grid ColumnDefinitions="116,*">
+                  <TextBlock Text="显存（已用 / 总量）" Foreground="{DynamicResource AppMutedBrush}" TextWrapping="Wrap"/>
+                  <TextBlock Grid.Column="1" Text="{Binding GpuMemoryText}" TextWrapping="Wrap"/>
+                </Grid>
+              </Border>
+              <Border Grid.Row="5" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
+                <Grid ColumnDefinitions="116,*">
                   <TextBlock Text="物理内存" Foreground="{DynamicResource AppMutedBrush}"/>
                   <TextBlock Grid.Column="1" Text="{Binding TotalMemoryText}"/>
                 </Grid>
               </Border>
-              <Border Grid.Row="5" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
+              <Border Grid.Row="6" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1" Padding="0,10">
                 <Grid ColumnDefinitions="116,*">
                   <TextBlock Text="操作系统" Foreground="{DynamicResource AppMutedBrush}"/>
                   <TextBlock Grid.Column="1" Text="{Binding OperatingSystem}" TextWrapping="Wrap"/>
                 </Grid>
               </Border>
-              <Border Grid.Row="6" Padding="0,10,0,0">
+              <Border Grid.Row="7" Padding="0,10,0,0">
                 <Grid ColumnDefinitions="116,*">
                   <TextBlock Text="系统架构" Foreground="{DynamicResource AppMutedBrush}"/>
                   <TextBlock Grid.Column="1" Text="{Binding Architecture}"/>

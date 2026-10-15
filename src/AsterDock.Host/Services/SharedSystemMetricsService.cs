@@ -162,7 +162,11 @@ internal sealed class SharedSystemMetricsService : ISystemMetricsService, IDispo
                 source.TotalMemoryBytes,
                 source.DiskUsage,
                 source.DownloadBytesPerSecond,
-                source.UploadBytesPerSecond);
+                source.UploadBytesPerSecond)
+            {
+                GpuUsedMemoryBytes = source.GpuUsedMemoryBytes,
+                GpuTotalMemoryBytes = source.GpuTotalMemoryBytes
+            };
         }
         finally
         {

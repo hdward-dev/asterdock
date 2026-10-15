@@ -5,6 +5,16 @@ using System.Net.Sockets;
 using System.Text;
 using System.Buffers.Binary;
 
+if (args.Length == 2 && args[0] == "--verify-local")
+{
+    using var child = new LocalVmService(args[1]);
+    if ((await child.ReadAsync(default)).Single().State != "running") throw new Exception("Cross-process guest reattach failed");
+    Console.WriteLine("Cross-process guest identity and QMP reattach passed.");
+    return;
+}
+
+var engineSearch = LocalVmService.EngineSearchDirectories(null, "/tmp/vmcube-module");
+if (!engineSearch.Contains("/run/current-system/sw/bin") || !engineSearch.Any(x => x.EndsWith(Path.Combine(".nix-profile", "bin"), StringComparison.Ordinal))) throw new Exception("NixOS user/system profile search missing");
 var parsed = LibvirtService.ParseInfo("Name: ubuntu:dev\nState: running\nCPU(s): 4\nMax memory: 8388608 KiB\n");
 if (parsed["Name"] != "ubuntu:dev" || parsed["CPU(s)"] != "4") throw new Exception("dominfo 解析失败");
 var vm = new VirtualMachine(Guid.NewGuid().ToString(), "ubuntu", "paused", 4, 8);
@@ -84,7 +94,7 @@ esac
 
 var endpoint = ConsoleEndpoint.FromDomainXml("<domain><devices><graphics type='vnc' port='5902'><listen type='address' address='0.0.0.0'/></graphics></devices></domain>");
 if (endpoint != new ConsoleEndpoint("127.0.0.1", 5902)) throw new Exception("通配监听地址解析失败");
-foreach (var xml in new[] { "<domain><devices><graphics type='spice' port='5900'/></devices></domain>", "<domain><devices><graphics type='vnc' port='-1'/></devices></domain>", "<domain><devices><graphics type='vnc' port='5900' socket='/tmp/vnc'/></devices></domain>" })
+foreach (var xml in new[] { "<domain><devices><graphics type='vnc' port='-1'/></devices></domain>", "<domain><devices><graphics type='vnc' port='5900' socket='/tmp/vnc'/></devices></domain>" })
 {
     try { ConsoleEndpoint.FromDomainXml(xml); throw new Exception("无效控制台未拒绝"); }
     catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException) { }
@@ -98,12 +108,34 @@ try { ConsoleTunnel.BuildArguments("qemu+ssh://user:secret@host/system", endpoin
 catch (ArgumentException) { }
 await using (var local = await ConsoleTunnel.OpenAsync("qemu:///system", endpoint, default))
     if (local.Host != endpoint.Host || local.Port != endpoint.Port) throw new Exception("本地控制台路由失败");
-Console.WriteLine("Console discovery and SSH argument checks passed.");
+var spiceEndpoint = ConsoleEndpoint.FromDomainXml("<domain><devices><graphics type='vnc' port='5901'/><graphics type='spice' port='5902'/></devices></domain>");
+Check(spiceEndpoint.Protocol == ConsoleProtocol.Spice && spiceEndpoint.Port == 5902, "SPICE is preferred during automatic discovery");
+Check(ConsoleEndpoint.FromDomainXml("<domain><devices><graphics type='spice' port='-1' tlsPort='5903'/></devices></domain>").UseTls, "TLS-only SPICE endpoint discovered");
+var remoteProcess = LibvirtService.BuildStartInfo("qemu+ssh://admin@kvm.example:2222/session", ["start", vm.Id]);
+Check(remoteProcess.FileName == "ssh" && remoteProcess.ArgumentList.Last() == "LC_ALL=C virsh --connect qemu:///session start " + vm.Id, "remote management uses server virsh over SSH");
+try { LibvirtService.BuildStartInfo("qemu+ssh://admin@kvm.example/system", ["start", vm.Id + "; id"]); throw new Exception("remote shell injection accepted"); }
+catch (ArgumentException) { }
+var frameHeader = new byte[16]; "VMSP"u8.CopyTo(frameHeader); BinaryPrimitives.WriteUInt32LittleEndian(frameHeader.AsSpan(4), 2); BinaryPrimitives.WriteUInt32LittleEndian(frameHeader.AsSpan(8), 3); BinaryPrimitives.WriteUInt32LittleEndian(frameHeader.AsSpan(12), 24);
+Check(SpiceDesktopSession.ParseFrameHeader(frameHeader) == (2, 3, 24), "SPICE frame header parsed");
+frameHeader[12] = 25;
+try { SpiceDesktopSession.ParseFrameHeader(frameHeader); throw new Exception("invalid frame accepted"); } catch (InvalidDataException) { }
+var zipRoot = Path.Combine(Path.GetTempPath(), "vmcube-archive-" + Guid.NewGuid()); Directory.CreateDirectory(zipRoot);
+try
+{
+    var zip = Path.Combine(zipRoot, "bad.zip");
+    using (var archive = System.IO.Compression.ZipFile.Open(zip, System.IO.Compression.ZipArchiveMode.Create))
+    using (var writer = new StreamWriter(archive.CreateEntry("../escape").Open())) writer.Write("bad");
+    try { QemuEngineInstaller.ExtractVerifiedArchive(zip, Path.Combine(zipRoot, "extracted")); throw new Exception("path traversal accepted"); }
+    catch (InvalidDataException) { }
+}
+finally { Directory.Delete(zipRoot, recursive: true); }
+Console.WriteLine("Console discovery, SPICE framing, remote SSH management, archive traversal and injection checks passed.");
 
 byte[] challenge = Enumerable.Range(0, 16).Select(x => (byte)x).ToArray();
 foreach (var version in new[] { 3, 7, 8 })
     foreach (var authenticated in new[] { false, true }) await VncLoopback(version, authenticated);
 Console.WriteLine("VNC loopback passed: RFB 3.3/3.7/3.8, authentication, pixels, resize, pointer, keyboard and disconnect.");
+if (args.Contains("--spice-helper")) { await SpiceChecks.RunAsync(args); await LocalVmChecks.RunAsync(args); await ImportChecks.RunAsync(args); }
 void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
 async Task<byte[]> Read(NetworkStream stream, int size, CancellationToken token)
 {

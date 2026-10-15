@@ -12,5 +12,6 @@
     <Compile Include="../URemote.Core/VncAuthentication.cs" Link="Remote/VncAuthentication.cs" />
     <Compile Include="../URemote.Module/LocalDesktopKeys.cs" Link="Remote/LocalDesktopKeys.cs" />
   </ItemGroup>
-  <ItemGroup><None Update="app.json" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup><Content Include="Native/bin/**/*" Link="native/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup><None Update="app.json" CopyToOutputDirectory="PreserveNewest" /><None Update="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" /><None Include="licenses/*" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
 </Project>

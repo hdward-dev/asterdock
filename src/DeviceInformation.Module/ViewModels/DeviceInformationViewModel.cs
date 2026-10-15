@@ -23,6 +23,7 @@ public sealed class DeviceInformationViewModel : INotifyPropertyChanged, IDispos
     private string _architecture = "--";
     private string _processorName = "正在识别处理器";
     private string _graphicsName = "正在识别图形处理器";
+    private string _gpuMemoryText = "--";
     private string _totalMemoryText = "--";
     private string _systemDrive = "--";
     private double _cpuUsage;
@@ -52,6 +53,7 @@ public sealed class DeviceInformationViewModel : INotifyPropertyChanged, IDispos
     public string Architecture { get => _architecture; private set => SetField(ref _architecture, value); }
     public string ProcessorName { get => _processorName; private set => SetField(ref _processorName, value); }
     public string GraphicsName { get => _graphicsName; private set => SetField(ref _graphicsName, value); }
+    public string GpuMemoryText { get => _gpuMemoryText; private set => SetField(ref _gpuMemoryText, value); }
     public string TotalMemoryText { get => _totalMemoryText; private set => SetField(ref _totalMemoryText, value); }
     public string SystemDrive { get => _systemDrive; private set => SetField(ref _systemDrive, value); }
     public double CpuUsage { get => _cpuUsage; private set => SetField(ref _cpuUsage, value); }
@@ -131,6 +133,9 @@ public sealed class DeviceInformationViewModel : INotifyPropertyChanged, IDispos
 
     private void ApplySnapshot(SystemMetricsSnapshot snapshot)
     {
+        GpuMemoryText = snapshot.GpuTotalMemoryBytes is > 0
+            ? $"{(snapshot.GpuUsedMemoryBytes is long used ? $"{used / 1024d / 1024d / 1024d:0.00} GB" : "--")} / {FormatBytes(snapshot.GpuTotalMemoryBytes.Value)}"
+            : "暂无法读取";
         CpuUsage = snapshot.CpuUsage;
         GpuUsage = snapshot.GpuUsage ?? 0;
         MemoryUsage = snapshot.TotalMemoryBytes <= 0 ? 0 : snapshot.UsedMemoryBytes * 100d / snapshot.TotalMemoryBytes;

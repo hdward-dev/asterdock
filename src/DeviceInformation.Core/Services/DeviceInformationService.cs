@@ -18,6 +18,8 @@ public sealed partial class DeviceInformationService : IDeviceInformationService
     private DateTimeOffset _lastGpuQuery;
     private (double? Usage, double? Temperature) _cachedGpuMetrics;
     private DeviceDetails? _details;
+    private long? _gpuUsedMemoryBytes;
+    private long? _gpuTotalMemoryBytes;
     private IntPtr _gpuQuery;
     private IntPtr _gpuCounter;
 
@@ -71,7 +73,11 @@ public sealed partial class DeviceInformationService : IDeviceInformationService
             memory.Total,
             Math.Clamp(diskUsage, 0, 100),
             network.DownloadPerSecond,
-            network.UploadPerSecond);
+            network.UploadPerSecond)
+        {
+            GpuUsedMemoryBytes = _gpuUsedMemoryBytes,
+            GpuTotalMemoryBytes = _gpuTotalMemoryBytes
+        };
     }
 
     public void Dispose()
@@ -236,23 +242,24 @@ public sealed partial class DeviceInformationService : IDeviceInformationService
     {
         var windowsUsage = OperatingSystem.IsWindows() ? ReadWindowsGpuUsage() : null;
         if (now - _lastGpuQuery < TimeSpan.FromSeconds(3))
-            return (windowsUsage ?? _cachedGpuMetrics.Usage, _cachedGpuMetrics.Temperature);
+            return (_cachedGpuMetrics.Usage ?? windowsUsage, _cachedGpuMetrics.Temperature);
         _lastGpuQuery = now;
 
         if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux()) return _cachedGpuMetrics;
-        if (_details?.GraphicsName.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase) != true)
-            return (windowsUsage ?? _cachedGpuMetrics.Usage, _cachedGpuMetrics.Temperature);
-        var output = await RunCommandAsync(
-            "nvidia-smi",
-            ["--query-gpu=utilization.gpu,temperature.gpu", "--format=csv,noheader,nounits"],
-            cancellationToken).ConfigureAwait(false);
+        var output = await RunNvidiaSmiAsync(
+            "utilization.gpu,temperature.gpu,memory.used,memory.total", cancellationToken).ConfigureAwait(false);
         var firstLine = output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
         var values = firstLine?.Split(',', StringSplitOptions.TrimEntries);
-        if (values is { Length: >= 2 } &&
-            double.TryParse(values[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var usage) &&
-            double.TryParse(values[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var temperature))
-            _cachedGpuMetrics = (Math.Clamp(usage, 0, 100), temperature);
-        return (windowsUsage ?? _cachedGpuMetrics.Usage, _cachedGpuMetrics.Temperature);
+        var usage = double.TryParse(values?.ElementAtOrDefault(0), NumberStyles.Float,
+            CultureInfo.InvariantCulture, out var rawUsage) && double.IsFinite(rawUsage)
+            ? (double?)Math.Clamp(rawUsage, 0, 100) : null;
+        var temperature = double.TryParse(values?.ElementAtOrDefault(1), NumberStyles.Float,
+            CultureInfo.InvariantCulture, out var rawTemperature) && double.IsFinite(rawTemperature)
+            ? (double?)rawTemperature : null;
+        _cachedGpuMetrics = (usage, temperature);
+        _gpuUsedMemoryBytes = ParseGpuMemory(values?.ElementAtOrDefault(2));
+        _gpuTotalMemoryBytes = ParseGpuMemory(values?.ElementAtOrDefault(3));
+        return (_cachedGpuMetrics.Usage ?? windowsUsage, _cachedGpuMetrics.Temperature);
     }
 
     [SupportedOSPlatform("windows")]
@@ -343,15 +350,45 @@ public sealed partial class DeviceInformationService : IDeviceInformationService
         return RuntimeInformation.ProcessArchitecture.ToString();
     }
 
+    private static long? ParseGpuMemory(string? value)
+        => long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var mib) &&
+           mib >= 0 && mib <= long.MaxValue / (1024 * 1024)
+            ? mib * 1024 * 1024 : null;
+
+    private static async Task<string> RunNvidiaSmiAsync(string query, CancellationToken cancellationToken)
+    {
+        string[] arguments = ["--id=0", $"--query-gpu={query}", "--format=csv,noheader,nounits"];
+        var output = await RunCommandAsync("nvidia-smi", arguments, cancellationToken).ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(output) || !OperatingSystem.IsWindows()) return output;
+        var candidates = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "nvidia-smi.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "NVIDIA Corporation", "NVSMI", "nvidia-smi.exe")
+        };
+        foreach (var path in candidates)
+        {
+            if (!File.Exists(path)) continue;
+            output = await RunCommandAsync(path, arguments, cancellationToken).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(output)) return output;
+        }
+        return string.Empty;
+    }
+
     private static async Task<string> GetGraphicsNameAsync(CancellationToken cancellationToken)
     {
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
+        {
+            var nvidiaName = await RunNvidiaSmiAsync("name", cancellationToken).ConfigureAwait(false);
+            var firstName = nvidiaName.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim();
+            if (!string.IsNullOrWhiteSpace(firstName)) return firstName;
+        }
         if (OperatingSystem.IsWindows()) return GetWindowsGraphicsName();
         if (OperatingSystem.IsMacOS())
         {
             var output = await RunCommandAsync("/usr/sbin/system_profiler", ["SPDisplaysDataType"], cancellationToken)
                 .ConfigureAwait(false);
             var match = ChipsetModelRegex().Match(output);
-            return match.Success ? match.Groups[1].Value.Trim() : "系统图形处理器";
+            return match.Success ? match.Groups[1].Value.Trim() : "未能读取显卡型号";
         }
         if (OperatingSystem.IsLinux())
         {
@@ -359,9 +396,9 @@ public sealed partial class DeviceInformationService : IDeviceInformationService
             return output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
                 .FirstOrDefault(line => line.Contains("VGA", StringComparison.OrdinalIgnoreCase) ||
                                         line.Contains("3D controller", StringComparison.OrdinalIgnoreCase))
-                ?.Split(':', 3).LastOrDefault()?.Trim() ?? "系统图形处理器";
+                ?.Split(':', 3).LastOrDefault()?.Trim() ?? "未能读取显卡型号";
         }
-        return "系统图形处理器";
+        return "未能读取显卡型号";
     }
 
     private static async Task<string> GetDeviceModelAsync(CancellationToken cancellationToken)
@@ -398,7 +435,7 @@ public sealed partial class DeviceInformationService : IDeviceInformationService
         try
         {
             using var root = Registry.LocalMachine.OpenSubKey(displayClass);
-            if (root is null) return "系统图形处理器";
+            if (root is null) return "未能读取显卡型号";
             foreach (var subkeyName in root.GetSubKeyNames().Order())
             {
                 using var adapter = root.OpenSubKey(subkeyName);
@@ -410,7 +447,7 @@ public sealed partial class DeviceInformationService : IDeviceInformationService
         {
             // Some display adapter registry entries are access restricted.
         }
-        return "系统图形处理器";
+        return "未能读取显卡型号";
     }
 
     private static DriveInfo GetSystemDrive()

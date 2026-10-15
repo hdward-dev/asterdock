@@ -188,9 +188,19 @@ jobs:
           path: src/URemote.Module/Native/bin/${{ matrix.rid }}/*
           if-no-files-found: error
 
+  build-vmcube-native:
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    uses: ./.github/workflows/vmcube-native.yml
+
+  build-uremote-macos:
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    uses: ./.github/workflows/uremote-macos.yml
+
   package-applications:
     name: Package lightweight applications
-    needs: [prepare, build-uremote-rdp]
+    needs: [prepare, build-uremote-rdp, build-vmcube-native, build-uremote-macos]
     if: needs.prepare.outputs.should_release == 'true'
     runs-on: windows-latest
     timeout-minutes: 30
@@ -219,6 +229,28 @@ jobs:
             $target = "src/URemote.Module/Native/bin/$rid"
             New-Item -ItemType Directory -Path $target -Force | Out-Null
             Copy-Item "artifacts/uremote-native/uremote-rdp-$rid/*" $target
+          }
+
+      - name: Download macOS desktop bridges
+        uses: actions/download-artifact@v7
+        with:
+          name: uremote-macos-native
+          path: src/URemote.Module/Native/bin
+
+      - name: Download VMCUBE native components
+        uses: actions/download-artifact@v7
+        with:
+          pattern: vmcube-native-*
+          path: artifacts/vmcube-native
+
+      - name: Stage SPICE clients and QEMU engines
+        shell: pwsh
+        run: |
+          foreach ($platform in Get-ChildItem artifacts/vmcube-native -Directory) {
+            $rid = $platform.Name -replace '^vmcube-native-', ''
+            $target = "src/VMCube.Module/Native/bin/$rid"
+            New-Item -ItemType Directory -Path $target -Force | Out-Null
+            Copy-Item "$($platform.FullName)/*" $target -Recurse
           }
 
       - name: Package universal lightweight applications

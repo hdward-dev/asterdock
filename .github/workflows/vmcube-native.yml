@@ -1,0 +1,56 @@
+name: VMCUBE native checks
+on:
+  pull_request:
+    paths: ['src/VMCube.Module/**', 'tests/VMCube.Checks/**', 'scripts/*vmcube*', '.github/workflows/vmcube-native.yml']
+  push:
+    paths: ['src/VMCube.Module/**', 'tests/VMCube.Checks/**', 'scripts/*vmcube*', '.github/workflows/vmcube-native.yml']
+  workflow_call:
+  workflow_dispatch:
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {runner: ubuntu-24.04, rid: linux-x64}
+          - {runner: ubuntu-24.04-arm, rid: linux-arm64}
+          - {runner: macos-15-intel, rid: osx-x64}
+          - {runner: macos-15, rid: osx-arm64}
+          - {runner: windows-latest, rid: win-x64}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with: {dotnet-version: 10.0.400}
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake pkg-config patchelf libspice-client-glib-2.0-dev qemu-system-x86 qemu-utils xvfb
+      - name: macOS dependencies
+        if: runner.os == 'macOS'
+        run: brew install cmake pkgconf spice-gtk qemu
+      - uses: msys2/setup-msys2@v2
+        if: runner.os == 'Windows'
+        with:
+          msystem: UCRT64
+          update: true
+          install: mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-python mingw-w64-ucrt-x86_64-spice-gtk mingw-w64-ucrt-x86_64-qemu
+      - name: Build and stage native components
+        if: runner.os != 'Windows'
+        run: bash scripts/build-vmcube-native.sh
+      - name: Build Windows native components
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: bash scripts/build-vmcube-native.sh
+      - name: Check local VM and SPICE protocol with QEMU
+        if: runner.os == 'Linux'
+        run: dotnet run --project tests/VMCube.Checks -c Release -- --spice-helper src/VMCube.Module/Native/bin/${{ matrix.rid }}/vmcube-spice --qemu src/VMCube.Module/Native/bin/${{ matrix.rid }}/qemu/qemu-system-x86_64
+      - name: Check actual Avalonia interface
+        if: runner.os == 'Linux'
+        run: xvfb-run -a dotnet run --project tests/VMCube.UiChecks -c Release -- /tmp/vmcube-ui --console-qemu src/VMCube.Module/Native/bin/${{ matrix.rid }}/qemu/qemu-system-x86_64
+      - name: Build managed application
+        run: dotnet build src/VMCube.Module -c Release
+      - uses: actions/upload-artifact@v6
+        with:
+          name: vmcube-native-${{ matrix.rid }}
+          path: src/VMCube.Module/Native/bin/${{ matrix.rid }}/**
+          if-no-files-found: error

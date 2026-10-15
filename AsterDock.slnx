@@ -22,5 +22,6 @@
   </Folder>
   <Folder Name="/tests/VMCube/">
     <Project Path="tests/VMCube.Checks/VMCube.Checks.csproj" />
+    <Project Path="tests/VMCube.UiChecks/VMCube.UiChecks.csproj" />
   </Folder>
 </Solution>

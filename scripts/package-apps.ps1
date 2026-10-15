@@ -44,6 +44,22 @@ foreach ($application in $applications) {
             $_.Name -notmatch '^(win|osx|linux)-'
         } | Copy-Item -Destination $stagingDirectory -Recurse
 
+        # QEMU engines are installed per platform on demand; keep the universal app below 512 MB.
+        if ($application.Name -eq "vmcube") {
+            $nativeDirectory = Join-Path $stagingDirectory "native"
+            if (Test-Path $nativeDirectory) {
+                foreach ($platform in Get-ChildItem -LiteralPath $nativeDirectory -Directory) {
+                    $engine = Join-Path $platform.FullName "qemu"
+                    if (Test-Path $engine) {
+                        $engineBundle = Join-Path $OutputDirectory "VMCUBE-QEMU-$($platform.Name).zip"
+                        if (Test-Path $engineBundle) { [System.IO.File]::Delete($engineBundle) }
+                        [System.IO.Compression.ZipFile]::CreateFromDirectory($engine, $engineBundle, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+                        Remove-Item -LiteralPath $engine -Recurse -Force
+                    }
+                }
+            }
+        }
+
         # These assemblies and native assets are supplied by the AsterDock host.
         $sharedAssemblyPatterns = @(
             "AsterDock.Contracts.dll", "AsterDock.UI.dll", "Avalonia*.dll", "HarfBuzzSharp.dll",

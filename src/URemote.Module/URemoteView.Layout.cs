@@ -93,7 +93,7 @@ public sealed partial class URemoteView
         ApplyTheme(detail, TextBlock.ForegroundProperty, "AppMutedBrush"); detail.FontSize = 13;
         detail.IsVisible = !string.IsNullOrWhiteSpace(detail.Text);
         detail.PropertyChanged += (_, e) => { if (e.Property == TextBlock.TextProperty) detail.IsVisible = !string.IsNullOrWhiteSpace(detail.Text); };
-        ApplyTheme(metrics, TextBlock.ForegroundProperty, "AppMutedBrush"); metrics.FontSize = 12; metrics.Text = "双屏桌面 · 远程终端";
+        ApplyTheme(metrics, TextBlock.ForegroundProperty, "AppMutedBrush"); metrics.FontSize = 12; metrics.Text = OperatingSystem.IsMacOS() ? "多屏桌面 · 键鼠控制" : "双屏桌面 · 远程终端";
         ApplyTheme(hostBadge, TextBlock.ForegroundProperty, "AppPositiveBrush");
         status.PropertyChanged += (_, e) => { if (e.Property == TextBlock.TextProperty) UpdateHostBadge(); };
         var brand = new StackPanel { Spacing = 5, Margin = new Thickness(14, 12, 0, 30), Children = { Text("U远程", 25), Text("远程工作空间", 12, true) } };

@@ -30,19 +30,24 @@ public sealed class ConsoleWindow : Window
     private volatile bool closed;
     public Task Completion { get; private set; } = Task.CompletedTask;
     public event Action? Connected;
+    public event Action<LocalDesktopFrame>? FramePresented;
+    public event Action? ConnectionEnded;
     private bool connected;
     internal bool IsConnected => connected && !closed && !Completion.IsCompleted;
 
     private readonly Func<CancellationToken, Task<ConsoleTunnel>>? openTunnel;
-    public ConsoleWindow(string name, LocalDesktopOptions options, Func<CancellationToken, Task<ConsoleTunnel>>? openTunnel = null)
+    public ConsoleWindow(string name, LocalDesktopOptions options, Func<CancellationToken, Task<ConsoleTunnel>>? openTunnel = null, ConsoleProtocol consoleProtocol = ConsoleProtocol.Vnc, bool useTls = false, string? caFile = null)
     {
-        options.Validate(); protocol = LocalDesktopProtocol.Vnc; this.openTunnel = openTunnel;
-        session = new VncDesktopSession();
-        Title = $"{name} · 控制台 · VMCUBE";
+        options.Validate(); protocol = consoleProtocol == ConsoleProtocol.Spice ? LocalDesktopProtocol.Rdp : LocalDesktopProtocol.Vnc; this.openTunnel = openTunnel;
+        session = consoleProtocol == ConsoleProtocol.Spice ? new SpiceDesktopSession(useTls, caFile) : new VncDesktopSession();
+        Title = $"{name} · {consoleProtocol.ToString().ToUpperInvariant()} · VMCUBE";
         Width = 1280; Height = 800; MinWidth = 640; MinHeight = 440; Background = Brushes.Black;
         var disconnect = new Button { Content = "断开连接" }; disconnect.Click += (_, _) => Close();
         var secure = new Button { Content = "Ctrl + Alt + Del" };
-        secure.Click += (_, _) => { Send(() => { session.Key(0xffe3, true); session.Key(0xffe9, true); session.Key(0xffff, true); session.Key(0xffff, false); session.Key(0xffe9, false); session.Key(0xffe3, false); }); desktop.Focus(); };
+        secure.Click += (_, _) => { Send(() => { var ctrl = protocol == LocalDesktopProtocol.Rdp ? 0x1du : 0xffe3u;
+            var alt = protocol == LocalDesktopProtocol.Rdp ? 0x38u : 0xffe9u;
+            var del = protocol == LocalDesktopProtocol.Rdp ? 0x153u : 0xffffu;
+            session.Key(ctrl, true); session.Key(alt, true); session.Key(del, true); session.Key(del, false); session.Key(alt, false); session.Key(ctrl, false); }); desktop.Focus(); };
         var full = new Button { Content = "全屏" };
         full.Click += (_, _) => { WindowState = WindowState == WindowState.FullScreen ? WindowState.Normal : WindowState.FullScreen; desktop.Focus(); };
         var bar = new Grid { ColumnDefinitions = new("*,Auto,Auto,Auto"), ColumnSpacing = 12, Margin = new Thickness(16, 10) };
@@ -112,7 +117,7 @@ public sealed class ConsoleWindow : Window
         {
             if (openTunnel is not null)
             {
-                status.Text = "正在建立 SSH 控制台隧道…";
+                status.Text = "正在准备控制台连接…";
                 tunnel = await openTunnel(stop.Token);
                 options = options with { Host = tunnel.Host, Port = tunnel.Port };
             }
@@ -124,7 +129,7 @@ public sealed class ConsoleWindow : Window
         {
             if (!closed) status.Text = e is ArgumentException or InvalidOperationException or NotSupportedException or InvalidDataException ? e.Message : "连接失败或已中断，请检查服务端及网络。";
         }
-        finally { if (!closed) { ReleaseInputs(); paintTimer.Stop(); } if (tunnel is not null) await tunnel.DisposeAsync(); }
+        finally { if (!closed) { ReleaseInputs(); paintTimer.Stop(); } if (tunnel is not null) await tunnel.DisposeAsync(); ConnectionEnded?.Invoke(); }
     }
 
     private void Send(Action action)
@@ -164,7 +169,7 @@ public sealed class ConsoleWindow : Window
         }
         using (var buffer = bitmap.Lock())
             for (var row = 0; row < frame.Height; row++) Marshal.Copy(frame.Pixels, row * frame.Width * 4, IntPtr.Add(buffer.Address, row * buffer.RowBytes), frame.Width * 4);
-        painted = frame; desktop.InvalidateVisual();
+        painted = frame; desktop.InvalidateVisual(); FramePresented?.Invoke(frame);
     }
 
 }

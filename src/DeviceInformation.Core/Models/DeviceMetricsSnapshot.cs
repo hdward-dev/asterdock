@@ -10,4 +10,8 @@ public sealed record DeviceMetricsSnapshot(
     long TotalMemoryBytes,
     double DiskUsage,
     long DownloadBytesPerSecond,
-    long UploadBytesPerSecond);
+    long UploadBytesPerSecond)
+{
+    public long? GpuUsedMemoryBytes { get; init; }
+    public long? GpuTotalMemoryBytes { get; init; }
+}

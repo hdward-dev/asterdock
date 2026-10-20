@@ -1,6 +1,7 @@
 using Avalonia.Threading;
 using NetworkAccelerator.Core.Models;
 using NetworkAccelerator.Core.Services;
+using NetworkAccelerator.Module.Controls;
 
 namespace NetworkAccelerator.Module.ViewModels;
 
@@ -13,6 +14,7 @@ public sealed partial class NetworkAcceleratorViewModel
     private int _previewNodeCount;
     private bool _hasPreviewConfig;
     private bool _allowLan;
+    private bool _reduceMotion;
     private DateTimeOffset _previewUpdated;
     private string _previewSource = string.Empty;
     private string? _exitCacheKey;
@@ -25,6 +27,12 @@ public sealed partial class NetworkAcceleratorViewModel
     public bool IsRuleMode => Mode == ProxyMode.Rule;
     public bool IsGlobalMode => Mode == ProxyMode.Global;
     public bool IsDirectMode => Mode == ProxyMode.Direct;
+    public int ModeIndex => Mode switch
+    {
+        ProxyMode.Global => 1,
+        ProxyMode.Direct => 2,
+        _ => 0
+    };
     public bool IsSystemProxy => !TunEnabled;
     public string SystemProxyDetailText => IsSystemProxy ? $"端口 {ProxyPort}" : "已关闭";
     public string TunDetailText => TunEnabled ? "已开启" : "已关闭";
@@ -43,6 +51,39 @@ public sealed partial class NetworkAcceleratorViewModel
             if (SetField(ref _allowLan, value)) OnPropertyChanged(nameof(AllowLanDetailText));
         }
     }
+
+    public bool ReduceMotion
+    {
+        get => _reduceMotion;
+        private set
+        {
+            if (!SetField(ref _reduceMotion, value)) return;
+            DashboardMotion.ReduceMotion = value;
+        }
+    }
+
+    public async Task SetReduceMotionAsync(bool enabled)
+    {
+        if (_disposed || ReduceMotion == enabled && _settings.ReduceMotion == enabled) return;
+        ReduceMotion = enabled;
+        _settings.ReduceMotion = enabled;
+        try
+        {
+            await _settingsStore.SaveAsync(_settings).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = $"保存设置失败：{exception.GetBaseException().Message}");
+        }
+    }
+
+    public void PreviewSetMode(ProxyMode mode)
+    {
+        _settings.Mode = mode;
+        Mode = mode;
+    }
+
+    public void PreviewSetTun(bool enabled) => TunEnabled = enabled;
 
     public string ConfigUpdatedText => HasDashboardConfig
         ? TrafficFormatter.FormatRelativeUpdate(ConfigUpdatedAt, DateTimeOffset.Now)

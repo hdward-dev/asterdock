@@ -174,6 +174,11 @@ public partial class NetworkAcceleratorView : UserControl
             transform.X = segmentWidth * index;
     }
 
+    private async void ReduceMotion_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_viewModel is not null) await _viewModel.SetReduceMotionAsync(ReduceMotionSwitch.IsChecked);
+    }
+
     private async void TunToggle_Click(object? sender, RoutedEventArgs e)
     {
         if (_viewModel is not null) await _viewModel.SetTunEnabledAsync(TunToggle.IsChecked == true);

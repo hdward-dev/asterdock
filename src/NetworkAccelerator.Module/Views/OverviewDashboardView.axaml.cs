@@ -1,7 +1,9 @@
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using NetworkAccelerator.Core.Models;
+using NetworkAccelerator.Module.Controls;
 using NetworkAccelerator.Module.ViewModels;
 
 namespace NetworkAccelerator.Module.Views;
@@ -9,6 +11,23 @@ namespace NetworkAccelerator.Module.Views;
 public partial class OverviewDashboardView : UserControl
 {
     public OverviewDashboardView() => InitializeComponent();
+
+    protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        DashboardMotion.Changed += OnMotionChanged;
+        SyncMotionClass();
+    }
+
+    protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
+    {
+        DashboardMotion.Changed -= OnMotionChanged;
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    private void OnMotionChanged() => Dispatcher.UIThread.Post(SyncMotionClass);
+
+    private void SyncMotionClass() => Classes.Set("still", DashboardMotion.ReduceMotion);
 
     public event Action<ProxyMode>? ModeRequested;
     public event EventHandler? SubscriptionUpdateRequested;

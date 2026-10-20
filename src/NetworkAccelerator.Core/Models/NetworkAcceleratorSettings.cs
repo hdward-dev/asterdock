@@ -9,6 +9,7 @@ public sealed class NetworkAcceleratorSettings
     public ProxyMode Mode { get; set; } = ProxyMode.Rule;
     public bool TunEnabled { get; set; } = true;
     public bool AllowLan { get; set; }
+    public bool ReduceMotion { get; set; }
     public string SelectedNode { get; set; } = string.Empty;
     public bool InterruptExistingConnections { get; set; }
     public string ApiSecret { get; set; } = Convert.ToHexString(Guid.NewGuid().ToByteArray());

@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:models="using:NetworkAccelerator.Module.Models"
              xmlns:views="using:NetworkAccelerator.Module.Views"
+             xmlns:controls="using:NetworkAccelerator.Module.Controls"
              x:Class="NetworkAccelerator.Module.Views.NetworkAcceleratorView"
              x:CompileBindings="False" Background="{DynamicResource AppPageBrush}">
   <UserControl.Styles>
@@ -424,6 +425,17 @@
                   <Button Grid.Column="1" Content="安装核心" IsVisible="{Binding IsCoreMissing}" IsEnabled="{Binding !IsBusy}" Padding="10,4" Click="InstallCore_Click"/>
                 </Grid>
                 <TextBlock Text="{Binding RulesText}" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/>
+                <Border BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,1,0,0" Padding="0,12,0,0">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="4">
+                      <TextBlock Text="减少动画" FontSize="14" FontWeight="SemiBold"/>
+                      <TextBlock Text="关闭卡片、数字和列表的过渡" FontSize="12" Foreground="{DynamicResource AppMutedBrush}"/>
+                    </StackPanel>
+                    <controls:AccentSwitch Grid.Column="1" x:Name="ReduceMotionSwitch" VerticalAlignment="Center"
+                                           IsChecked="{Binding ReduceMotion}" AutomationProperties.Name="减少动画"
+                                           Click="ReduceMotion_Click"/>
+                  </Grid>
+                </Border>
               </StackPanel>
             </Border>
           </StackPanel>

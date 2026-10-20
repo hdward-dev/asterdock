@@ -29,6 +29,18 @@ Check(TrafficFormatter.DescribeSource("/tmp/subscription.json") == "本地", "lo
 Check(TrafficFormatter.DescribeSource("  ") == "—", "empty source");
 Console.WriteLine("PASS traffic formatter and subscription labels");
 
+var series = new TrafficSeriesBuffer();
+series.Push(100);
+series.Push(200);
+Check(series.Count == 2 && series[0] == 100 && series[1] == 200, "series append");
+for (var i = 0; i < TrafficSeriesBuffer.Capacity; i++) series.Push(i);
+Check(series.Count == TrafficSeriesBuffer.Capacity && series[0] == 0 && series[^1] == TrafficSeriesBuffer.Capacity - 1, "series capacity");
+series.SeedWave(1000);
+Check(series.Count == TrafficSeriesBuffer.Capacity && series[0] > 400 && series[16] > series[0] && Math.Abs(series[0] - series[^1]) < 0.01, "series wave");
+series.Clear();
+Check(series.Count == 0, "series clear");
+Console.WriteLine("PASS traffic series buffer");
+
 Check(ClashDashboardParser.TryParseTraffic("{\"up\":1536,\"down\":1048576}", out var upload, out var download) && upload == 1536 && download == 1048576, "traffic line");
 Check(!ClashDashboardParser.TryParseTraffic("not-json", out _, out _), "invalid traffic");
 

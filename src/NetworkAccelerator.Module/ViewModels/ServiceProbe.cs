@@ -7,12 +7,14 @@ public sealed class ServiceProbe : INotifyPropertyChanged
 {
     private string _latencyText = "—";
     private string _level = "idle";
+    private int _delayValue = -2;
 
     public ServiceProbe(string name) => Name = name;
 
     public event PropertyChangedEventHandler? PropertyChanged;
     public string Name { get; }
     public string LatencyText { get => _latencyText; private set => SetField(ref _latencyText, value); }
+    public int DelayValue { get => _delayValue; private set => SetField(ref _delayValue, value); }
     public bool IsOk => _level == "ok";
     public bool IsSlow => _level == "slow";
     public bool IsDown => _level == "down";
@@ -23,6 +25,7 @@ public sealed class ServiceProbe : INotifyPropertyChanged
         if (!tested)
         {
             LatencyText = "—";
+            DelayValue = -2;
             SetLevel("idle");
             return;
         }
@@ -30,11 +33,13 @@ public sealed class ServiceProbe : INotifyPropertyChanged
         if (delay is null or < 0)
         {
             LatencyText = "超时";
+            DelayValue = -1;
             SetLevel("down");
             return;
         }
 
         LatencyText = $"{delay.Value} ms";
+        DelayValue = delay.Value;
         SetLevel(delay.Value <= 1000 ? "ok" : "slow");
     }
 

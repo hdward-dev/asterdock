@@ -138,6 +138,7 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(IsRuleMode));
             OnPropertyChanged(nameof(IsGlobalMode));
             OnPropertyChanged(nameof(IsDirectMode));
+            OnPropertyChanged(nameof(ModeIndex));
             OnPropertyChanged(nameof(RouteRuleCountText));
         }
     }
@@ -216,6 +217,7 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
                 TunEnabled = _settings.TunEnabled;
                 RefreshCoreStatus(coreVersion);
                 AllowLan = _settings.AllowLan;
+                ReduceMotion = _settings.ReduceMotion;
                 ApplyProfile();
                 RefreshLanAddress();
             });

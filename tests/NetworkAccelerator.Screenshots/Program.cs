@@ -7,12 +7,13 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Styling;
 using NetworkAccelerator.Core.Models;
+using NetworkAccelerator.Module.Controls;
 using NetworkAccelerator.Module.ViewModels;
 using NetworkAccelerator.Module.Views;
 using Semi.Avalonia;
 using Ursa.Themes.Semi;
 
-var output = args.Length > 0 ? args[0] : "/opt/cursor/artifacts/screenshots";
+var output = args.FirstOrDefault(argument => !argument.StartsWith('-')) ?? "/opt/cursor/artifacts/screenshots";
 Directory.CreateDirectory(output);
 
 AppBuilder.Configure<ShotApp>()
@@ -21,12 +22,76 @@ AppBuilder.Configure<ShotApp>()
     .WithInterFont()
     .SetupWithoutStarting();
 
+DashboardMotion.ReduceMotion = true;
 Capture("overview-light-disconnected", ThemeVariant.Light, Disconnected(), 1360, 1180, output);
 Capture("overview-light-populated", ThemeVariant.Light, Populated(allowLan: false), 1360, 1280, output);
 Capture("overview-dark-disconnected", ThemeVariant.Dark, Disconnected(), 1360, 1180, output);
 Capture("overview-dark-populated", ThemeVariant.Dark, Populated(allowLan: true), 1360, 1560, output);
-Capture("overview-narrow-populated", ThemeVariant.Light, Populated(allowLan: false), 760, 2100, output);
+Capture("overview-narrow-populated", ThemeVariant.Light, Populated(allowLan: false), 760, 2200, output);
+CaptureMotion(Path.Combine(output, "overview-motion"));
 Console.WriteLine("PASS dashboard screenshots in " + output);
+
+static void CaptureMotion(string directory)
+{
+    DashboardMotion.ReduceMotion = false;
+    MotionClock.Manual = true;
+    Directory.CreateDirectory(directory);
+    var temp = Path.Combine(Path.GetTempPath(), "na-motion-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(temp);
+    Application.Current!.RequestedThemeVariant = ThemeVariant.Light;
+    var viewModel = new NetworkAcceleratorViewModel(temp, temp);
+    Window? window = null;
+    try
+    {
+        viewModel.ShowDashboardPreview(Populated(allowLan: false));
+        var view = new NetworkAcceleratorView
+        {
+            DataContext = viewModel,
+            Width = 1360,
+            Height = 1280,
+            FontFamily = new FontFamily("WenQuanYi Micro Hei, Droid Sans Fallback, Inter")
+        };
+        window = new Window
+        {
+            Width = 1360,
+            Height = 1280,
+            Content = view,
+            Background = Brushes.Transparent,
+            WindowDecorations = WindowDecorations.None,
+            FontFamily = view.FontFamily
+        };
+        window.Show();
+        var frame = 0;
+        for (var i = 0; i < 18; i++) SaveMotion(window, directory, ref frame);
+        viewModel.PreviewSetMode(ProxyMode.Global);
+        for (var i = 0; i < 10; i++) SaveMotion(window, directory, ref frame);
+        viewModel.PreviewSetTun(true);
+        viewModel.Dash.NudgeTraffic(320 * 1024, (long)(2.4 * 1024 * 1024));
+        viewModel.Dash.Google.Apply(240, true);
+        for (var i = 0; i < 12; i++) SaveMotion(window, directory, ref frame);
+        viewModel.ShowDashboardPreview(Populated(allowLan: false, liveCount: 2));
+        for (var i = 0; i < 10; i++) SaveMotion(window, directory, ref frame);
+        Console.WriteLine("motion frames " + frame);
+    }
+    finally
+    {
+        window?.Close();
+        viewModel.Dispose();
+        Directory.Delete(temp, recursive: true);
+DashboardMotion.ReduceMotion = true;
+        MotionClock.Manual = false;
+        }
+}
+
+static void SaveMotion(Window window, string directory, ref int frame)
+{
+    MotionClock.Advance(TimeSpan.FromMilliseconds(40));
+    AvaloniaHeadlessPlatform.ForceRenderTimerTick(2);
+    var bitmap = window.CaptureRenderedFrame();
+    if (bitmap is null) return;
+    bitmap.Save(Path.Combine(directory, $"frame-{frame:000}.png"), new PngBitmapEncoderOptions());
+    frame++;
+}
 
 static void Capture(string name, ThemeVariant theme, DashboardPreview preview, double width, double height, string output)
 {
@@ -80,7 +145,7 @@ static DashboardPreview Disconnected() => new()
     HasConfiguration = false
 };
 
-static DashboardPreview Populated(bool allowLan) => new()
+static DashboardPreview Populated(bool allowLan, int liveCount = 4) => new()
 {
     IsConnected = true,
     Mode = ProxyMode.Rule,
@@ -102,7 +167,7 @@ static DashboardPreview Populated(bool allowLan) => new()
     DownloadTotal = 860L * 1024 * 1024,
     Tcp = 0,
     Udp = 4,
-    Live = SampleConnections(),
+    Live = SampleConnections().Take(liveCount).ToArray(),
     Recent =
     [
         Sample("recent-1", "10.0.0.8", 443, "api.github.com", "TCP", "香港 01", 4096, 512, false)

@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using Avalonia.Threading;
 using NetworkAccelerator.Core.Models;
 using NetworkAccelerator.Core.Services;
+using NetworkAccelerator.Module.Controls;
 
 namespace NetworkAccelerator.Module.ViewModels;
 
@@ -43,6 +45,10 @@ public sealed class AcceleratorDashboard : INotifyPropertyChanged
     private string _exitKindText = string.Empty;
     private string _exitRegionText = string.Empty;
     private string _exitOrgText = "—";
+    private long _uploadRateValue = -1;
+    private long _downloadRateValue = -1;
+    private long _nextConnectionFlush;
+    private bool _connectionFlushQueued;
     private IReadOnlyList<ConnectionRow> _liveRows = [];
     private IReadOnlyList<ConnectionRow> _recentRows = [];
     private IReadOnlyList<ConnectionRow> _dnsRows = [];
@@ -59,11 +65,15 @@ public sealed class AcceleratorDashboard : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     public ObservableCollection<ConnectionLine> VisibleConnections { get; } = [];
     public ObservableCollection<ProxyGroupInfo> ProxyGroups { get; } = [];
+    public TrafficTrace UploadTrace { get; } = new();
+    public TrafficTrace DownloadTrace { get; } = new();
     public ServiceProbe Google { get; }
     public ServiceProbe GitHub { get; }
     public ServiceProbe YouTube { get; }
     public ServiceProbe ChatGPT { get; }
 
+    public long UploadRateValue { get => _uploadRateValue; private set => SetField(ref _uploadRateValue, value); }
+    public long DownloadRateValue { get => _downloadRateValue; private set => SetField(ref _downloadRateValue, value); }
     public string UploadRateText { get => _uploadRateText; private set => SetField(ref _uploadRateText, value); }
     public string DownloadRateText { get => _downloadRateText; private set => SetField(ref _downloadRateText, value); }
     public string UploadPeakText { get => _uploadPeakText; private set => SetField(ref _uploadPeakText, value); }
@@ -138,17 +148,25 @@ public sealed class AcceleratorDashboard : INotifyPropertyChanged
         RefreshVisible();
     }
 
-    public void ApplyRealtime(RealtimeSnapshot snapshot)
+    public void ApplyRealtime(RealtimeSnapshot snapshot, bool recordSample = true)
     {
         _live = true;
         if (snapshot.UploadRate > _uploadPeak) _uploadPeak = snapshot.UploadRate;
         if (snapshot.DownloadRate > _downloadPeak) _downloadPeak = snapshot.DownloadRate;
+        UploadRateValue = snapshot.UploadRate;
+        DownloadRateValue = snapshot.DownloadRate;
         UploadRateText = TrafficFormatter.FormatRate(snapshot.UploadRate);
         DownloadRateText = TrafficFormatter.FormatRate(snapshot.DownloadRate);
         UploadPeakText = TrafficFormatter.FormatRate(_uploadPeak);
         DownloadPeakText = TrafficFormatter.FormatRate(_downloadPeak);
         UploadTotalText = TrafficFormatter.FormatTotal(snapshot.UploadTotal);
         DownloadTotalText = TrafficFormatter.FormatTotal(snapshot.DownloadTotal);
+        if (recordSample)
+        {
+            UploadTrace.Push(snapshot.UploadRate);
+            DownloadTrace.Push(snapshot.DownloadRate);
+        }
+
         TcpChipText = $"TCP {snapshot.TcpCount}";
         UdpChipText = $"UDP {snapshot.UdpCount}";
         _liveRows = snapshot.Live;
@@ -158,8 +176,20 @@ public sealed class AcceleratorDashboard : INotifyPropertyChanged
         RecentCount = snapshot.Recent.Count;
         DnsCount = snapshot.Dns.Count;
         ReplaceGroups(snapshot.Groups);
-        RefreshVisible();
+        RequestConnections();
         OnPropertyChanged(nameof(CanTestServices));
+    }
+
+    public void NudgeTraffic(long upload, long download)
+    {
+        if (upload < 0) upload = 0;
+        if (download < 0) download = 0;
+        UploadRateValue = upload;
+        DownloadRateValue = download;
+        UploadRateText = TrafficFormatter.FormatRate(upload);
+        DownloadRateText = TrafficFormatter.FormatRate(download);
+        UploadTrace.Push(upload);
+        DownloadTrace.Push(download);
     }
 
     public void ResetLive()
@@ -168,6 +198,10 @@ public sealed class AcceleratorDashboard : INotifyPropertyChanged
         _testing = false;
         _uploadPeak = 0;
         _downloadPeak = 0;
+        UploadRateValue = -1;
+        DownloadRateValue = -1;
+        UploadTrace.Clear();
+        DownloadTrace.Clear();
         UploadRateText = "—";
         DownloadRateText = "—";
         UploadPeakText = "—";
@@ -240,7 +274,9 @@ public sealed class AcceleratorDashboard : INotifyPropertyChanged
             dns,
             preview.Tcp,
             preview.Udp,
-            preview.Groups));
+            preview.Groups), recordSample: false);
+        UploadTrace.SeedWave(preview.UploadRate);
+        DownloadTrace.SeedWave(preview.DownloadRate);
         ApplyServiceResults(preview.ServiceDelays);
         ApplyExit(preview.Exit);
     }
@@ -254,6 +290,77 @@ public sealed class AcceleratorDashboard : INotifyPropertyChanged
         GroupCountText = _live ? groups.Count.ToString() : "—";
     }
 
+    private void RequestConnections()
+    {
+        if (DashboardMotion.ReduceMotion)
+        {
+            RefreshVisible();
+            return;
+        }
+
+        var now = Environment.TickCount64;
+        if (now >= _nextConnectionFlush)
+        {
+            _nextConnectionFlush = now + (long)DashboardMotion.ConnectionThrottle.TotalMilliseconds;
+            RefreshVisible();
+            return;
+        }
+
+        if (_connectionFlushQueued) return;
+        _connectionFlushQueued = true;
+        var wait = Math.Max(1, _nextConnectionFlush - now);
+        DispatcherTimer.RunOnce(() =>
+        {
+            _connectionFlushQueued = false;
+            _nextConnectionFlush = Environment.TickCount64 + (long)DashboardMotion.ConnectionThrottle.TotalMilliseconds;
+            RefreshVisible();
+        }, TimeSpan.FromMilliseconds(wait));
+    }
+
+    private void PublishConnections(ConnectionLine[] desired)
+    {
+        if (DashboardMotion.ReduceMotion)
+        {
+            VisibleConnections.Clear();
+            foreach (var line in desired) VisibleConnections.Add(line);
+            return;
+        }
+
+        var keep = new HashSet<string>(desired.Length);
+        foreach (var line in desired) keep.Add(line.Id);
+        foreach (var row in VisibleConnections.ToArray())
+        {
+            if (!keep.Contains(row.Id)) row.BeginLeave(() => VisibleConnections.Remove(row));
+        }
+
+        var index = 0;
+        foreach (var line in desired)
+        {
+            var found = -1;
+            for (var i = 0; i < VisibleConnections.Count; i++)
+            {
+                if (VisibleConnections[i].Id == line.Id && !VisibleConnections[i].IsLeaving)
+                {
+                    found = i;
+                    break;
+                }
+            }
+
+            if (found >= 0)
+            {
+                VisibleConnections[found].CopyFrom(line);
+                if (found != index) VisibleConnections.Move(found, Math.Min(index, VisibleConnections.Count - 1));
+            }
+            else
+            {
+                line.BeginEnter();
+                VisibleConnections.Insert(Math.Min(index, VisibleConnections.Count), line);
+            }
+
+            index++;
+        }
+    }
+
     private void RefreshVisible()
     {
         var source = _tab switch
@@ -264,6 +371,7 @@ public sealed class AcceleratorDashboard : INotifyPropertyChanged
         };
         var now = DateTimeOffset.Now;
         var lines = source.Take(VisibleRowCap).Select(row => new ConnectionLine(
+            row.Id,
             row.SourceText,
             row.TargetText,
             row.ProtocolText,
@@ -271,7 +379,7 @@ public sealed class AcceleratorDashboard : INotifyPropertyChanged
             TrafficFormatter.FormatTotal(row.Download),
             TrafficFormatter.FormatTotal(row.Upload),
             TrafficFormatter.FormatDuration(now - row.Start))).ToArray();
-        Sync(VisibleConnections, lines);
+        PublishConnections(lines);
         ShowConnectionRows = lines.Length > 0;
         ConnectionsEmptyText = lines.Length == 0 ? EmptyText() : string.Empty;
         HasConnectionOverflow = source.Count > VisibleRowCap;

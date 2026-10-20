@@ -10,7 +10,7 @@ namespace NetworkAccelerator.Module.Controls;
 /// 88px accent circle that plays, connects, and stops. Motion is drawn inside a fixed slot
 /// so scale, glow, and shake never move surrounding cards.
 /// </summary>
-public class PowerButton : Control
+public class PowerButton : Panel
 {
     public static readonly StyledProperty<bool> IsRunningProperty =
         AvaloniaProperty.Register<PowerButton, bool>(nameof(IsRunning));
@@ -31,22 +31,31 @@ public class PowerButton : Control
         RoutedEvent.Register<PowerButton, RoutedEventArgs>(nameof(Click), RoutingStrategies.Bubble);
 
     private const double Diameter = 88;
-    private static readonly Point Play0 = new(34, 32);
-    private static readonly Point Play1 = new(56, 44);
-    private static readonly Point Play2 = new(56, 44);
-    private static readonly Point Play3 = new(34, 56);
-    private static readonly Point Stop0 = new(36, 36);
-    private static readonly Point Stop1 = new(52, 36);
-    private static readonly Point Stop2 = new(52, 52);
-    private static readonly Point Stop3 = new(36, 52);
+    private const double GlyphBox = 46;
 
+    // One primary-tinted Gaussian in the reference: offset (0, 6), blur radius 14
+    // (sigma 7), alpha 0.30, same for stopped and running. Avalonia converts
+    // BoxShadow.Blur with sigma = 0.288675 * blur + 0.5 and clips the shadow to
+    // the outside of the circle. The key layer lands on sigma 7; the ambient layer
+    // fills the inner part of that same falloff. Together the alphas weigh about 0.30.
+    private const double ShadowKeyOffsetY = 6;
+    private const double ShadowKeyBlur = 22.5;
+    private const double ShadowKeyAlpha = 0.22;
+    private const double ShadowAmbientOffsetY = 2;
+    private const double ShadowAmbientBlur = 12;
+    private const double ShadowAmbientAlpha = 0.10;
+
+    private readonly Border _shadowHost;
+    private readonly Face _face;
+    private readonly ScaleTransform _shadowScale = new(1, 1);
+    private readonly TranslateTransform _shake = new();
     private readonly Pen _ringPen = new(Brushes.DodgerBlue, 3, lineCap: PenLineCap.Round);
     private readonly Pen _glowPen = new(Brushes.DodgerBlue, 6, lineCap: PenLineCap.Round);
     private readonly Pen _trackPen = new(Brushes.DodgerBlue, 3);
-    private StreamGeometry? _icon;
+    private StreamGeometry? _play;
+    private StreamGeometry? _stop;
     private StreamGeometry? _arc;
     private double _arcRadius = -1;
-    private double _iconMorph = -2;
     private IBrush _accent = Brushes.DodgerBlue;
     private IBrush _iconBrush = Brushes.White;
     private double _scale = 1;
@@ -87,6 +96,19 @@ public class PowerButton : Control
         Height = Diameter;
         ClipToBounds = false;
         Cursor = new Cursor(StandardCursorType.Hand);
+        RenderTransform = _shake;
+        _shadowHost = new Border
+        {
+            CornerRadius = new CornerRadius(Diameter / 2),
+            BoxShadow = RestShadow(Colors.DodgerBlue),
+            IsHitTestVisible = false,
+            ClipToBounds = false,
+            RenderTransform = _shadowScale,
+            RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative)
+        };
+        _face = new Face(this);
+        Children.Add(_shadowHost);
+        Children.Add(_face);
     }
 
     public bool IsRunning
@@ -125,6 +147,34 @@ public class PowerButton : Control
         remove => RemoveHandler(ClickEvent, value);
     }
 
+    /// <summary>Drives the pointer hover scale. Used by the screenshot harness.</summary>
+    public void PreviewHover(bool hovered)
+    {
+        _hovered = hovered;
+        if (!_pressed) AnimateScale(hovered ? DashboardMotion.PowerHoverScale : 1);
+    }
+
+    /// <summary>Drives the pointer press scale and ripple. Used by the screenshot harness.</summary>
+    public void PreviewPress(bool pressed) => PreviewPress(pressed, new Point(Diameter / 2, Diameter / 2));
+
+    private void PreviewPress(bool pressed, Point origin)
+    {
+        if (pressed)
+        {
+            _pressed = true;
+            _rippleOrigin = origin;
+            _ripple = 0;
+            _rippleActive = true;
+            AnimateScale(DashboardMotion.PowerPressScale);
+            EnsureClock();
+            return;
+        }
+
+        if (!_pressed) return;
+        _pressed = false;
+        AnimateScale(_hovered ? DashboardMotion.PowerHoverScale : 1);
+    }
+
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
@@ -132,9 +182,10 @@ public class PowerButton : Control
         ActualThemeVariantChanged += (_, _) => CacheBrushes();
         DashboardMotion.Changed += OnMotionSetting;
         CacheBrushes();
+        LoadGlyphs();
         _morph = IsRunning ? 1 : 0;
         _seenFault = FaultSignal;
-        InvalidateVisual();
+        InvalidateFace();
         EnsureClock();
     }
 
@@ -158,45 +209,46 @@ public class PowerButton : Control
         {
             CacheBrushes();
             EnsureClock();
+            InvalidateFace();
         }
+    }
+
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        var radius = Math.Min(finalSize.Width, finalSize.Height) / 2;
+        _shadowHost.CornerRadius = new CornerRadius(radius);
+        return base.ArrangeOverride(finalSize);
     }
 
     protected override void OnPointerEntered(PointerEventArgs e)
     {
         base.OnPointerEntered(e);
-        _hovered = true;
-        if (!_pressed) AnimateScale(DashboardMotion.PowerHoverScale);
+        PreviewHover(true);
     }
 
     protected override void OnPointerExited(PointerEventArgs e)
     {
         base.OnPointerExited(e);
-        _hovered = false;
-        if (!_pressed) AnimateScale(1);
+        PreviewHover(false);
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
         if (IsConnecting || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
-        _pressed = true;
-        _rippleOrigin = e.GetPosition(this);
-        _ripple = 0;
-        _rippleActive = true;
-        AnimateScale(DashboardMotion.PowerPressScale);
+        PreviewPress(true, e.GetPosition(this));
         e.Pointer.Capture(this);
         e.Handled = true;
-        EnsureClock();
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
         if (!_pressed) return;
-        _pressed = false;
+        var inside = new Rect(Bounds.Size).Contains(e.GetPosition(this));
+        PreviewPress(false);
         e.Pointer.Capture(null);
-        AnimateScale(_hovered ? DashboardMotion.PowerHoverScale : 1);
-        if (new Rect(Bounds.Size).Contains(e.GetPosition(this)) && !IsConnecting)
+        if (inside && !IsConnecting)
             RaiseEvent(new RoutedEventArgs(ClickEvent));
         e.Handled = true;
     }
@@ -205,49 +257,38 @@ public class PowerButton : Control
     {
         base.OnKeyDown(e);
         if (IsConnecting || e.Key is not (Key.Space or Key.Enter)) return;
-        _pressed = true;
-        _rippleOrigin = new Point(Diameter / 2, Diameter / 2);
-        _ripple = 0;
-        _rippleActive = true;
-        AnimateScale(DashboardMotion.PowerPressScale);
+        PreviewPress(true, new Point(Diameter / 2, Diameter / 2));
         e.Handled = true;
-        EnsureClock();
     }
 
     protected override void OnKeyUp(KeyEventArgs e)
     {
         base.OnKeyUp(e);
         if (!_pressed || e.Key is not (Key.Space or Key.Enter)) return;
-        _pressed = false;
-        AnimateScale(1);
+        PreviewPress(false);
         if (!IsConnecting) RaiseEvent(new RoutedEventArgs(ClickEvent));
         e.Handled = true;
     }
 
-    public override void Render(DrawingContext context)
+    private void RenderFace(DrawingContext context)
     {
-        var center = new Point(Bounds.Width / 2, Bounds.Height / 2);
+        var center = new Point(_face.Bounds.Width / 2, _face.Bounds.Height / 2);
         var radius = Diameter / 2;
-        var shake = _shakeActive ? Math.Sin(_shakeElapsed / DashboardMotion.PowerShake.TotalMilliseconds * Math.PI * 6) * (1 - Math.Clamp(_shakeElapsed / DashboardMotion.PowerShake.TotalMilliseconds, 0, 1)) * 6 : 0;
-        using (context.PushTransform(Matrix.CreateTranslation(shake, 0)))
+        var drawn = radius * _scale;
+        DrawGlow(context, center, drawn);
+        var circle = new Rect(center.X - drawn, center.Y - drawn, drawn * 2, drawn * 2);
+        context.DrawEllipse(AccentBrush ?? _accent, null, center, drawn, drawn);
+        if (_rippleActive)
         {
-            var drawn = radius * _scale;
-            DrawGlow(context, center, drawn);
-            DrawShadow(context, center, radius);
-            var circle = new Rect(center.X - drawn, center.Y - drawn, drawn * 2, drawn * 2);
-            context.DrawEllipse(AccentBrush ?? _accent, null, center, drawn, drawn);
-            if (_rippleActive)
-            {
-                var alpha = (1 - Math.Clamp(_ripple, 0, 1)) * 0.34;
-                using (context.PushClip(new RoundedRect(circle, drawn)))
-                using (context.PushOpacity(alpha))
-                    context.DrawEllipse(IconBrush ?? _iconBrush, null, _rippleOrigin, _ripple * Diameter, _ripple * Diameter);
-            }
-
-            using (context.PushTransform(ScaleAround(center, _scale)))
-                DrawIcon(context, _morph);
-            if (IsConnecting) DrawRing(context, center, radius + 6);
+            var alpha = (1 - Math.Clamp(_ripple, 0, 1)) * 0.34;
+            using (context.PushClip(new RoundedRect(circle, drawn)))
+            using (context.PushOpacity(alpha))
+                context.DrawEllipse(IconBrush ?? _iconBrush, null, _rippleOrigin, _ripple * Diameter, _ripple * Diameter);
         }
+
+        using (context.PushTransform(ScaleAround(center, _scale)))
+            DrawIcon(context);
+        if (IsConnecting) DrawRing(context, center, radius + 6);
     }
 
     private void DrawGlow(DrawingContext context, Point center, double radius)
@@ -263,38 +304,23 @@ public class PowerButton : Control
         }
     }
 
-    private void DrawShadow(DrawingContext context, Point center, double radius)
+    private void DrawIcon(DrawingContext context)
     {
-        var strength = _pressed ? 0.22 : _hovered ? 0.48 : 0.30;
-        var shifted = center + new Vector(0, 6);
-        for (var layer = 5; layer >= 1; layer--)
-        {
-            var t = layer / 5d;
-            var spread = t * (8 + strength * 18);
-            using (context.PushOpacity(strength * 0.20 * (1 - t)))
-                context.DrawEllipse(_accent, null, shifted, radius * _scale + spread, radius * 0.9 * _scale + spread);
-        }
+        LoadGlyphs();
+        var play = Math.Clamp(1 - _morph, 0, 1);
+        var stop = Math.Clamp(_morph, 0, 1);
+        if (play > 0.01 && _play is not null) DrawGlyph(context, _play, play);
+        if (stop > 0.01 && _stop is not null) DrawGlyph(context, _stop, stop);
     }
 
-    private void DrawIcon(DrawingContext context, double morph)
+    private void DrawGlyph(DrawingContext context, StreamGeometry geometry, double opacity)
     {
-        if (_icon is null || Math.Abs(_iconMorph - morph) > 0.004)
-        {
-            _iconMorph = morph;
-            var geometry = new StreamGeometry();
-            using (var ctx = geometry.Open())
-            {
-                ctx.BeginFigure(Lerp(Play0, Stop0, morph), true);
-                ctx.LineTo(Lerp(Play1, Stop1, morph));
-                ctx.LineTo(Lerp(Play2, Stop2, morph));
-                ctx.LineTo(Lerp(Play3, Stop3, morph));
-                ctx.EndFigure(true);
-            }
-
-            _icon = geometry;
-        }
-
-        context.DrawGeometry(IconBrush ?? _iconBrush, null, _icon);
+        var scale = GlyphBox / 24d;
+        var offset = (Diameter - GlyphBox) / 2;
+        var matrix = Matrix.CreateScale(scale, scale) * Matrix.CreateTranslation(offset, offset);
+        using (context.PushOpacity(opacity))
+        using (context.PushTransform(matrix))
+            context.DrawGeometry(IconBrush ?? _iconBrush, null, geometry);
     }
 
     private void DrawRing(DrawingContext context, Point center, double radius)
@@ -352,8 +378,11 @@ public class PowerButton : Control
         _rippleActive = false;
         _shakeActive = false;
         _scale = 1;
+        _shadowScale.ScaleX = 1;
+        _shadowScale.ScaleY = 1;
+        _shake.X = 0;
         _morph = IsRunning ? 1 : 0;
-        InvalidateVisual();
+        InvalidateFace();
         EnsureClock();
     }
 
@@ -363,7 +392,7 @@ public class PowerButton : Control
         {
             _morph = target;
             _morphAnimating = false;
-            InvalidateVisual();
+            InvalidateFace();
             EnsureClock();
             return;
         }
@@ -390,7 +419,9 @@ public class PowerButton : Control
         {
             _scale = 1;
             _scaleAnimating = false;
-            InvalidateVisual();
+            _shadowScale.ScaleX = 1;
+            _shadowScale.ScaleY = 1;
+            InvalidateFace();
             return;
         }
 
@@ -398,7 +429,14 @@ public class PowerButton : Control
         _scaleTo = target;
         _scaleElapsed = 0;
         _scaleAnimating = Math.Abs(_scale - target) > 0.001;
+        if (!_scaleAnimating)
+        {
+            _shadowScale.ScaleX = _scale;
+            _shadowScale.ScaleY = _scale;
+        }
+
         EnsureClock();
+        InvalidateFace();
     }
 
     private void Tick(TimeSpan elapsed)
@@ -415,6 +453,9 @@ public class PowerButton : Control
                 _scale = _scaleTo;
                 _scaleAnimating = false;
             }
+
+            _shadowScale.ScaleX = _scale;
+            _shadowScale.ScaleY = _scale;
         }
 
         if (_morphAnimating)
@@ -439,7 +480,13 @@ public class PowerButton : Control
         if (_shakeActive)
         {
             _shakeElapsed += ms;
-            if (_shakeElapsed >= DashboardMotion.PowerShake.TotalMilliseconds) _shakeActive = false;
+            var progress = Math.Clamp(_shakeElapsed / DashboardMotion.PowerShake.TotalMilliseconds, 0, 1);
+            _shake.X = Math.Sin(progress * Math.PI * 6) * (1 - progress) * 6;
+            if (progress >= 1)
+            {
+                _shakeActive = false;
+                _shake.X = 0;
+            }
         }
 
         if (IsConnecting && !DashboardMotion.ReduceMotion)
@@ -448,7 +495,7 @@ public class PowerButton : Control
         if (IsRunning && !DashboardMotion.ReduceMotion)
             _glowPhase = (_glowPhase + ms / DashboardMotion.PowerGlow.TotalMilliseconds) % 1;
 
-        InvalidateVisual();
+        InvalidateFace();
         EnsureClock();
     }
 
@@ -481,7 +528,56 @@ public class PowerButton : Control
         if (!ReferenceEquals(_ringPen.Brush, paint)) _ringPen.Brush = paint;
         if (!ReferenceEquals(_glowPen.Brush, paint)) _glowPen.Brush = paint;
         if (!ReferenceEquals(_trackPen.Brush, paint)) _trackPen.Brush = paint;
+        var color = paint is ISolidColorBrush solid ? solid.Color : Colors.DodgerBlue;
+        _shadowHost.BoxShadow = RestShadow(color);
     }
+
+    private void LoadGlyphs()
+    {
+        _play ??= FindGlyph("RiPlayFill");
+        _stop ??= FindGlyph("RiStopFill");
+    }
+
+    private StreamGeometry? FindGlyph(string key)
+    {
+        // TryGetResource on this control does not walk parents. The icon dictionary
+        // lives on the dashboard view, so follow the logical parent chain.
+        for (StyledElement? node = this; node is not null; node = node.Parent)
+        {
+            if (node.TryGetResource(key, ActualThemeVariant, out var value) && value is StreamGeometry geometry)
+                return geometry;
+        }
+
+        if (Application.Current?.TryFindResource(key, ActualThemeVariant, out var app) == true && app is StreamGeometry appGeometry)
+            return appGeometry;
+        return null;
+    }
+
+    private void InvalidateFace() => _face.InvalidateVisual();
+
+    private static BoxShadows RestShadow(Color color)
+    {
+        var key = new BoxShadow
+        {
+            OffsetX = 0,
+            OffsetY = ShadowKeyOffsetY,
+            Blur = ShadowKeyBlur,
+            Spread = 0,
+            Color = WithAlpha(color, ShadowKeyAlpha)
+        };
+        var ambient = new BoxShadow
+        {
+            OffsetX = 0,
+            OffsetY = ShadowAmbientOffsetY,
+            Blur = ShadowAmbientBlur,
+            Spread = 0,
+            Color = WithAlpha(color, ShadowAmbientAlpha)
+        };
+        return new BoxShadows(key, [ambient]);
+    }
+
+    private static Color WithAlpha(Color color, double alpha) =>
+        Color.FromArgb((byte)Math.Clamp(Math.Round(alpha * 255), 0, 255), color.R, color.G, color.B);
 
     private static Matrix ScaleAround(Point center, double scale)
     {
@@ -491,13 +587,24 @@ public class PowerButton : Control
         return toOrigin * scaled * back;
     }
 
-    private static Point Lerp(Point from, Point to, double t) =>
-        new(from.X + (to.X - from.X) * t, from.Y + (to.Y - from.Y) * t);
-
     private static double EaseOutBack(double t)
     {
         const double c1 = 1.70158;
         const double c3 = c1 + 1;
         return 1 + c3 * Math.Pow(t - 1, 3) + c1 * Math.Pow(t - 1, 2);
+    }
+
+    private sealed class Face : Control
+    {
+        private readonly PowerButton _owner;
+
+        public Face(PowerButton owner)
+        {
+            _owner = owner;
+            IsHitTestVisible = false;
+            ClipToBounds = false;
+        }
+
+        public override void Render(DrawingContext context) => _owner.RenderFace(context);
     }
 }

@@ -6,6 +6,7 @@ using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Styling;
+using Avalonia.VisualTree;
 using NetworkAccelerator.Core.Models;
 using NetworkAccelerator.Module.Controls;
 using NetworkAccelerator.Module.ViewModels;
@@ -29,6 +30,7 @@ Capture("overview-dark-disconnected", ThemeVariant.Dark, Disconnected(), 1360, 1
 Capture("overview-dark-populated", ThemeVariant.Dark, Populated(allowLan: true), 1360, 1560, output);
 Capture("overview-narrow-populated", ThemeVariant.Light, Populated(allowLan: false), 760, 2200, output);
 CaptureMotion(Path.Combine(output, "overview-motion"));
+CapturePowerClip(Path.Combine(output, "power-button"));
 Console.WriteLine("PASS dashboard screenshots in " + output);
 
 static void CaptureMotion(string directory)
@@ -135,6 +137,8 @@ static void Capture(string name, ThemeVariant theme, DashboardPreview preview, d
         var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException(name + " did not render");
         var path = Path.Combine(output, name + ".png");
         frame.Save(path, new PngBitmapEncoderOptions());
+        if (name is "overview-light-disconnected" or "overview-light-populated")
+            SaveButtonCloseup(window, frame, Path.Combine(output, name == "overview-light-populated" ? "power-running-2x.png" : "power-stopped-2x.png"));
         Console.WriteLine(path);
     }
     finally
@@ -143,6 +147,82 @@ static void Capture(string name, ThemeVariant theme, DashboardPreview preview, d
         viewModel.Dispose();
         Directory.Delete(directory, recursive: true);
     }
+}
+
+static void CapturePowerClip(string directory)
+{
+    DashboardMotion.ReduceMotion = false;
+    MotionClock.Manual = true;
+    Directory.CreateDirectory(directory);
+    var temp = Path.Combine(Path.GetTempPath(), "na-power-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(temp);
+    Application.Current!.RequestedThemeVariant = ThemeVariant.Light;
+    var viewModel = new NetworkAcceleratorViewModel(temp, temp);
+    Window? window = null;
+    try
+    {
+        viewModel.ShowDashboardPreview(Disconnected());
+        var view = new NetworkAcceleratorView
+        {
+            DataContext = viewModel,
+            Width = 1360,
+            Height = 1280,
+            FontFamily = new FontFamily("WenQuanYi Micro Hei, Droid Sans Fallback, Inter")
+        };
+        window = new Window
+        {
+            Width = 1360,
+            Height = 1280,
+            Content = view,
+            Background = Brushes.Transparent,
+            WindowDecorations = WindowDecorations.None,
+            FontFamily = view.FontFamily
+        };
+        window.Show();
+        var button = window.GetVisualDescendants().OfType<PowerButton>().First();
+        var frame = 0;
+        for (var i = 0; i < 4; i++) SaveMotion(window, directory, ref frame);
+        button.PreviewHover(true);
+        for (var i = 0; i < 8; i++) SaveMotion(window, directory, ref frame);
+        button.PreviewPress(true);
+        for (var i = 0; i < 8; i++) SaveMotion(window, directory, ref frame);
+        button.PreviewPress(false);
+        for (var i = 0; i < 6; i++) SaveMotion(window, directory, ref frame);
+        button.PreviewHover(false);
+        for (var i = 0; i < 6; i++) SaveMotion(window, directory, ref frame);
+        viewModel.PreviewSetConnection(connected: false, busy: true);
+        for (var i = 0; i < 14; i++) SaveMotion(window, directory, ref frame);
+        viewModel.PreviewSetConnection(connected: true, busy: false);
+        for (var i = 0; i < 16; i++) SaveMotion(window, directory, ref frame);
+        Console.WriteLine("power frames " + frame);
+    }
+    finally
+    {
+        window?.Close();
+        viewModel.Dispose();
+        Directory.Delete(temp, recursive: true);
+        DashboardMotion.ReduceMotion = true;
+        MotionClock.Manual = false;
+    }
+}
+
+static void SaveButtonCloseup(Window window, Bitmap frame, string path)
+{
+    var button = window.GetVisualDescendants().OfType<PowerButton>().FirstOrDefault();
+    if (button is null) return;
+    var origin = button.TranslatePoint(new Point(0, 0), window);
+    if (origin is null) return;
+    var scale = frame.PixelSize.Width / window.Bounds.Width;
+    const int pad = 40;
+    var x = (int)Math.Max(0, Math.Floor((origin.Value.X - pad) * scale));
+    var y = (int)Math.Max(0, Math.Floor((origin.Value.Y - pad) * scale));
+    var w = (int)Math.Min(frame.PixelSize.Width - x, Math.Ceiling((button.Bounds.Width + pad * 2) * scale));
+    var h = (int)Math.Min(frame.PixelSize.Height - y, Math.Ceiling((button.Bounds.Height + pad * 2 + 16) * scale));
+    var zoom = new RenderTargetBitmap(new PixelSize(w * 2, h * 2), new Vector(96, 96));
+    using (var context = zoom.CreateDrawingContext())
+        context.DrawImage(frame, new Rect(x, y, w, h), new Rect(0, 0, w * 2, h * 2));
+    zoom.Save(path, new PngBitmapEncoderOptions());
+    Console.WriteLine(path);
 }
 
 static DashboardPreview Disconnected() => new()

@@ -1,0 +1,64 @@
+<StackPanel xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:VMCube.Module.Views"
+             x:Class="VMCube.Module.Views.VmDetailsView"
+             x:DataType="local:VmDetailsModel"
+             x:CompileBindings="True"
+             Spacing="12">
+    <StackPanel Spacing="12" IsVisible="{Binding IsEmpty}">
+      <TextBlock Text="虚拟机详情" FontSize="12" Classes="ad-muted"/>
+      <TextBlock Text="选择一台虚拟机" FontSize="18" Foreground="{DynamicResource AppStrongTextBrush}"/>
+      <TextBlock Text="在卡片中启动或连接桌面，点击“详情”查看更多操作。" FontSize="12" TextWrapping="Wrap" Classes="ad-muted"/>
+    </StackPanel>
+    <StackPanel Spacing="12" IsVisible="{Binding HasVm}">
+      <TextBlock Text="当前虚拟机" FontSize="12" Classes="ad-muted"/>
+      <TextBlock Text="{Binding Name}" FontSize="20" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                 Foreground="{DynamicResource AppStrongTextBrush}" ToolTip.Tip="{Binding Name}"/>
+      <Border Padding="9,4" CornerRadius="12" HorizontalAlignment="Left" Background="{DynamicResource AppPositiveSurfaceBrush}" IsVisible="{Binding IsRunning}">
+        <TextBlock Text="{Binding StateText}" FontSize="11" Foreground="{DynamicResource AppPositiveBrush}"/>
+      </Border>
+      <Border Padding="9,4" CornerRadius="12" HorizontalAlignment="Left" Background="{DynamicResource AppSubtleBrush}" IsVisible="{Binding IsNotRunning}">
+        <Panel>
+          <TextBlock Text="{Binding StateText}" FontSize="11" Foreground="{DynamicResource AppWarningBrush}" IsVisible="{Binding IsPaused}"/>
+          <TextBlock Text="{Binding StateText}" FontSize="11" Classes="ad-muted" IsVisible="{Binding IsQuiet}"/>
+        </Panel>
+      </Border>
+      <TextBlock Text="{Binding Spec}" TextWrapping="Wrap" Foreground="{DynamicResource AppStrongTextBrush}"/>
+      <TextBlock Text="{Binding ImportedSummary}" FontSize="12" TextWrapping="Wrap" Classes="ad-muted" IsVisible="{Binding ShowImported}"/>
+      <Expander Header="磁盘与标识" IsVisible="{Binding ShowImported}">
+        <SelectableTextBlock Text="{Binding DiskText}" FontSize="12" TextWrapping="Wrap"/>
+      </Expander>
+      <StackPanel x:Name="consoleHost" Spacing="12" IsVisible="{Binding ShowRemoteConsole}"/>
+      <TextBlock Text="进入虚拟机 SPICE/VNC 控制台，密码仅用于本次连接。" FontSize="12" TextWrapping="Wrap" Classes="ad-muted" IsVisible="{Binding ShowRemoteConsole}"/>
+      <WrapPanel ItemSpacing="8" LineSpacing="8" IsEnabled="{Binding ActionsEnabled}">
+        <Button Classes="ad-primary" ToolTip.Tip="启动虚拟机" AutomationProperties.Name="启动虚拟机" IsVisible="{Binding ShowStart}" Click="Start_Click">
+          <Path Width="18" Height="18" Stretch="Uniform" StrokeThickness="1.5" Stroke="{DynamicResource AppOnAccentBrush}" Data="M7,4 L20,12 L7,20 Z"/>
+        </Button>
+        <Button Classes="ad-icon" ToolTip.Tip="移除安装镜像" AutomationProperties.Name="移除安装镜像" IsVisible="{Binding ShowEject}" Click="Eject_Click">
+          <Path Width="18" Height="18" Stretch="Uniform" StrokeThickness="1.5" Stroke="{DynamicResource AppStrongTextBrush}" Data="M4,16 L12,4 L20,16 Z M4,20 H20"/>
+        </Button>
+        <Button Classes="ad-primary" ToolTip.Tip="连接桌面" AutomationProperties.Name="连接桌面" IsVisible="{Binding ShowConnect}" Click="Connect_Click">
+          <Path Width="18" Height="18" Stretch="Uniform" StrokeThickness="1.5" Stroke="{DynamicResource AppOnAccentBrush}" Data="M3,4 H21 V17 H3 Z M8,21 H16 M12,17 V21 M8,10 H16 M13,7 L16,10 L13,13"/>
+        </Button>
+        <Button Classes="ad-icon" ToolTip.Tip="暂停虚拟机" AutomationProperties.Name="暂停虚拟机" IsVisible="{Binding ShowPause}" Click="Pause_Click">
+          <Path Width="18" Height="18" Stretch="Uniform" StrokeThickness="1.5" Stroke="{DynamicResource AppStrongTextBrush}" Data="M6,4 H9 V20 H6 Z M15,4 H18 V20 H15 Z"/>
+        </Button>
+        <Button Classes="ad-icon" ToolTip.Tip="正常关机" AutomationProperties.Name="正常关机" IsVisible="{Binding ShowShutdown}" Click="Shutdown_Click">
+          <Path Width="18" Height="18" Stretch="Uniform" StrokeThickness="1.5" Stroke="{DynamicResource AppStrongTextBrush}" Data="M12,2 V12 M6,5 A9,9 0 1 0 18,5"/>
+        </Button>
+        <Button Classes="ad-primary" ToolTip.Tip="恢复运行" AutomationProperties.Name="恢复运行" IsVisible="{Binding ShowResume}" Click="Resume_Click">
+          <Path Width="18" Height="18" Stretch="Uniform" StrokeThickness="1.5" Stroke="{DynamicResource AppOnAccentBrush}" Data="M7,4 L20,12 L7,20 Z"/>
+        </Button>
+        <Button Classes="ad-icon" ToolTip.Tip="强制关机（相当于断电）" AutomationProperties.Name="强制关机（相当于断电）" IsVisible="{Binding ShowForce}" Click="Force_Click">
+          <Path Width="18" Height="18" Stretch="Uniform" StrokeThickness="1.5" Stroke="{DynamicResource AppDangerBrush}" Data="M5,5 H19 V19 H5 Z"/>
+        </Button>
+      </WrapPanel>
+      <TextBlock Text="确认向此虚拟机发送正常关机请求？完成时间取决于来宾系统，请刷新确认状态。" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource AppStrongTextBrush}" IsVisible="{Binding ShowShutdownConfirm}"/>
+      <Button Content="确认关机" Padding="14,9" CornerRadius="8" HorizontalAlignment="Left" IsVisible="{Binding ShowShutdownConfirm}" Click="ConfirmShutdown_Click"/>
+      <TextBlock Text="强制关机相当于断电，未保存数据可能丢失。确认停止此虚拟机？" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource AppStrongTextBrush}" IsVisible="{Binding ShowForceConfirm}"/>
+      <Button Content="确认强制关机" Padding="14,9" CornerRadius="8" HorizontalAlignment="Left" IsVisible="{Binding ShowForceConfirm}" Click="ConfirmForce_Click"/>
+      <Button Content="取消" Padding="14,9" CornerRadius="8" HorizontalAlignment="Left" IsVisible="{Binding ShowAnyConfirm}" Click="Cancel_Click"/>
+      <TextBlock Text="关闭控制台或退出 VMCUBE 后，虚拟机会继续运行；请通过正常关机停止。" FontSize="12" TextWrapping="Wrap" Classes="ad-muted" IsVisible="{Binding ShowLocalNote}"/>
+      <TextBlock Text="{Binding Footer}" FontSize="12" TextWrapping="Wrap" Classes="ad-muted"/>
+    </StackPanel>
+</StackPanel>

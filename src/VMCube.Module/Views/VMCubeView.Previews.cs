@@ -19,29 +19,20 @@ public sealed partial class VMCubeView
         public void Dispose() => Bitmap?.Dispose();
     }
     private readonly Dictionary<string, DesktopPreview> _previews = [];
-    private readonly Dictionary<string, (Image Image, Control Placeholder, Border Badge, TextBlock Caption)> _previewTargets = [];
+    private readonly Dictionary<string, MachineCard> _previewTargets = [];
     private string PreviewKey(VirtualMachine vm) => (_demo ? "demo" : _connectedUri ?? (IsLocal ? "local" : _uri.Text ?? "remote")) + "/" + vm.Id;
 
-    private void AddDesktopPreview(Grid container, Control placeholder, VirtualMachine vm)
+    private void RegisterPreview(MachineCard card, VirtualMachine vm)
     {
-        var key = PreviewKey(vm);
-        var image = new Image { Stretch = Stretch.Uniform, IsVisible = false };
-        var caption = new TextBlock { FontSize = 10, Foreground = Brushes.White };
-        var badge = new Border { Child = caption, IsVisible = false, Background = new SolidColorBrush(Color.Parse("#CC151D23")),
-            CornerRadius = new CornerRadius(4), Padding = new Thickness(6, 3), Margin = new Thickness(6),
-            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Bottom, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left };
-        container.Children.Add(image); container.Children.Add(badge);
-        _previewTargets[key] = (image, placeholder, badge, caption);
-        ApplyPreview(key);
+        _previewTargets[PreviewKey(vm)] = card;
+        ApplyPreview(PreviewKey(vm));
     }
     private void ApplyPreview(string key)
     {
-        if (!_previewTargets.TryGetValue(key, out var target)) return;
+        if (!_previewTargets.TryGetValue(key, out var card)) return;
         var hasFrame = _previews.TryGetValue(key, out var preview) && preview.Bitmap is not null;
-        target.Image.Source = hasFrame ? preview!.Bitmap : null;
-        target.Image.IsVisible = hasFrame; target.Placeholder.IsVisible = !hasFrame; target.Badge.IsVisible = hasFrame;
-        if (hasFrame) target.Caption.Text = (preview!.Connected ? "实时预览" : "最近画面") + " · " + preview.UpdatedAt.ToLocalTime().ToString("HH:mm:ss");
-        target.Image.InvalidateVisual();
+        card.ShowFrame(hasFrame ? preview!.Bitmap : null,
+            hasFrame ? (preview!.Connected ? "实时预览" : "最近画面") + " · " + preview.UpdatedAt.ToLocalTime().ToString("HH:mm:ss") : "");
     }
     private void UpdatePreview(string key, LocalDesktopFrame frame)
     {
@@ -82,7 +73,7 @@ public sealed partial class VMCubeView
     }
     private void ClearPreviews()
     {
-        foreach (var target in _previewTargets.Values) target.Image.Source = null;
+        foreach (var card in _previewTargets.Values) card.ShowFrame(null, "");
         _previewTargets.Clear();
         foreach (var preview in _previews.Values) preview.Dispose();
         _previews.Clear();

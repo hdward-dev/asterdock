@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using URemote.Host;
@@ -10,17 +9,8 @@ using URemote.Linux;
 namespace URemote.Module;
 public sealed partial class URemoteView : UserControl, IDisposable
 {
-    private readonly TextBlock status = new() { Text = "准备启用被控", FontSize = 24, FontWeight = FontWeight.SemiBold };
-    private readonly TextBlock detail = new() { Text = "正在读取登录状态和显示器…", TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock status = new() { Text = "准备启用被控", FontSize = 24, FontWeight = Avalonia.Media.FontWeight.SemiBold };
     private readonly TextBlock metrics = new();
-    private readonly TextBox identity = new() { PlaceholderText = "本机登录文件路径" };
-    private readonly TextBox encoder = new() { PlaceholderText = "FFmpeg 可执行文件路径" };
-    private readonly WrapPanel screens = new() { Orientation = Orientation.Horizontal };
-    private readonly CheckBox input = new() { Content = "允许键鼠控制和远程终端", IsChecked = true };
-    private readonly CheckBox audio = new() { Content = "共享系统声音（不采集麦克风）", IsChecked = true };
-    private readonly CheckBox clipboard = new() { Content = "同步文本剪贴板", IsChecked = true };
-    private readonly ComboBox duration = new() { ItemsSource = new[] { "保持开启，直到停止", "5 分钟", "30 分钟", "1 小时" }, SelectedIndex = 0 };
-    private readonly ToggleSwitch hostSwitch = new() { OnContent = null, OffContent = null, IsEnabled = false };
     private bool updatingHostSwitch;
     private void SetHostSwitch(bool enabled)
     {
@@ -28,8 +18,9 @@ public sealed partial class URemoteView : UserControl, IDisposable
         try { hostSwitch.IsChecked = enabled; }
         finally { updatingHostSwitch = false; }
     }
-    private readonly StackPanel settings = new() { Spacing = 14 };
-    private readonly List<(uint Id, CheckBox Check)> outputs = [];
+    private readonly System.Collections.ObjectModel.ObservableCollection<ScreenShareModel> outputs = [];
+    private readonly System.Collections.ObjectModel.ObservableCollection<LocalScreenModel> localScreenItems = [];
+    private readonly System.Collections.ObjectModel.ObservableCollection<LocalHistoryModel> historyItems = [];
     private readonly CancellationTokenSource lifetime = new();
     private readonly string settingsFile;
     private Task? session;
@@ -38,14 +29,8 @@ public sealed partial class URemoteView : UserControl, IDisposable
     private bool loginBusy;
     private bool loggingOut;
     private int accountGeneration;
-    private readonly Button logout = new() { Content = "退出登录", IsVisible = false };
-    private readonly TextBox mobile = new() { PlaceholderText = "手机号（+86）", MaxLength = 11 };
-    private readonly TextBox code = new() { PlaceholderText = "短信验证码", MaxLength = 10, PasswordChar = '●' };
-    private readonly Button sendCode = new() { Content = "发送验证码" };
     private readonly DispatcherTimer sendCodeTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private bool sendingCode;
-    private readonly Button completeLogin = new() { Content = "登录并启用被控" };
-    private readonly StackPanel loginPanel = new() { Spacing = 10, IsVisible = false };
     private CancellationTokenSource? sessionStop;
     private bool disposed, restoreFailed, starting;
     private bool hostEnabled = true;
@@ -53,7 +38,14 @@ public sealed partial class URemoteView : UserControl, IDisposable
     private readonly Task initialize;
     private sealed record Settings(string Identity, string Encoder, bool AllowAssistance = true, bool HostEnabled = true);
 
-    public URemoteView(string dataDirectory)
+    public URemoteView()
+    {
+        InitializeComponent();
+        settingsFile = "";
+        initialize = Task.CompletedTask;
+    }
+
+    public URemoteView(string dataDirectory) : this()
     {
         if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS()) termination = System.Runtime.InteropServices.PosixSignalRegistration.Create(
             System.Runtime.InteropServices.PosixSignal.SIGTERM, context =>
@@ -71,12 +63,11 @@ public sealed partial class URemoteView : UserControl, IDisposable
         try { URemote.Core.HostAssistance.SetEnabled(DesktopHostSession.ReadIdentity(identity.Text!).State.DeviceId, allowAssistance); } catch { }
         LoadAssistanceSettings();
         if (OperatingSystem.IsMacOS()) { audio.IsChecked = false; audio.IsEnabled = false; audio.Content = "macOS 系统声音尚未支持"; input.Content = "允许键鼠控制"; }
-        BuildInterface(dataDirectory);
+        WireShell(dataDirectory);
         sendCode.Click += async (_, _) => await LoginAsync(false);
         sendCodeTimer.Tick += (_, _) => UpdateSendCodeState();
         completeLogin.Click += async (_, _) => await LoginAsync(true);
         logout.Click += async (_, _) => await LogoutAsync();
-        Avalonia.Automation.AutomationProperties.SetName(hostSwitch, "允许本机被远程控制");
         hostSwitch.PropertyChanged += (_, e) =>
         {
             if (e.Property != ToggleSwitch.IsCheckedProperty || updatingHostSwitch) return;
@@ -105,12 +96,7 @@ public sealed partial class URemoteView : UserControl, IDisposable
             if (!(OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())) { status.Text = "当前被控后端支持 Linux / Wayland 和 macOS"; hostSwitch.IsEnabled = false; return; }
             var globals = await DesktopBackend.DiscoverAsync(lifetime.Token);
             if (disposed) return;
-            foreach (var id in globals.Where(g => g.Interface == "wl_output").Select(g => g.Name).Order().Take(5))
-            {
-                var check = new CheckBox { Content = "显示屏 " + (outputs.Count + 1), IsChecked = true, Margin = new Thickness(0, 0, 16, 8) };
-                outputs.Add((id, check)); screens.Children.Add(check);
-            }
-            if (outputs.Count == 0) screens.Children.Add(Text("开启被控后读取显示器；若出现系统授权窗口，请选择需要共享的屏幕。", 12, true));
+            ReplaceScreens(globals.Where(g => g.Interface == "wl_output").Select(g => g.Name).Order().Take(5).ToArray(), _ => true, "开启被控后读取显示器；若出现系统授权窗口，请选择需要共享的屏幕。");
             _ = RefreshLocalScreensAsync();
             hostSwitch.IsEnabled = true;
             if (Environment.GetEnvironmentVariable("UREMOTE_NO_AUTO_START") != "1") StartCore();
@@ -143,17 +129,9 @@ public sealed partial class URemoteView : UserControl, IDisposable
             var current = globals.Where(g => g.Interface == "wl_output").Select(g => g.Name).Order().Take(5).ToArray();
             if (!outputs.Select(o => o.Id).SequenceEqual(current))
             {
-                var allSelected = outputs.All(o => o.Check.IsChecked == true);
-                var selections = outputs.Select(o => o.Check.IsChecked == true).ToArray();
-                outputs.Clear(); screens.Children.Clear();
-                for (var i = 0; i < current.Length; i++)
-                {
-                    var check = new CheckBox { Content = "显示屏 " + (i + 1),
-                        IsChecked = allSelected || (i < selections.Length && selections[i]),
-                        Margin = new Thickness(0, 0, 16, 8) };
-                    outputs.Add((current[i], check)); screens.Children.Add(check);
-                }
-                if (current.Length == 0) screens.Children.Add(Text("请在系统授权窗口选择需要共享的屏幕。", 12, true));
+                var allSelected = outputs.All(o => o.IsChecked == true);
+                var selections = outputs.Select(o => o.IsChecked == true).ToArray();
+                ReplaceScreens(current, i => allSelected || (i < selections.Length && selections[i]), "请在系统授权窗口选择需要共享的屏幕。");
                 Report("display-list-refreshed;count=" + current.Length);
             }
             _ = RefreshLocalScreensAsync();
@@ -170,7 +148,7 @@ public sealed partial class URemoteView : UserControl, IDisposable
     private void StartCore()
     {
         if (disposed || session is { IsCompleted: false }) return;
-        var selected = outputs.Where(x => x.Check.IsChecked == true).Select(x => x.Id).ToArray();
+        var selected = outputs.Where(x => x.IsChecked == true).Select(x => x.Id).ToArray();
         var path = identity.Text ?? ""; var ffmpeg = appliedEncoder;
         try
         {
@@ -189,7 +167,7 @@ public sealed partial class URemoteView : UserControl, IDisposable
             hostBadge.Text = "○  尚未就绪"; ApplyTheme(hostBadge, TextBlock.ForegroundProperty, "AppMutedBrush");
             status.Text = "尚未就绪"; detail.Text = authenticated ? "请选择屏幕并检查编码器路径。" : "请先登录 UU 账号，验证码仅在点击发送后请求。"; return;
         }
-        var indices = outputs.Count == 0 ? null : outputs.Select((o, i) => (o, i)).Where(x => x.o.Check.IsChecked == true).Select(x => x.i).ToArray();
+        var indices = outputs.Count == 0 ? null : outputs.Select((o, i) => (o, i)).Where(x => x.o.IsChecked == true).Select(x => x.i).ToArray();
         var minutes = duration.SelectedIndex switch { 1 => 5, 2 => 30, 3 => 60, _ => 0 };
         var limit = minutes == 0 ? Timeout.InfiniteTimeSpan : TimeSpan.FromMinutes(minutes);
         var enabled = input.IsChecked == true; var sound = audio.IsChecked == true; var sync = clipboard.IsChecked == true;
@@ -280,7 +258,7 @@ public sealed partial class URemoteView : UserControl, IDisposable
             if (disposed) return;
             devices = []; selectedDeviceId = null; deviceDetail.Children.Clear(); deviceDetail.IsVisible = false;
             foreach (var bitmap in previewCache.Values) bitmap.Dispose(); previewCache.Clear();
-            foreach (var bitmap in localBitmaps) bitmap.Dispose(); localBitmaps.Clear(); localScreens.Children.Clear();
+            foreach (var bitmap in localBitmaps) bitmap.Dispose(); localBitmaps.Clear(); localScreenItems.Clear();
             mobile.Text = ""; code.Text = ""; assistanceDevice = null; codeSettings = null;
             assistanceId.Text = "尚未登录"; assistanceCode.Text = "";
             assistanceHint.Text = "登录后获取本机协助信息。";

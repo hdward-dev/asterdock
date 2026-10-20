@@ -4,5 +4,7 @@
     <ProjectReference Include="../../src/VMCube.Module/VMCube.Module.csproj" />
     <ProjectReference Include="../../src/AsterDock.UI/AsterDock.UI.csproj" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
+    <PackageReference Include="Semi.Avalonia" Version="12.1.0.1" />
+    <PackageReference Include="Irihi.Ursa.Themes.Semi" Version="2.2.0" />
   </ItemGroup>
 </Project>

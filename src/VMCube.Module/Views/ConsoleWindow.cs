@@ -2,8 +2,7 @@ using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Layout;
-using Avalonia.Media;
+using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
@@ -19,8 +18,6 @@ public sealed partial class ConsoleWindow : Window
     private readonly CancellationTokenSource stop = new();
     private readonly ILocalDesktopSession session;
     private readonly LocalDesktopProtocol protocol;
-    private readonly Image desktop = new() { Stretch = Stretch.Uniform, Focusable = true };
-    private readonly TextBlock status = new() { Text = "正在连接…", Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
     private readonly DispatcherTimer paintTimer = new() { Interval = TimeSpan.FromMilliseconds(33) };
     private readonly Dictionary<Key, uint> keys = [];
     private readonly object frameGate = new();
@@ -36,37 +33,27 @@ public sealed partial class ConsoleWindow : Window
     internal bool IsConnected => connected && !closed && !Completion.IsCompleted;
 
     private readonly Func<CancellationToken, Task<ConsoleTunnel>>? openTunnel;
-    public ConsoleWindow(string name, LocalDesktopOptions options, Func<CancellationToken, Task<ConsoleTunnel>>? openTunnel = null, ConsoleProtocol consoleProtocol = ConsoleProtocol.Vnc, bool useTls = false, string? caFile = null)
+
+    public ConsoleWindow()
+    {
+        InitializeComponent();
+        protocol = LocalDesktopProtocol.Vnc;
+        session = new VncDesktopSession();
+        openTunnel = null;
+    }
+
+    public ConsoleWindow(string name, LocalDesktopOptions options, Func<CancellationToken, Task<ConsoleTunnel>>? openTunnel = null, ConsoleProtocol consoleProtocol = ConsoleProtocol.Vnc, bool useTls = false, string? caFile = null) : this()
     {
         options.Validate(); protocol = consoleProtocol == ConsoleProtocol.Spice ? LocalDesktopProtocol.Rdp : LocalDesktopProtocol.Vnc; this.openTunnel = openTunnel;
         session = consoleProtocol == ConsoleProtocol.Spice ? new SpiceDesktopSession(useTls, caFile) : new VncDesktopSession();
         Title = $"{name} · {consoleProtocol.ToString().ToUpperInvariant()} · VMCUBE";
-        Width = 1280; Height = 800; MinWidth = 640; MinHeight = 440; Background = Brushes.Black;
-        var disconnect = new Button { Content = "断开连接" }; disconnect.Click += (_, _) => Close();
-        var secure = new Button { Content = "Ctrl + Alt + Del" };
-        secure.Click += (_, _) => { Send(() => { var ctrl = protocol == LocalDesktopProtocol.Rdp ? 0x1du : 0xffe3u;
-            var alt = protocol == LocalDesktopProtocol.Rdp ? 0x38u : 0xffe9u;
-            var del = protocol == LocalDesktopProtocol.Rdp ? 0x153u : 0xffffu;
-            session.Key(ctrl, true); session.Key(alt, true); session.Key(del, true); session.Key(del, false); session.Key(alt, false); session.Key(ctrl, false); }); desktop.Focus(); };
-        var full = new Button { Content = "全屏" };
-        full.Click += (_, _) => { WindowState = WindowState == WindowState.FullScreen ? WindowState.Normal : WindowState.FullScreen; desktop.Focus(); };
-        var upload = VMCubeIcons.Button("发送文件到虚拟机", "upload"); upload.Name = "ConsoleSendFiles";
-        upload.IsVisible = session is SpiceDesktopSession; upload.IsEnabled = false;
-        upload.Click += async (_, _) => await ChooseFilesAsync();
-        _upload = upload;
-        var bar = new Grid { ColumnDefinitions = new("*,Auto,Auto,Auto,Auto"), ColumnSpacing = 12, Margin = new Thickness(16, 10) };
-        bar.Children.Add(status); Grid.SetColumn(upload, 1); bar.Children.Add(upload); Grid.SetColumn(secure, 2); bar.Children.Add(secure); Grid.SetColumn(full, 3); bar.Children.Add(full); Grid.SetColumn(disconnect, 4); bar.Children.Add(disconnect);
-        var body = new Grid { RowDefinitions = new("Auto,*,Auto") }; body.Children.Add(bar);
-        Grid.SetRow(desktop, 1); body.Children.Add(desktop);
-        var hint = new TextBlock { Text = "点击画面控制 · Ctrl + Alt + Esc 释放键鼠 · 关闭窗口断开连接", Foreground = Brushes.LightGray, FontSize = 12, Margin = new Thickness(16, 8) };
-        var bottom = new StackPanel(); bottom.Children.Add(BuildFileTransfers()); bottom.Children.Add(hint);
-        Grid.SetRow(bottom, 2); body.Children.Add(bottom); Content = body;
+        WireFileTransfers();
         session.Frame += frame => { lock (frameGate) { if (!closed) latest = frame; } };
         session.Status += value => Dispatcher.UIThread.Post(() =>
         {
             if (closed) return;
             status.Text = value;
-            if (!connected && value.StartsWith("已连接", StringComparison.Ordinal)) { connected = true; _upload.IsEnabled = true; Connected?.Invoke(); }
+            if (!connected && value.StartsWith("已连接", StringComparison.Ordinal)) { connected = true; ConsoleSendFiles.IsEnabled = true; Connected?.Invoke(); }
         });
         paintTimer.Tick += (_, _) => Paint();
         desktop.PointerPressed += (_, e) =>
@@ -134,7 +121,22 @@ public sealed partial class ConsoleWindow : Window
         {
             if (!closed) status.Text = e is ArgumentException or InvalidOperationException or NotSupportedException or InvalidDataException ? e.Message : "连接失败或已中断，请检查服务端及网络。";
         }
-        finally { if (!closed) { ReleaseInputs(); paintTimer.Stop(); _upload.IsEnabled = false; } if (tunnel is not null) await tunnel.DisposeAsync(); ConnectionEnded?.Invoke(); }
+        finally { if (!closed) { ReleaseInputs(); paintTimer.Stop(); ConsoleSendFiles.IsEnabled = false; } if (tunnel is not null) await tunnel.DisposeAsync(); ConnectionEnded?.Invoke(); }
+    }
+
+    private void Disconnect_Click(object? sender, RoutedEventArgs e) => Close();
+    private void FullScreen_Click(object? sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState == WindowState.FullScreen ? WindowState.Normal : WindowState.FullScreen;
+        desktop.Focus();
+    }
+    private void Secure_Click(object? sender, RoutedEventArgs e)
+    {
+        Send(() => { var ctrl = protocol == LocalDesktopProtocol.Rdp ? 0x1du : 0xffe3u;
+            var alt = protocol == LocalDesktopProtocol.Rdp ? 0x38u : 0xffe9u;
+            var del = protocol == LocalDesktopProtocol.Rdp ? 0x153u : 0xffffu;
+            session.Key(ctrl, true); session.Key(alt, true); session.Key(del, true); session.Key(del, false); session.Key(alt, false); session.Key(ctrl, false); });
+        desktop.Focus();
     }
 
     private void Send(Action action)

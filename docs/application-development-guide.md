@@ -189,7 +189,7 @@ MyApplication/
 </UserControl>
 ```
 
-当前公共样式包括 `ad-card`、`ad-workspace-card`、`ad-section-card`、`ad-icon`、`ad-primary`、`ad-accent`、`ad-segmented`、`ad-segment-item`、`ad-section-header`、`ad-compact`、`ad-status-badge` 和 `ad-status-text`。
+当前公共样式包括 `ad-card`、`ad-workspace-card`、`ad-section-card`、`ad-icon`、`ad-primary`、`ad-accent`、`ad-segmented`、`ad-segment-item`、`ad-section-header`、`ad-compact`、`ad-status-badge`、`ad-status-text`、`ad-muted`、`ad-heading`、`ad-page-title`、`ad-nav`、`ad-chip`、`ad-flat`、`ad-scrim` 和 `ad-on-scrim`。预览遮罩可配合 `AppScrimBrush` 与 `AppOnScrimBrush`。
 
 ### 7.1 窗口服务
 

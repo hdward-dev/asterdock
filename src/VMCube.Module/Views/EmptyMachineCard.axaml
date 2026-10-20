@@ -1,0 +1,15 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:VMCube.Module.Views"
+             x:Class="VMCube.Module.Views.EmptyMachineCard"
+             x:DataType="local:EmptyMachineModel"
+             x:CompileBindings="True">
+  <Border Classes="ad-card" Padding="18">
+    <StackPanel Spacing="12" Margin="0,24" HorizontalAlignment="Stretch">
+      <Path Width="42" Height="42" Stretch="Uniform" StrokeThickness="1.5" HorizontalAlignment="Left"
+            Stroke="{DynamicResource AppAccentBrush}" Data="M12,2 L22,7 V17 L12,22 L2,17 V7 Z M4,8 L12,12 L20,8 M12,12 V20 M7,5 L17,10"/>
+      <TextBlock Text="{Binding Title}" FontSize="18" Foreground="{DynamicResource AppStrongTextBrush}"/>
+      <TextBlock Text="{Binding Message}" FontSize="12" TextWrapping="Wrap" Classes="ad-muted"/>
+    </StackPanel>
+  </Border>
+</UserControl>

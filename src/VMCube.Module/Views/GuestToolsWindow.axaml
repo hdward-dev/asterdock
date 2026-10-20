@@ -1,0 +1,22 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="VMCube.Module.Views.GuestToolsWindow"
+        x:CompileBindings="False"
+        Title="文件传输配置 · VMCUBE"
+        Width="560" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource AppPageBrush}"
+        FontFamily="Microsoft YaHei, PingFang SC, Noto Sans CJK SC, Segoe UI">
+  <ScrollViewer MaxHeight="680">
+    <StackPanel Margin="24" Spacing="18">
+      <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource AppStrongTextBrush}" Text="发送方式：点击上传图标选择文件，或把文件拖入虚拟机画面。支持多文件，文件夹请先压缩。&#x0a;&#x0a;Windows：在虚拟机中安装 SPICE Guest Tools（含 VirtIO 串口驱动和 SPICE Agent），完成后登录桌面。&#x0a;&#x0a;Linux：安装并运行 spice-vdagent，然后登录图形桌面。&#x0a;&#x0a;虚拟机还需要 com.redhat.spice.0 通道。VMCUBE 新启动的本机 SPICE 虚拟机会自动添加；已有运行中的虚拟机需要正常关机后重新启动。远程主机可在 virt-manager 添加 Spice agent 通道。&#x0a;&#x0a;安装或配置后重新连接。接收位置和重名文件处理由访客端 Agent 决定。"/>
+      <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="8">
+        <Button x:Name="GuestToolsOpenDownload" Content="在本机浏览器打开下载页" Click="OpenDownload_Click"/>
+        <Button x:Name="GuestToolsCopyDownload" Content="复制链接" Click="CopyDownload_Click"/>
+      </WrapPanel>
+      <TextBlock x:Name="GuestToolsDownloadStatus" TextWrapping="Wrap" Classes="ad-muted" Text="下载页将在本机浏览器打开，增强工具需要安装在 Windows 虚拟机中。"/>
+      <TextBox x:Name="GuestToolsDownloadUrl" Text="https://www.spice-space.org/download.html" IsReadOnly="True"/>
+      <Button Content="知道了" HorizontalAlignment="Right" Click="Close_Click"/>
+    </StackPanel>
+  </ScrollViewer>
+</Window>

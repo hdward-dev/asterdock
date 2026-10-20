@@ -1,5 +1,5 @@
 {
   "id": "vmcube", "name": "VMCUBE", "description": "本机虚拟机、远程 KVM 管理与内置 SPICE/VNC 控制台",
-  "version": "0.6.2", "entryAssembly": "VMCube.Module.dll", "entryType": "VMCube.Module.VMCubeApplicationModule",
+  "version": "0.7.1", "entryAssembly": "VMCube.Module.dll", "entryType": "VMCube.Module.VMCubeApplicationModule",
   "icon": "monitor", "category": "开发", "order": 70
 }

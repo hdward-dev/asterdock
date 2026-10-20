@@ -7,6 +7,7 @@
         <ResourceDictionary x:Key="Light">
           <SolidColorBrush x:Key="AppPageBrush" Color="#F5F7FA"/>
           <SolidColorBrush x:Key="AppSurfaceBrush" Color="#FFFFFF"/>
+          <SolidColorBrush x:Key="AppCookieBrush" Color="#ECEEF2"/>
           <SolidColorBrush x:Key="AppChromeBrush" Color="#F8FAFD"/>
           <SolidColorBrush x:Key="AppBorderBrush" Color="#E2E7EF"/>
           <SolidColorBrush x:Key="AppMutedBrush" Color="#667085"/>
@@ -35,6 +36,7 @@
         <ResourceDictionary x:Key="Dark">
           <SolidColorBrush x:Key="AppPageBrush" Color="#111318"/>
           <SolidColorBrush x:Key="AppSurfaceBrush" Color="#1B1F26"/>
+          <SolidColorBrush x:Key="AppCookieBrush" Color="#2E3644"/>
           <SolidColorBrush x:Key="AppChromeBrush" Color="#161A20"/>
           <SolidColorBrush x:Key="AppBorderBrush" Color="#303641"/>
           <SolidColorBrush x:Key="AppMutedBrush" Color="#AEB7C4"/>

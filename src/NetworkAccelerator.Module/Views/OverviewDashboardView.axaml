@@ -234,11 +234,11 @@
 
     <controls:DashboardWrapPanel Gap="12">
       <controls:EntranceFrame Order="0" controls:DashboardWrapPanel.Row="0" controls:DashboardWrapPanel.Weight="2.4" controls:DashboardWrapPanel.MinItemWidth="460">
-        <Border Classes="dash-card dash-hover hero">
-        <Grid ColumnDefinitions="*,Auto">
-          <controls:StatusBlob Grid.ColumnSpan="2" Margin="-16,-12,-16,-12"
-                               HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                               FillBrush="{DynamicResource AppPageBrush}"/>
+        <Border Classes="dash-card dash-hover hero" Padding="0" BorderThickness="0">
+        <Grid>
+          <controls:StatusBlob HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                               FillBrush="{DynamicResource AppCookieBrush}"/>
+          <Grid Margin="16,12" ColumnDefinitions="*,Auto">
           <StackPanel Spacing="6">
             <Border Classes="ad-status-badge" Classes.connected="{Binding IsConnected}" HorizontalAlignment="Left">
               <StackPanel Orientation="Horizontal" Spacing="6">
@@ -252,7 +252,7 @@
               </StackPanel>
             </Border>
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-              <controls:CloverBadge Width="44" Height="40" Fill="{DynamicResource AppPageBrush}"
+              <controls:CloverBadge Width="44" Height="40" Fill="{DynamicResource AppCookieBrush}"
                                     VerticalAlignment="Center" IsVisible="{Binding Dash.HasCountryCode}">
                 <TextBlock Text="{Binding Dash.CountryCodeText}" FontSize="12" FontWeight="Bold"
                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -287,6 +287,9 @@
                                 IconBrush="{DynamicResource AppOnAccentBrush}"
                                 AutomationProperties.Name="开始或停止加速"
                                 Click="ToggleConnection_Click"/>
+          </Grid>
+          <Border BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="1" CornerRadius="22"
+                  Background="Transparent" IsHitTestVisible="False"/>
         </Grid>
         </Border>
       </controls:EntranceFrame>

@@ -19,6 +19,7 @@ coverage.*
 
 # Local runtime data and logs
 AppData/
+/AsterDock/
 *.log
 *.tmp
 *.bak

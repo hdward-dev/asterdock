@@ -2,6 +2,7 @@ using System.Text.Json;
 using AsterDock.Contracts;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Markup.Xaml.MarkupExtensions;
@@ -17,21 +18,7 @@ public sealed partial class VMCubeView : UserControl, IDisposable
     private readonly CancellationTokenSource _lifetime = new();
     private readonly LibvirtService _service = new();
     private readonly LocalVmService _local;
-    private readonly TextBox _engineDirectory = new() { PlaceholderText = "QEMU 引擎目录（留空自动检测）", MinWidth = 220 };
-    private readonly WrapPanel _engineControls = new();
     private bool IsLocal => _isLocal;
-    private readonly TextBox _uri = new() { Text = "qemu:///system", PlaceholderText = "libvirt 连接 URI", MinWidth = 220 };
-    private readonly TextBox _search = new() { PlaceholderText = "搜索虚拟机名称", MinWidth = 100 };
-    private readonly ComboBox _filter = new() { ItemsSource = new[] { "全部状态", "运行中", "已关闭", "已暂停" }, SelectedIndex = 0, Width = 112 };
-    private readonly StackPanel _details = new() { Spacing = 12 };
-    private readonly StackPanel _log = new() { Spacing = 6 };
-    private readonly TextBlock _status = new() { Text = "尚未连接 · 输入连接 URI，或打开演示模式", TextWrapping = TextWrapping.Wrap };
-    private readonly WrapPanel _connection = new() { Orientation = Orientation.Horizontal };
-    private readonly Button _refresh;
-    private readonly Button _checkEngine;
-    private readonly TextBlock _engineStatus = new() { Text = "正在检测本机 QEMU 引擎…", TextWrapping = TextWrapping.Wrap, FontSize = 12 };
-    private readonly TextBox _consolePassword = new() { PasswordChar = '●', PlaceholderText = "控制台密码（如已设置）" };
-    private readonly ComboBox _consoleProtocol = new() { ItemsSource = new[] { "自动（优先 SPICE）", "VNC", "SPICE" }, SelectedIndex = 0 };
     private readonly Dictionary<string, ConsoleWindow> _consoles = [];
     private List<VirtualMachine> _machines = [];
     private string? _connectedUri;
@@ -39,7 +26,14 @@ public sealed partial class VMCubeView : UserControl, IDisposable
     private string? _confirmation;
     private string SettingsPath => Path.Combine(_context.DataDirectory, "connection.json");
 
-    public VMCubeView(IApplicationContext context)
+    public VMCubeView()
+    {
+        InitializeComponent();
+        _context = null!;
+        _local = null!;
+    }
+
+    public VMCubeView(IApplicationContext context) : this()
     {
         _context = context;
         _local = new LocalVmService(context.DataDirectory);
@@ -49,14 +43,21 @@ public sealed partial class VMCubeView : UserControl, IDisposable
             if (File.Exists(SettingsPath)) _uri.Text = JsonSerializer.Deserialize<string>(File.ReadAllText(SettingsPath)) ?? _uri.Text;
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException) { _status.Text = "连接配置读取失败，请重新输入 URI。"; }
-        _refresh = ActionButton("刷新", RefreshAsync); _refresh.IsEnabled = false;
-        _checkEngine = ActionButton("检查引擎", CheckOrInstallEngineAsync);
-        BuildInterface();
+        WireInterface();
         _search.TextChanged += (_, _) => Filter();
         _filter.SelectionChanged += (_, _) => Filter();
-        UpdateStats(); Filter(); AddLog("VMCUBE 0.6.2 已就绪");
+        UpdateStats(); Filter(); AddLog("VMCUBE 0.7.0 已就绪");
         AttachedToVisualTree += async (_, _) => { if (!_disposed && IsLocal && _connectedUri is null && !_demo) await ExecuteAsync(ConnectAsync); };
     }
+
+    private async void Refresh_Click(object? sender, RoutedEventArgs e) => await ExecuteAsync(RefreshAsync);
+    private async void CheckEngine_Click(object? sender, RoutedEventArgs e) => await ExecuteAsync(CheckOrInstallEngineAsync);
+    private async void ChooseEngine_Click(object? sender, RoutedEventArgs e) => await ExecuteAsync(ChooseEngineAsync);
+    private async void CreateVm_Click(object? sender, RoutedEventArgs e) => await ExecuteAsync(CreateLocalVmAsync);
+    private async void ImportVm_Click(object? sender, RoutedEventArgs e) => await ExecuteAsync(ImportLocalVmAsync);
+    private async void ConnectHost_Click(object? sender, RoutedEventArgs e) => await ExecuteAsync(ConnectAsync);
+    private async void ExitDemo_Click(object? sender, RoutedEventArgs e) => await ExecuteAsync(ConnectAsync);
+    private async void Demo_Click(object? sender, RoutedEventArgs e) => await ExecuteAsync(DemoAsync);
 
     private static TextBlock Text(string value, double size = 14, bool muted = false)
     {
@@ -66,8 +67,8 @@ public sealed partial class VMCubeView : UserControl, IDisposable
     }
     private static Border Card(Control content)
     {
-        var border = new Border { Child = content, Padding = new Thickness(18), CornerRadius = new CornerRadius(12), BorderThickness = new Thickness(1) };
-        ApplyTheme(border, Border.BackgroundProperty, "AppSurfaceBrush"); ApplyTheme(border, Border.BorderBrushProperty, "AppBorderBrush");
+        var border = new Border { Child = content, Padding = new Thickness(18) };
+        border.Classes.Add("ad-card");
         return border;
     }
     private Button ActionButton(string label, Func<Task> action, bool primary = false)
@@ -181,6 +182,8 @@ public sealed partial class VMCubeView : UserControl, IDisposable
             actions.Children.Add(IconActionButton("强制关机（相当于断电）", "stop", () => { _confirmation = "force/" + vm.Id; RenderDetails(); return Task.CompletedTask; }, danger: true));
         if (vm.State == "running" && !_demo && _connectedUri != "local")
         {
+            if (_consoleProtocol.Parent is Panel protocolParent) protocolParent.Children.Remove(_consoleProtocol);
+            if (_consolePassword.Parent is Panel passwordParent) passwordParent.Children.Remove(_consolePassword);
             _details.Children.Add(_consoleProtocol);
             _details.Children.Add(_consolePassword);
             _details.Children.Add(Text("进入虚拟机 SPICE/VNC 控制台，密码仅用于本次连接。", 12, true));
@@ -268,38 +271,8 @@ public sealed partial class VMCubeView : UserControl, IDisposable
     {
         _local.EngineDirectory = _engineDirectory.Text?.Trim();
         _ = _local.ResolveEngine("qemu-img");
-        var dialog = new Window { Title = "创建本机虚拟机 · VMCUBE", Width = 490, Height = 620, MinWidth = 390, MinHeight = 480 };
-        ConfigureTheme(dialog);
-        var name = new TextBox { PlaceholderText = "虚拟机名称", Text = "我的虚拟机" };
-        var cpus = new NumericUpDown { Minimum = 1, Maximum = 64, Value = 2 };
-        var memory = new NumericUpDown { Minimum = 256, Maximum = 262144, Increment = 256, Value = 2048 };
-        var disk = new NumericUpDown { Minimum = 1, Maximum = 2048, Value = 32 };
         var supportsSpice = await _local.SupportsSpiceAsync(_lifetime.Token);
-        var protocol = new ComboBox { ItemsSource = new[] { "SPICE", "VNC" }, SelectedIndex = supportsSpice ? 0 : 1 };
-        var iso = new TextBox { PlaceholderText = "安装 ISO 路径（可选）" };
-        var chooseIso = new Button { Content = "选择安装镜像" };
-        chooseIso.Click += async (_, _) =>
-        {
-            var files = await dialog.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "选择安装镜像", AllowMultiple = false,
-                FileTypeFilter = [new FilePickerFileType("ISO 镜像") { Patterns = ["*.iso"] }] });
-            if (files.FirstOrDefault()?.TryGetLocalPath() is { } path) iso.Text = path;
-        };
-        var error = Text("", 12); var create = new Button { Content = "创建虚拟机" }; create.Classes.Add("ad-primary");
-        create.Click += async (_, _) =>
-        {
-            create.IsEnabled = false;
-            try
-            {
-                var vm = await _local.CreateAsync(name.Text ?? "", (int)(cpus.Value ?? 2), (int)(memory.Value ?? 2048), (int)(disk.Value ?? 32), iso.Text?.Trim(), protocol.SelectedIndex == 0 ? ConsoleProtocol.Spice : ConsoleProtocol.Vnc, _lifetime.Token);
-                dialog.Close(vm);
-            }
-            catch (Exception ex) { if (!_disposed) error.Text = ex.Message; }
-            finally { create.IsEnabled = true; }
-        };
-        dialog.Content = new ScrollViewer { Content = new StackPanel { Margin = new Thickness(24), Spacing = 9, Children = {
-            Text("创建本机虚拟机", 22), name, Text("处理器 / vCPU", 12, true), cpus, Text("内存 / MiB", 12, true), memory,
-            Text("虚拟磁盘 / GiB（按需占用空间）", 12, true), disk, Text(supportsSpice ? "显示协议" : "显示协议（当前引擎支持 VNC）", 12, true), protocol, iso, chooseIso,
-            Text("x86_64 虚拟机。优先使用系统硬件加速，无法使用时以软件模拟运行。", 12, true), error, create } } };
+        var dialog = new CreateVmWindow(_local, supportsSpice, _lifetime.Token, () => !_disposed);
         var result = await _context.Windows.ShowDialogAsync<LocalVmDefinition?>(dialog);
         if (result is not null && !_disposed) { AddLog(result.Name + " · 本机虚拟机已创建"); await ConnectAsync(); }
     }
@@ -309,100 +282,7 @@ public sealed partial class VMCubeView : UserControl, IDisposable
         var result = await _context.Windows.ShowDialogAsync<LocalVmDefinition?>(BuildImportDialog());
         if (result is not null && !_disposed) { AddLog(result.Name + " · 已导入，保留原有磁盘与固件状态"); await ConnectAsync(); }
     }
-    private Window BuildImportDialog()
-    {
-        var dialog = new Window { Title = "导入现有虚拟机 · VMCUBE", Width = 620, Height = 800, MinWidth = 430, MinHeight = 520 };
-        ConfigureTheme(dialog);
-        var name = new TextBox { Name = "ImportName", Text = "现有虚拟机", PlaceholderText = "虚拟机名称" };
-        var cpus = new NumericUpDown { Minimum = 1, Maximum = 64, Value = 4 };
-        var memory = new NumericUpDown { Minimum = 256, Maximum = 262144, Increment = 256, Value = 8192 };
-        var disk = new TextBox { Name = "ImportDisk", PlaceholderText = "现有 qcow2 磁盘路径" };
-        var qemu = new TextBox { PlaceholderText = "原有 qemu-system-x86_64（可选，留空使用当前引擎）" };
-        var firmware = new TextBox { PlaceholderText = "UEFI 固件 CODE 文件（BIOS 留空）" };
-        var nvram = new TextBox { PlaceholderText = "原有 UEFI VARS / NVRAM 文件" };
-        var tpm = new TextBox { PlaceholderText = "原有 TPM 2.0 状态目录（可选）" };
-        var swtpm = new TextBox { PlaceholderText = "swtpm 程序路径（使用 TPM 时必填）" };
-        var secure = new CheckBox { Content = "保留 Secure Boot" };
-        var host = new CheckBox { Content = "使用宿主 CPU 型号" };
-        var kvm = new CheckBox { Content = "要求 KVM 硬件加速" };
-        var localtime = new CheckBox { Content = "硬件时钟使用本地时间（Windows）" };
-        var network = new ComboBox { ItemsSource = new[] { "e1000", "e1000e", "virtio-net-pci" }, SelectedIndex = 0 };
-        var video = new ComboBox { ItemsSource = new[] { "std", "qxl", "virtio" }, SelectedIndex = 0 };
-        var mac = new TextBox { PlaceholderText = "原有 MAC 地址（可选）" };
-        var guestAgent = new TextBox { PlaceholderText = "原有 QEMU Guest Agent socket 路径（可选）" };
-        var protocol = new ComboBox { ItemsSource = new[] { "SPICE", "VNC" }, SelectedIndex = 0 };
-        var error = Text("", 12);
-        var profileSummary = Text("可直接选择磁盘填写配置，或读取 .vmcube.json 导入配置。", 12, true);
-        async Task PickFileAsync(TextBox target, string title, string pattern = "*")
-        {
-            var files = await dialog.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { Title = title, AllowMultiple = false,
-                FileTypeFilter = [new FilePickerFileType(title) { Patterns = [pattern] }] });
-            if (files.FirstOrDefault()?.TryGetLocalPath() is { } path) target.Text = path;
-        }
-        Control FileField(string label, TextBox box, string pattern = "*")
-        {
-            var choose = new Button { Content = "选择文件", HorizontalAlignment = HorizontalAlignment.Left };
-            choose.Click += async (_, _) => { try { await PickFileAsync(box, label, pattern); } catch (Exception ex) { error.Text = ex.Message; } };
-            return new StackPanel { Spacing = 5, Children = { Text(label, 12, true), box, choose } };
-        }
-        var load = new Button { Content = "读取导入配置…" };
-        load.Click += async (_, _) =>
-        {
-            try
-            {
-                var files = await dialog.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { Title = "选择 VMCUBE 导入配置", AllowMultiple = false,
-                    FileTypeFilter = [new FilePickerFileType("VMCUBE 配置") { Patterns = ["*.vmcube.json"] }] });
-                if (files.FirstOrDefault()?.TryGetLocalPath() is not { } path) return;
-                var p = (await LocalVmImport.ReadProfileAsync(path, _lifetime.Token)).Validate();
-                name.Text = p.Name; cpus.Value = p.Cpus; memory.Value = p.MemoryMiB; disk.Text = p.DiskPath; qemu.Text = p.QemuPath;
-                firmware.Text = p.FirmwareCodePath; nvram.Text = p.NvramPath; tpm.Text = p.TpmStateDirectory; swtpm.Text = p.SwtpmPath;
-                secure.IsChecked = p.SecureBoot; host.IsChecked = p.CpuHost; kvm.IsChecked = p.RequireKvm; localtime.IsChecked = p.UseLocalTime;
-                network.SelectedIndex = Array.IndexOf(new[] { "e1000", "e1000e", "virtio-net-pci" }, p.NetworkModel);
-                video.SelectedIndex = Array.IndexOf(new[] { "std", "qxl", "virtio" }, p.VideoModel); mac.Text = p.MacAddress; guestAgent.Text = p.GuestAgentSocket;
-                profileSummary.Text = p.Summary; error.Text = "";
-            }
-            catch (Exception ex) { error.Text = ex.Message; }
-        };
-        var chooseTpm = new Button { Content = "选择 TPM 状态目录" };
-        chooseTpm.Click += async (_, _) =>
-        {
-            try
-            {
-                var folders = await dialog.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = "选择原有 TPM 状态目录", AllowMultiple = false });
-                if (folders.FirstOrDefault()?.TryGetLocalPath() is { } path) tpm.Text = path;
-            }
-            catch (Exception ex) { error.Text = ex.Message; }
-        };
-        string? Optional(TextBox box) => string.IsNullOrWhiteSpace(box.Text) ? null : box.Text.Trim();
-        var import = new Button { Name = "ImportSubmit", Content = "导入虚拟机", HorizontalAlignment = HorizontalAlignment.Left }; import.Classes.Add("ad-primary");
-        import.Click += async (_, _) =>
-        {
-            import.IsEnabled = false; load.IsEnabled = false;
-            try
-            {
-                var profile = new LocalVmImport(name.Text ?? "", (int)(cpus.Value ?? 4), (int)(memory.Value ?? 8192), disk.Text?.Trim() ?? "",
-                    Optional(qemu), Optional(firmware), Optional(nvram), Optional(tpm), Optional(swtpm), secure.IsChecked == true, host.IsChecked == true,
-                    kvm.IsChecked == true, localtime.IsChecked == true, (string)network.SelectedItem!, (string)video.SelectedItem!, Optional(mac), Optional(guestAgent));
-                var vm = await _local.ImportAsync(profile, protocol.SelectedIndex == 0 ? ConsoleProtocol.Spice : ConsoleProtocol.Vnc, _lifetime.Token);
-                dialog.Close(vm);
-            }
-            catch (Exception ex) { error.Text = ex.Message; }
-            finally { import.IsEnabled = true; load.IsEnabled = true; }
-        };
-        var form = new ScrollViewer { Content = new StackPanel { Margin = new Thickness(24), Spacing = 10, Children = {
-            Text("导入现有虚拟机", 22), Text("直接使用原有磁盘。请先关闭原虚拟机；导入不会格式化或重装系统。", 12, true), load, profileSummary,
-            name, Text("处理器 / vCPU", 12, true), cpus, Text("内存 / MiB", 12, true), memory,
-            FileField("现有虚拟磁盘", disk, "*.qcow2"), Text("桌面连接协议", 12, true), protocol,
-            new Expander { Header = "原有硬件配置（UEFI / TPM / QEMU）", IsExpanded = true, Content = new StackPanel { Spacing = 10, Children = {
-                Text("UEFI 或加密的 Windows 请保留原有固件、NVRAM 和 TPM 状态。", 12, true),
-                FileField("原有 QEMU 程序", qemu), FileField("UEFI CODE 固件", firmware), FileField("原有 UEFI NVRAM", nvram), secure,
-                tpm, chooseTpm, FileField("swtpm 程序", swtpm), host, kvm, localtime, Text("原有网卡型号", 12, true), network, mac, Text("原有显卡型号", 12, true), video, guestAgent } } } } } };
-        var layout = new Grid { RowDefinitions = new RowDefinitions("*,Auto") };
-        layout.Children.Add(form);
-        var footer = new StackPanel { Margin = new Thickness(24, 8, 24, 18), Spacing = 8, Children = { error, import } };
-        Grid.SetRow(footer, 1); layout.Children.Add(footer); dialog.Content = layout;
-        return dialog;
-    }
+    private Window BuildImportDialog() => new ImportVmWindow(_local, _lifetime.Token);
     private void OpenConsole(string key, string name, LocalDesktopOptions options, Func<CancellationToken, Task<ConsoleTunnel>>? tunnel = null, ConsoleProtocol consoleProtocol = ConsoleProtocol.Vnc, bool useTls = false, string? caFile = null)
     {
         if (_consoles.TryGetValue(key, out var existing))

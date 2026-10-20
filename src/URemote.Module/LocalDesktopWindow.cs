@@ -11,13 +11,11 @@ using URemote.Core;
 
 namespace URemote.Module;
 
-public sealed class LocalDesktopWindow : Window
+public sealed partial class LocalDesktopWindow : Window
 {
     private readonly CancellationTokenSource stop = new();
     private readonly ILocalDesktopSession session;
     private readonly LocalDesktopProtocol protocol;
-    private readonly Image desktop = new() { Stretch = Stretch.Uniform, Focusable = true };
-    private readonly TextBlock status = new() { Text = "正在连接…", Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
     private readonly DispatcherTimer paintTimer = new() { Interval = TimeSpan.FromMilliseconds(33) };
     private readonly Dictionary<Key, uint> keys = [];
     private readonly object frameGate = new();
@@ -30,21 +28,20 @@ public sealed class LocalDesktopWindow : Window
     private bool connected;
     internal bool IsConnected => connected && !closed && !Completion.IsCompleted;
 
-    public LocalDesktopWindow(LocalDesktopOptions options)
+    public LocalDesktopWindow()
+    {
+        InitializeComponent();
+        protocol = LocalDesktopProtocol.Vnc;
+        session = new VncDesktopSession();
+    }
+
+    public LocalDesktopWindow(LocalDesktopOptions options) : this()
     {
         options.Validate(); protocol = options.Protocol;
         session = protocol == LocalDesktopProtocol.Vnc ? new VncDesktopSession() : new RdpDesktopSession(VerifyCertificateAsync);
         Title = $"{options.Host}:{options.Port} · {protocol.ToString().ToUpperInvariant()} · U远程";
-        Width = 1280; Height = 800; MinWidth = 640; MinHeight = 440; Background = Brushes.Black;
-        var disconnect = new Button { Content = "断开连接" }; disconnect.Click += (_, _) => Close();
-        var full = new Button { Content = "全屏" };
-        full.Click += (_, _) => { WindowState = WindowState == WindowState.FullScreen ? WindowState.Normal : WindowState.FullScreen; desktop.Focus(); };
-        var bar = new Grid { ColumnDefinitions = new("*,Auto,Auto"), ColumnSpacing = 12, Margin = new Thickness(16, 10) };
-        bar.Children.Add(status); Grid.SetColumn(full, 1); bar.Children.Add(full); Grid.SetColumn(disconnect, 2); bar.Children.Add(disconnect);
-        var body = new Grid { RowDefinitions = new("Auto,*,Auto") }; body.Children.Add(bar);
-        Grid.SetRow(desktop, 1); body.Children.Add(desktop);
-        var hint = new TextBlock { Text = "点击画面控制 · Ctrl + Alt + Esc 释放键鼠 · 关闭窗口断开连接", Foreground = Brushes.LightGray, FontSize = 12, Margin = new Thickness(16, 8) };
-        Grid.SetRow(hint, 2); body.Children.Add(hint); Content = body;
+        disconnect.Click += (_, _) => Close();
+        fullScreen.Click += (_, _) => { WindowState = WindowState == WindowState.FullScreen ? WindowState.Normal : WindowState.FullScreen; desktop.Focus(); };
         session.Frame += frame => { lock (frameGate) { if (!closed) latest = frame; } };
         session.Status += value => Dispatcher.UIThread.Post(() =>
         {
@@ -156,15 +153,7 @@ public sealed class LocalDesktopWindow : Window
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
             if (closed || token.IsCancellationRequested) { result.TrySetResult(false); return; }
-            var dialog = new Window { Title = "确认 RDP 服务器证书", Width = 560, Height = 430, CanResize = true };
-            var accept = new Button { Content = "仅本次信任并连接" };
-            var reject = new Button { Content = "取消连接" };
-            accept.Click += (_, _) => { result.TrySetResult(true); dialog.Close(); };
-            reject.Click += (_, _) => dialog.Close();
-            dialog.Closed += (_, _) => result.TrySetResult(false);
-            var text = new TextBlock { Text = $"{(certificate.Changed ? "服务器证书已变化" : "服务器证书未受信任")}\n\n服务器：{certificate.Host}\n主体：{certificate.Subject}\n颁发者：{certificate.Issuer}\n指纹：{certificate.Fingerprint}", TextWrapping = TextWrapping.Wrap };
-            dialog.Content = new ScrollViewer { Content = new StackPanel { Margin = new Thickness(24), Spacing = 20,
-                Children = { text, new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Children = { reject, accept } } } } };
+            var dialog = new RdpCertificateWindow(certificate, result);
             _ = dialog.ShowDialog(this);
             _ = result.Task.ContinueWith(_ => Dispatcher.UIThread.Post(dialog.Close), TaskScheduler.Default);
         });

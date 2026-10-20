@@ -1,0 +1,197 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="VMCube.Module.Views.VMCubeView"
+             x:CompileBindings="False"
+             Background="{DynamicResource AppPageBrush}"
+             FontFamily="Microsoft YaHei, PingFang SC, Noto Sans CJK SC, Segoe UI">
+  <Grid>
+    <Grid x:Name="body" ColumnDefinitions="280,*,190" RowDefinitions="*,Auto">
+      <Border x:Name="railBorder" Background="{DynamicResource AppSurfaceBrush}" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,1,0">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+          <StackPanel x:Name="rail" Margin="18,24" Spacing="16">
+            <TextBlock x:Name="_workspaceName" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource AppStrongTextBrush}"/>
+            <TextBlock x:Name="_workspaceState" FontSize="12" TextWrapping="Wrap"/>
+            <Separator/>
+            <ContentControl x:Name="_railDetails"/>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+      <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Disabled">
+        <ContentControl x:Name="_page" Margin="24"/>
+      </ScrollViewer>
+      <Border Grid.Column="2" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="1,0,0,0">
+        <DockPanel x:Name="sidebar" Margin="12">
+          <StackPanel x:Name="brand" DockPanel.Dock="Top" Spacing="8" Margin="0,12,0,26">
+            <Path x:Name="VmBrandLogo" Width="40" Height="40" Stretch="Uniform" StrokeThickness="1.5" HorizontalAlignment="Center"
+                  Stroke="{DynamicResource AppAccentBrush}" Data="M12,2 L22,7 V17 L12,22 L2,17 V7 Z M4,8 L12,12 L20,8 M12,12 V20 M7,5 L17,10"/>
+            <TextBlock x:Name="brandTitle" Text="VMCUBE" FontSize="25" FontWeight="SemiBold" HorizontalAlignment="Center" Foreground="{DynamicResource AppStrongTextBrush}"/>
+            <TextBlock x:Name="brandSubtitle" Text="虚拟机工作空间" FontSize="12" Classes="ad-muted" HorizontalAlignment="Center"/>
+          </StackPanel>
+          <Button x:Name="navSettings" DockPanel.Dock="Bottom" Classes="ad-nav" Tag="4" Click="VmNav_Click" AutomationProperties.Name="引擎与设置" ToolTip.Tip="引擎与设置">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <Path Width="18" Height="18" Stretch="Uniform" StrokeThickness="1.5" Data="M4,6 H20 M4,12 H20 M4,18 H20 M8,3 V9 M16,9 V15 M10,15 V21"/>
+              <TextBlock Text="引擎与设置" FontSize="14"/>
+            </StackPanel>
+          </Button>
+          <StackPanel Spacing="8">
+            <Button x:Name="navMachines" Classes="ad-nav" Tag="0" Click="VmNav_Click" AutomationProperties.Name="我的虚拟机" ToolTip.Tip="我的虚拟机">
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <Path Width="18" Height="18" Stretch="Uniform" StrokeThickness="1.5" Data="M2,3 H22 V17 H2 Z M12,17 V21 M6,21 H18 M5,6 H19 V14 H5 Z"/>
+                <TextBlock Text="我的虚拟机" FontSize="14"/>
+              </StackPanel>
+            </Button>
+            <Button x:Name="navRemote" Classes="ad-nav" Tag="1" Click="VmNav_Click" AutomationProperties.Name="远程主机" ToolTip.Tip="远程主机">
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <Path Width="18" Height="18" Stretch="Uniform" StrokeThickness="1.5" Data="M3,3 H21 V10 H3 Z M3,14 H21 V21 H3 Z M6,6 H8 M6,17 H8 M12,6 H18 M12,17 H18"/>
+                <TextBlock Text="远程主机" FontSize="14"/>
+              </StackPanel>
+            </Button>
+            <Button x:Name="navDirect" Classes="ad-nav" Tag="2" Click="VmNav_Click" AutomationProperties.Name="直接连接" ToolTip.Tip="直接连接">
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <Path Width="18" Height="18" Stretch="Uniform" StrokeThickness="1.5" Data="M3,4 H21 V17 H3 Z M8,21 H16 M12,17 V21 M8,10 H16 M13,7 L16,10 L13,13"/>
+                <TextBlock Text="直接连接" FontSize="14"/>
+              </StackPanel>
+            </Button>
+            <Button x:Name="navHistory" Classes="ad-nav" Tag="3" Click="VmNav_Click" AutomationProperties.Name="操作记录" ToolTip.Tip="操作记录">
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <Path Width="18" Height="18" Stretch="Uniform" StrokeThickness="1.5" Data="M4,8 A9,9 0 1 1 3,14 M4,3 V8 H9 M12,7 V12 L16,15"/>
+                <TextBlock Text="操作记录" FontSize="14"/>
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </DockPanel>
+      </Border>
+      <Border Grid.Row="1" Grid.ColumnSpan="3" Padding="18,9" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,1,0,0">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+          <TextBlock x:Name="_status" Text="尚未连接 · 输入连接 URI，或打开演示模式" FontSize="11" MaxLines="2" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" Classes="ad-muted"/>
+          <TextBlock Grid.Column="1" Text="VMCUBE 0.7.0" FontSize="11" Classes="ad-muted" VerticalAlignment="Center"/>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <Grid x:Name="pageStore" IsVisible="False" IsHitTestVisible="False">
+      <StackPanel x:Name="libraryPage" Spacing="16">
+        <TextBlock x:Name="_catalogHeading" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource AppStrongTextBrush}"/>
+        <TextBlock x:Name="_catalogHint" FontSize="12" TextWrapping="Wrap" Classes="ad-muted"/>
+        <Border x:Name="_remoteConnection" IsVisible="False">
+          <Border Classes="ad-card" Padding="18">
+            <StackPanel Spacing="10">
+              <TextBlock Text="连接 KVM 主机" FontSize="17" FontWeight="SemiBold" Foreground="{DynamicResource AppStrongTextBrush}"/>
+              <TextBlock Text="使用 SSH 密钥连接，管理主机上的现有虚拟机。" FontSize="12" TextWrapping="Wrap" Classes="ad-muted"/>
+              <WrapPanel x:Name="_connection" Orientation="Horizontal">
+                <TextBox x:Name="_uri" Classes="ad-compact" Text="qemu:///system" PlaceholderText="libvirt 连接 URI" MinWidth="220"/>
+                <Button Classes="ad-primary" Content="连接主机" Margin="8,0,0,0" Click="ConnectHost_Click"/>
+              </WrapPanel>
+            </StackPanel>
+          </Border>
+        </Border>
+        <WrapPanel x:Name="_libraryActions">
+          <Button Classes="ad-primary" Content="创建虚拟机" Margin="0,0,8,8" Click="CreateVm_Click"/>
+          <Button Content="导入现有虚拟机" Margin="0,0,8,8" Click="ImportVm_Click"/>
+        </WrapPanel>
+        <Border x:Name="_demoBanner" Padding="12,6" CornerRadius="8" Background="{DynamicResource AppAccentSurfaceBrush}" IsVisible="False">
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <TextBlock Text="演示模式 · 模拟设备与操作" FontSize="12" Classes="ad-muted" VerticalAlignment="Center"/>
+            <Button Grid.Column="1" Content="退出演示" Click="ExitDemo_Click"/>
+          </Grid>
+        </Border>
+        <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8">
+          <TextBox x:Name="_search" Classes="ad-compact" PlaceholderText="搜索虚拟机名称" MinWidth="100"/>
+          <ComboBox x:Name="_filter" Grid.Column="1" Classes="ad-compact" Width="112" SelectedIndex="0">
+            <ComboBoxItem>全部状态</ComboBoxItem>
+            <ComboBoxItem>运行中</ComboBoxItem>
+            <ComboBoxItem>已关闭</ComboBoxItem>
+            <ComboBoxItem>已暂停</ComboBoxItem>
+          </ComboBox>
+          <Button x:Name="_refresh" Grid.Column="2" Content="刷新" IsEnabled="False" Click="Refresh_Click"/>
+          <Button x:Name="VmViewMode" Grid.Column="3" Content="列表" MinWidth="50" Click="ViewMode_Click"/>
+        </Grid>
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Button x:Name="tabAll" Classes="ad-chip selected" Content="全部虚拟机" Click="CatalogTab_Click" Tag="0"/>
+          <Button x:Name="tabFavorites" Classes="ad-chip" Content="收藏" Click="CatalogTab_Click" Tag="1"/>
+        </StackPanel>
+        <Border x:Name="inlineCard" Classes="ad-card" Padding="18" IsVisible="False">
+          <Expander x:Name="_inlineExpander" Header="当前虚拟机详情" IsExpanded="False">
+            <ContentControl x:Name="_inlineDetails"/>
+          </Expander>
+        </Border>
+        <Grid x:Name="_machineCards" ColumnSpacing="16" RowSpacing="16"/>
+        <TextBlock Text="连接后在独立窗口中控制桌面，画面同时显示在卡片中。预览仅保存在本次会话。" FontSize="11" TextWrapping="Wrap" Classes="ad-muted"/>
+      </StackPanel>
+
+      <StackPanel x:Name="directPage" Spacing="16">
+        <TextBlock Text="直接连接" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource AppStrongTextBrush}"/>
+        <TextBlock Text="通过地址进入 SPICE / VNC 桌面，无需添加 KVM 主机。" FontSize="13" TextWrapping="Wrap" Classes="ad-muted"/>
+        <Border Classes="ad-card" Padding="18">
+          <StackPanel Spacing="12" MaxWidth="520" HorizontalAlignment="Stretch">
+            <TextBlock Text="连接已有控制台" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource AppStrongTextBrush}"/>
+            <TextBlock Text="显示协议" FontSize="12" Classes="ad-muted"/>
+            <ComboBox x:Name="directProtocol" SelectedIndex="0">
+              <ComboBoxItem>SPICE</ComboBoxItem>
+              <ComboBoxItem>VNC</ComboBoxItem>
+            </ComboBox>
+            <TextBlock Text="主机地址" FontSize="12" Classes="ad-muted"/>
+            <TextBox x:Name="directHost" PlaceholderText="主机名或 IP 地址"/>
+            <TextBlock Text="端口" FontSize="12" Classes="ad-muted"/>
+            <NumericUpDown x:Name="directPort" Minimum="1" Maximum="65535" Value="5900" Increment="1"/>
+            <TextBlock Text="访问密码" FontSize="12" Classes="ad-muted"/>
+            <TextBox x:Name="directPassword" PasswordChar="●" PlaceholderText="控制台密码（可留空）"/>
+            <CheckBox x:Name="directTls" Content="使用 TLS 并验证服务器证书"/>
+            <TextBox x:Name="directCa" PlaceholderText="CA 证书 PEM 文件路径（可选）" IsVisible="False"/>
+            <TextBlock x:Name="directError" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource AppDangerBrush}"/>
+            <Button Classes="ad-primary" Content="连接桌面" HorizontalAlignment="Left" Click="DirectConnect_Click"/>
+          </StackPanel>
+        </Border>
+        <TextBlock Text="密码仅用于本次连接。未启用 TLS 时请使用可信局域网或 VPN。" FontSize="12" TextWrapping="Wrap" Classes="ad-muted"/>
+      </StackPanel>
+
+      <StackPanel x:Name="logPage" Spacing="16">
+        <TextBlock Text="操作记录" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource AppStrongTextBrush}"/>
+        <TextBlock Text="查看本次打开 VMCUBE 后的连接、虚拟机操作与错误详情。" FontSize="13" TextWrapping="Wrap" Classes="ad-muted"/>
+        <Border Classes="ad-card" Padding="18">
+          <StackPanel x:Name="_log" Spacing="6"/>
+        </Border>
+      </StackPanel>
+
+      <StackPanel x:Name="settingsPage" Spacing="16">
+        <TextBlock Text="引擎与设置" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource AppStrongTextBrush}"/>
+        <TextBlock Text="配置本机虚拟化引擎与桌面连接。" FontSize="13" TextWrapping="Wrap" Classes="ad-muted"/>
+        <Border Classes="ad-card" Padding="18">
+          <StackPanel Spacing="12">
+            <TextBlock Text="本机 QEMU 引擎" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource AppStrongTextBrush}"/>
+            <TextBlock x:Name="_engineStatus" Text="正在检测本机 QEMU 引擎…" TextWrapping="Wrap" FontSize="12" Classes="ad-muted"/>
+            <WrapPanel x:Name="_engineControls">
+              <TextBox x:Name="_engineDirectory" Classes="ad-compact" PlaceholderText="QEMU 引擎目录（留空自动检测）" MinWidth="220"/>
+              <Button Content="选择目录" Margin="8,0,0,0" Click="ChooseEngine_Click"/>
+              <Button x:Name="_checkEngine" Content="检查引擎" Margin="8,0,0,0" Click="CheckEngine_Click"/>
+            </WrapPanel>
+            <TextBlock Text="留空时自动检测应用内置引擎和系统已安装的 QEMU。" FontSize="12" TextWrapping="Wrap" Classes="ad-muted"/>
+          </StackPanel>
+        </Border>
+        <Border Classes="ad-card" Padding="18">
+          <StackPanel Spacing="12">
+            <TextBlock Text="本机工作区" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource AppStrongTextBrush}"/>
+            <TextBlock Text="新建虚拟机保存在应用数据目录；导入的虚拟机继续使用原有磁盘。" FontSize="13" TextWrapping="Wrap" Classes="ad-muted"/>
+            <SelectableTextBlock x:Name="workspacePath" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource AppStrongTextBrush}"/>
+          </StackPanel>
+        </Border>
+        <Border Classes="ad-card" Padding="18">
+          <StackPanel Spacing="10">
+            <TextBlock Text="体验与帮助" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource AppStrongTextBrush}"/>
+            <TextBlock Text="无需创建虚拟机，即可查看卡片布局和操作流程。" FontSize="13" TextWrapping="Wrap" Classes="ad-muted"/>
+            <Button Content="查看演示" HorizontalAlignment="Left" Click="Demo_Click"/>
+            <TextBlock Text="VMCUBE 0.7.0 · 本机 QEMU / KVM · 远程 SSH · SPICE / VNC" FontSize="11" Classes="ad-muted"/>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+
+      <StackPanel x:Name="_details" Spacing="12"/>
+      <TextBox x:Name="_consolePassword" PasswordChar="●" PlaceholderText="控制台密码（如已设置）"/>
+      <ComboBox x:Name="_consoleProtocol" SelectedIndex="0">
+        <ComboBoxItem>自动（优先 SPICE）</ComboBoxItem>
+        <ComboBoxItem>VNC</ComboBoxItem>
+        <ComboBoxItem>SPICE</ComboBoxItem>
+      </ComboBox>
+    </Grid>
+  </Grid>
+</UserControl>

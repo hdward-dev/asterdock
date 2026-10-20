@@ -13,13 +13,10 @@ using URemote.Host;
 using URemote.Media;
 namespace URemote.Module;
 
-public sealed class RemoteDesktopWindow : Window
+public sealed partial class RemoteDesktopWindow : Window
 {
     private readonly DesktopControllerSession controller = new();
     private readonly CancellationTokenSource stop = new();
-    private readonly Image video = new() { Stretch = Stretch.Uniform, Focusable = true };
-    private readonly TextBlock status = new() { Text = "正在连接…", Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center };
-    private readonly ComboBox display = new() { MinWidth = 130, PlaceholderText = "显示屏", IsEnabled = false };
     private readonly HashSet<int> keys = [];
     private readonly HashSet<int> buttons = [];
     private readonly Dictionary<int, ControllerFrame> latest = [];
@@ -34,20 +31,18 @@ public sealed class RemoteDesktopWindow : Window
     private bool inputFailed;
     private bool mac;
     public Task Completion { get; private set; } = Task.CompletedTask;
-    public RemoteDesktopWindow(UuDevice device, LoginState state, string ffmpeg, AssistanceRequest? assistance = null)
+    public RemoteDesktopWindow()
+    {
+        InitializeComponent();
+    }
+
+    public RemoteDesktopWindow(UuDevice device, LoginState state, string ffmpeg, AssistanceRequest? assistance = null) : this()
     {
         mac = device.Platform == 4;
         controller.TargetPlatform += platform => mac = platform == 4;
-        Title = device.Name + " · U远程"; Width = 1280; Height = 800; MinWidth = 640; MinHeight = 440;
-        Background = Brushes.Black;
-        var disconnect = new Button { Content = "断开连接" }; disconnect.Click += (_, _) => Close();
-        var full = new Button { Content = "全屏" }; full.Click += (_, _) => { WindowState = WindowState == WindowState.FullScreen ? WindowState.Normal : WindowState.FullScreen; video.Focus(); };
-        var bar = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto"), ColumnSpacing = 12, Margin = new Thickness(16, 10) };
-        bar.Children.Add(status); Grid.SetColumn(display, 1); bar.Children.Add(display); Grid.SetColumn(full, 2); bar.Children.Add(full); Grid.SetColumn(disconnect, 3); bar.Children.Add(disconnect);
-        var body = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") }; body.Children.Add(bar);
-        Grid.SetRow(video, 1); body.Children.Add(video);
-        var hint = new TextBlock { Text = "点击画面控制 · Ctrl + Alt + Esc 释放键鼠 · 关闭窗口断开连接", Foreground = Brushes.LightGray, Margin = new Thickness(16, 8), FontSize = 12 };
-        Grid.SetRow(hint, 2); body.Children.Add(hint); Content = body;
+        Title = device.Name + " · U远程";
+        disconnect.Click += (_, _) => Close();
+        fullScreen.Click += (_, _) => { WindowState = WindowState == WindowState.FullScreen ? WindowState.Normal : WindowState.FullScreen; video.Focus(); };
         display.SelectionChanged += (_, _) => {
             ReleaseInputs(); if (display.SelectedIndex >= 0 && display.SelectedIndex < displayIds.Length) {
                 activeDisplay = displayIds[display.SelectedIndex]; controller.SelectDisplay(activeDisplay);

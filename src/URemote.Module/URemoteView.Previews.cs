@@ -14,7 +14,6 @@ namespace URemote.Module;
 
 public sealed partial class URemoteView
 {
-    private readonly WrapPanel localScreens = new() { Orientation = Orientation.Horizontal };
     private readonly List<WriteableBitmap> localBitmaps = [];
     private readonly Dictionary<int, TextBlock> localScreenLabels = [];
     private readonly Dictionary<int, string> localScreenFps = [];
@@ -178,9 +177,10 @@ public sealed partial class URemoteView
         if (!listView) visual.SizeChanged += (_, e) => { var height = Math.Clamp(e.NewSize.Width * 9 / 16, 130, 220); if (Math.Abs(visual.Height - height) > 1) visual.Height = height; };
         if (device.IsCurrent || !device.Online)
         {
-            var badge = new Border { Background = new SolidColorBrush(Color.Parse("#BB263442")), Padding = new Thickness(9, 5), CornerRadius = new CornerRadius(6), Margin = new Thickness(10),
-                HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
-                Child = new TextBlock { Text = device.IsCurrent ? "本机" : device.StatusName, Foreground = Brushes.White, FontSize = 12 } };
+            var badgeLabel = new TextBlock { Text = device.IsCurrent ? "本机" : device.StatusName };
+            badgeLabel.Classes.Add("ad-on-scrim");
+            var badge = new Border { Margin = new Thickness(10), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Child = badgeLabel };
+            badge.Classes.Add("ad-scrim");
             visual.Children.Add(badge);
         }
         var name = Text(device.Name, 16); name.FontWeight = FontWeight.SemiBold; name.TextWrapping = TextWrapping.NoWrap; name.TextTrimming = TextTrimming.CharacterEllipsis;

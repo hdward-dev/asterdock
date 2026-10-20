@@ -41,9 +41,8 @@ internal static class VMCubeIcons
     public static Button Button(string tip, string icon, bool primary = false, bool danger = false)
     {
         var button = new Button { Content = Draw(icon, 18, primary ? "AppOnAccentBrush" : danger ? "AppDangerBrush" : "AppStrongTextBrush"),
-            Width = 36, Height = 36, Padding = new Thickness(8), CornerRadius = new CornerRadius(8),
             HorizontalAlignment = HorizontalAlignment.Center, HorizontalContentAlignment = HorizontalAlignment.Center };
-        if (primary) button.Classes.Add("ad-primary");
+        button.Classes.Add(primary ? "ad-primary" : "ad-icon");
         ToolTip.SetTip(button, tip); AutomationProperties.SetName(button, tip);
         return button;
     }

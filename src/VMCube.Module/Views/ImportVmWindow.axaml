@@ -1,0 +1,62 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="VMCube.Module.Views.ImportVmWindow"
+        x:CompileBindings="False"
+        Title="导入现有虚拟机 · VMCUBE"
+        Width="620" Height="800" MinWidth="430" MinHeight="520"
+        Background="{DynamicResource AppPageBrush}"
+        FontFamily="Microsoft YaHei, PingFang SC, Noto Sans CJK SC, Segoe UI">
+  <Grid RowDefinitions="*,Auto">
+    <ScrollViewer>
+      <StackPanel Margin="24" Spacing="10">
+        <TextBlock Text="导入现有虚拟机" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource AppStrongTextBrush}"/>
+        <TextBlock Text="直接使用原有磁盘。请先关闭原虚拟机；导入不会格式化或重装系统。" FontSize="12" TextWrapping="Wrap" Classes="ad-muted"/>
+        <Button x:Name="importLoad" Content="读取导入配置…" HorizontalAlignment="Left" Click="LoadProfile_Click"/>
+        <TextBlock x:Name="importSummary" Text="可直接选择磁盘填写配置，或读取 .vmcube.json 导入配置。" FontSize="12" TextWrapping="Wrap" Classes="ad-muted"/>
+        <TextBox x:Name="importName" Text="现有虚拟机" PlaceholderText="虚拟机名称"/>
+        <TextBlock Text="处理器 / vCPU" FontSize="12" Classes="ad-muted"/>
+        <NumericUpDown x:Name="importCpus" Minimum="1" Maximum="64" Value="4"/>
+        <TextBlock Text="内存 / MiB" FontSize="12" Classes="ad-muted"/>
+        <NumericUpDown x:Name="importMemory" Minimum="256" Maximum="262144" Increment="256" Value="8192"/>
+        <TextBlock Text="现有虚拟磁盘" FontSize="12" Classes="ad-muted"/>
+        <TextBox x:Name="importDisk" PlaceholderText="现有 qcow2 磁盘路径"/>
+        <Button Content="选择文件" HorizontalAlignment="Left" Click="ChooseDisk_Click"/>
+        <TextBlock Text="桌面连接协议" FontSize="12" Classes="ad-muted"/>
+        <ComboBox x:Name="importProtocol"/>
+        <Expander Header="原有硬件配置（UEFI / TPM / QEMU）" IsExpanded="True">
+          <StackPanel Spacing="10">
+            <TextBlock Text="UEFI 或加密的 Windows 请保留原有固件、NVRAM 和 TPM 状态。" FontSize="12" TextWrapping="Wrap" Classes="ad-muted"/>
+            <TextBlock Text="原有 QEMU 程序" FontSize="12" Classes="ad-muted"/>
+            <TextBox x:Name="importQemu" PlaceholderText="原有 qemu-system-x86_64（可选，留空使用当前引擎）"/>
+            <Button Content="选择文件" HorizontalAlignment="Left" Click="ChooseQemu_Click"/>
+            <TextBlock Text="UEFI CODE 固件" FontSize="12" Classes="ad-muted"/>
+            <TextBox x:Name="importFirmware" PlaceholderText="UEFI 固件 CODE 文件（BIOS 留空）"/>
+            <Button Content="选择文件" HorizontalAlignment="Left" Click="ChooseFirmware_Click"/>
+            <TextBlock Text="原有 UEFI NVRAM" FontSize="12" Classes="ad-muted"/>
+            <TextBox x:Name="importNvram" PlaceholderText="原有 UEFI VARS / NVRAM 文件"/>
+            <Button Content="选择文件" HorizontalAlignment="Left" Click="ChooseNvram_Click"/>
+            <CheckBox x:Name="importSecure" Content="保留 Secure Boot"/>
+            <TextBox x:Name="importTpm" PlaceholderText="原有 TPM 2.0 状态目录（可选）"/>
+            <Button Content="选择 TPM 状态目录" HorizontalAlignment="Left" Click="ChooseTpm_Click"/>
+            <TextBlock Text="swtpm 程序" FontSize="12" Classes="ad-muted"/>
+            <TextBox x:Name="importSwtpm" PlaceholderText="swtpm 程序路径（使用 TPM 时必填）"/>
+            <Button Content="选择文件" HorizontalAlignment="Left" Click="ChooseSwtpm_Click"/>
+            <CheckBox x:Name="importHost" Content="使用宿主 CPU 型号"/>
+            <CheckBox x:Name="importKvm" Content="要求 KVM 硬件加速"/>
+            <CheckBox x:Name="importLocaltime" Content="硬件时钟使用本地时间（Windows）"/>
+            <TextBlock Text="原有网卡型号" FontSize="12" Classes="ad-muted"/>
+            <ComboBox x:Name="importNetwork"/>
+            <TextBox x:Name="importMac" PlaceholderText="原有 MAC 地址（可选）"/>
+            <TextBlock Text="原有显卡型号" FontSize="12" Classes="ad-muted"/>
+            <ComboBox x:Name="importVideo"/>
+            <TextBox x:Name="importGuestAgent" PlaceholderText="原有 QEMU Guest Agent socket 路径（可选）"/>
+          </StackPanel>
+        </Expander>
+      </StackPanel>
+    </ScrollViewer>
+    <StackPanel Grid.Row="1" Margin="24,8,24,18" Spacing="8">
+      <TextBlock x:Name="importError" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource AppDangerBrush}"/>
+      <Button x:Name="ImportSubmit" Classes="ad-primary" Content="导入虚拟机" HorizontalAlignment="Left" Click="Import_Click"/>
+    </StackPanel>
+  </Grid>
+</Window>

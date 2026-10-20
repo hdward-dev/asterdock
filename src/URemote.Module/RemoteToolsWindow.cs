@@ -11,19 +11,13 @@ using URemote.Core;
 using URemote.Host;
 namespace URemote.Module;
 
-public sealed class RemoteToolsWindow : Window
+public sealed partial class RemoteToolsWindow : Window
 {
     private readonly DesktopControllerSession controller = new();
     private readonly CancellationTokenSource stop = new();
     private readonly TaskCompletionSource ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource terminalOpened = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly TextBlock status = new() { Text = "正在连接…", TextWrapping = Avalonia.Media.TextWrapping.Wrap };
-    private readonly TextBox transcript = new() { IsReadOnly = true, AcceptsReturn = true, TextWrapping = Avalonia.Media.TextWrapping.Wrap, FontFamily = new Avalonia.Media.FontFamily("monospace") };
-    private readonly TextBox command = new() { PlaceholderText = "输入命令，按 Enter 发送", IsEnabled = false };
-    private readonly TextBox path = new() { Text = ":/", MinWidth = 160 };
-    private readonly ListBox listing = new();
-    private readonly StackPanel fileActions = new() { Orientation = Orientation.Horizontal, Spacing = 8, IsEnabled = false };
-    private readonly ControllerFiles files;
+    private readonly ControllerFiles files = null!;
     private readonly bool terminal;
     private uint sessionId;
     private readonly Decoder terminalDecoder = Encoding.UTF8.GetDecoder();
@@ -35,37 +29,31 @@ public sealed class RemoteToolsWindow : Window
     private readonly HashSet<string> dataChannels = [];
     public Task Completion { get; private set; } = Task.CompletedTask;
 
-    public RemoteToolsWindow(UuDevice device, LoginState state, bool terminal)
+    public RemoteToolsWindow() => InitializeComponent();
+
+    public RemoteToolsWindow(UuDevice device, LoginState state, bool terminal) : this()
     {
         this.terminal = terminal; files = new(controller.SendData);
-        Title = device.Name + (terminal ? " · 远程终端" : " · 文件传输"); Width = 940; Height = 650; MinWidth = 620; MinHeight = 420;
-        var disconnect = new Button { Content = "断开" }; disconnect.Click += (_, _) => Close();
-        var header = new Grid { ColumnDefinitions = new("*,Auto"), ColumnSpacing = 12 }; header.Children.Add(status); Grid.SetColumn(disconnect, 1); header.Children.Add(disconnect);
-        var body = new Grid { Margin = new Thickness(18), RowDefinitions = new("Auto,*,Auto"), RowSpacing = 12 }; body.Children.Add(header);
+        Title = device.Name + (terminal ? " · 远程终端" : " · 文件传输");
+        disconnect.Click += (_, _) => Close();
         if (terminal)
         {
-            Grid.SetRow(transcript, 1); body.Children.Add(transcript);
-            var send = new Button { Content = "发送" }; send.Click += (_, _) => SendCommand();
-            var interrupt = new Button { Content = "Ctrl+C" }; interrupt.Click += (_, _) => SendTerminal(2, [3]);
-            var inputRow = new Grid { ColumnDefinitions = new("*,Auto,Auto"), ColumnSpacing = 8 }; inputRow.Children.Add(command); Grid.SetColumn(send, 1); inputRow.Children.Add(send); Grid.SetColumn(interrupt, 2); inputRow.Children.Add(interrupt);
+            transcript.IsVisible = true; terminalFooter.IsVisible = true;
+            sendCommand.Click += (_, _) => SendCommand();
+            interruptCommand.Click += (_, _) => SendTerminal(2, [3]);
             command.KeyDown += (_, e) => { if (e.Key == Key.Enter) { SendCommand(); e.Handled = true; } };
-            var footer = new StackPanel { Spacing = 8, Children = { inputRow, new TextBlock { Text = "命令模式 · 支持命令输入与中断；暂不支持 vim 等全屏终端程序", FontSize = 12 } } };
-            Grid.SetRow(footer, 2); body.Children.Add(footer);
         }
         else
         {
-            var parent = new Button { Content = "返回" }; parent.Click += async (_, _) => { if (!busy && history.Count > 0) await ListAsync(history.Pop(), false); };
-            var refresh = new Button { Content = "打开 / 刷新" }; refresh.Click += async (_, _) => await ListAsync(path.Text ?? ":/", true);
-            var upload = new Button { Content = "上传文件" }; upload.Click += async (_, _) => await UploadAsync();
-            var download = new Button { Content = "下载所选" }; download.Click += async (_, _) => await DownloadAsync();
-            var cancel = new Button { Content = "取消传输" }; cancel.Click += (_, _) => transferStop?.Cancel();
-            fileActions.Children.Add(parent); fileActions.Children.Add(refresh); fileActions.Children.Add(upload); fileActions.Children.Add(download);
-            var filesBody = new Grid { RowDefinitions = new("Auto,Auto,*"), RowSpacing = 10 }; filesBody.Children.Add(path); Grid.SetRow(fileActions, 1); filesBody.Children.Add(fileActions); Grid.SetRow(listing, 2); filesBody.Children.Add(listing);
+            filesBody.IsVisible = true; cancelTransfer.IsVisible = true;
+            parentDirectory.Click += async (_, _) => { if (!busy && history.Count > 0) await ListAsync(history.Pop(), false); };
+            refreshDirectory.Click += async (_, _) => await ListAsync(path.Text ?? ":/", true);
+            uploadFile.Click += async (_, _) => await UploadAsync();
+            downloadFile.Click += async (_, _) => await DownloadAsync();
+            cancelTransfer.Click += (_, _) => transferStop?.Cancel();
             listing.DoubleTapped += async (_, _) => { if (listing.SelectedItem is ListBoxItem { Tag: RemoteFileEntry { Directory: true } d }) await ListAsync(d.Path, true); };
-            Grid.SetRow(filesBody, 1); body.Children.Add(filesBody); Grid.SetRow(cancel, 2); body.Children.Add(cancel);
             files.Progress += (n, total) => Post(() => status.Text = $"正在传输 · {n:N0} / {total:N0} 字节");
         }
-        Content = body;
         controller.DataReceived += Receive;
         controller.Status += s =>
         {

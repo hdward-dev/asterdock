@@ -10,19 +10,9 @@ namespace URemote.Module;
 public sealed partial class URemoteView
 {
     private string appliedEncoder = "";
-    private readonly TextBlock encoderHint = new() { TextWrapping = TextWrapping.Wrap };
-    private readonly Button detectEncoder = new() { Content = "自动检测" };
-    private readonly Button applyEncoder = new() { Content = "验证并应用" };
 
     private void BuildEncoderSettings()
     {
-        advancedSettings.Children.Add(new StackPanel
-        {
-            Orientation = Orientation.Horizontal, Spacing = 8,
-            Children = { detectEncoder, applyEncoder }
-        });
-        advancedSettings.Children.Add(encoderHint);
-        encoderHint.Text = "填写 FFmpeg 完整路径并验证。应用后用于新连接，当前连接不受影响。";
         detectEncoder.Click += (_, _) =>
         {
             var configured = Environment.GetEnvironmentVariable("UREMOTE_FFMPEG");

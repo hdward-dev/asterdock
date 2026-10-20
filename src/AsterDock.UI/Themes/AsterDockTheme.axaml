@@ -29,6 +29,8 @@
           <SolidColorBrush x:Key="AppDangerBrush" Color="#C42B1C"/>
           <SolidColorBrush x:Key="AppControlBorderBrush" Color="#98A2B3"/>
           <SolidColorBrush x:Key="AppCaptionHoverBrush" Color="#E7EBF1"/>
+          <SolidColorBrush x:Key="AppScrimBrush" Color="#CC1B2430"/>
+          <SolidColorBrush x:Key="AppOnScrimBrush" Color="#FFFFFF"/>
         </ResourceDictionary>
         <ResourceDictionary x:Key="Dark">
           <SolidColorBrush x:Key="AppPageBrush" Color="#111318"/>
@@ -55,6 +57,8 @@
           <SolidColorBrush x:Key="AppDangerBrush" Color="#FF7B72"/>
           <SolidColorBrush x:Key="AppControlBorderBrush" Color="#7E8998"/>
           <SolidColorBrush x:Key="AppCaptionHoverBrush" Color="#2A3038"/>
+          <SolidColorBrush x:Key="AppScrimBrush" Color="#E610141C"/>
+          <SolidColorBrush x:Key="AppOnScrimBrush" Color="#FFFFFF"/>
         </ResourceDictionary>
       </ResourceDictionary.ThemeDictionaries>
 
@@ -123,6 +127,15 @@
     <Setter Property="BorderThickness" Value="0"/>
     <Setter Property="HorizontalContentAlignment" Value="Center"/>
     <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.ad-icon /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
+    <Setter Property="CornerRadius" Value="7"/>
+  </Style>
+  <Style Selector="Button.ad-icon:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AppCaptionHoverBrush}"/>
   </Style>
   <Style Selector="Button.icon-button">
     <Setter Property="Width" Value="34"/>
@@ -310,5 +323,107 @@
     <Setter Property="Background" Value="{DynamicResource AppSubtleBrush}"/>
     <Setter Property="Foreground" Value="{DynamicResource AppMutedBrush}"/>
     <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
+  </Style>
+
+  <Style Selector="TextBlock.ad-muted">
+    <Setter Property="Foreground" Value="{DynamicResource AppMutedBrush}"/>
+  </Style>
+  <Style Selector="TextBlock.ad-heading">
+    <Setter Property="FontSize" Value="16"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppStrongTextBrush}"/>
+  </Style>
+  <Style Selector="TextBlock.ad-page-title">
+    <Setter Property="FontSize" Value="26"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppStrongTextBrush}"/>
+  </Style>
+  <Style Selector="Border.ad-scrim">
+    <Setter Property="Background" Value="{DynamicResource AppScrimBrush}"/>
+    <Setter Property="CornerRadius" Value="6"/>
+    <Setter Property="Padding" Value="9,5"/>
+  </Style>
+  <Style Selector="TextBlock.ad-on-scrim">
+    <Setter Property="Foreground" Value="{DynamicResource AppOnScrimBrush}"/>
+    <Setter Property="FontSize" Value="12"/>
+  </Style>
+  <Style Selector="Button.ad-nav">
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    <Setter Property="HorizontalContentAlignment" Value="Left"/>
+    <Setter Property="Padding" Value="14,13"/>
+    <Setter Property="CornerRadius" Value="9"/>
+    <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="FontSize" Value="14"/>
+  </Style>
+  <Style Selector="Button.ad-nav TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource AppMutedBrush}"/>
+  </Style>
+  <Style Selector="Button.ad-nav /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
+    <Setter Property="CornerRadius" Value="9"/>
+    <Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
+  </Style>
+  <Style Selector="Button.ad-nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AppCaptionHoverBrush}"/>
+  </Style>
+  <Style Selector="Button.ad-nav.selected">
+    <Setter Property="Background" Value="{DynamicResource AppAccentSurfaceBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppAccentBrush}"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+  <Style Selector="Button.ad-nav.selected TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource AppAccentBrush}"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+  <Style Selector="Button.ad-nav Path">
+    <Setter Property="Stroke" Value="{DynamicResource AppMutedBrush}"/>
+  </Style>
+  <Style Selector="Button.ad-nav.selected Path">
+    <Setter Property="Stroke" Value="{DynamicResource AppAccentBrush}"/>
+  </Style>
+  <Style Selector="Button.ad-nav.selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AppAccentSurfaceBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppAccentBrush}"/>
+  </Style>
+  <Style Selector="Button.ad-chip">
+    <Setter Property="Padding" Value="16,8"/>
+    <Setter Property="CornerRadius" Value="18"/>
+    <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="FontSize" Value="13"/>
+  </Style>
+  <Style Selector="Button.ad-chip /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
+    <Setter Property="CornerRadius" Value="18"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
+  </Style>
+  <Style Selector="Button.ad-chip.selected">
+    <Setter Property="Background" Value="{DynamicResource AppAccentSurfaceBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppAccentBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AppAccentBrush}"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+  <Style Selector="Button.ad-chip.selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AppAccentSurfaceBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppAccentBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AppAccentBrush}"/>
+  </Style>
+  <Style Selector="Button.ad-flat">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Padding" Value="8,6"/>
+    <Setter Property="CornerRadius" Value="8"/>
+  </Style>
+  <Style Selector="Button.ad-flat /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
+    <Setter Property="CornerRadius" Value="8"/>
+  </Style>
+  <Style Selector="Button.ad-flat:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AppCaptionHoverBrush}"/>
   </Style>
 </Styles>

@@ -26,10 +26,11 @@ public sealed partial class VMCubeView
     {
         var key = PreviewKey(vm);
         var image = new Image { Stretch = Stretch.Uniform, IsVisible = false };
-        var caption = new TextBlock { FontSize = 10, Foreground = Brushes.White };
-        var badge = new Border { Child = caption, IsVisible = false, Background = new SolidColorBrush(Color.Parse("#CC151D23")),
-            CornerRadius = new CornerRadius(4), Padding = new Thickness(6, 3), Margin = new Thickness(6),
+        var caption = new TextBlock();
+        caption.Classes.Add("ad-on-scrim");
+        var badge = new Border { Child = caption, IsVisible = false, Margin = new Thickness(6),
             VerticalAlignment = Avalonia.Layout.VerticalAlignment.Bottom, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left };
+        badge.Classes.Add("ad-scrim");
         container.Children.Add(image); container.Children.Add(badge);
         _previewTargets[key] = (image, placeholder, badge, caption);
         ApplyPreview(key);

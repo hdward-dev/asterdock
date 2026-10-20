@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
 using URemote.Host;
@@ -10,17 +9,8 @@ using URemote.Linux;
 namespace URemote.Module;
 public sealed partial class URemoteView : UserControl, IDisposable
 {
-    private readonly TextBlock status = new() { Text = "准备启用被控", FontSize = 24, FontWeight = FontWeight.SemiBold };
-    private readonly TextBlock detail = new() { Text = "正在读取登录状态和显示器…", TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock status = new() { Text = "准备启用被控", FontSize = 24, FontWeight = Avalonia.Media.FontWeight.SemiBold };
     private readonly TextBlock metrics = new();
-    private readonly TextBox identity = new() { PlaceholderText = "本机登录文件路径" };
-    private readonly TextBox encoder = new() { PlaceholderText = "FFmpeg 可执行文件路径" };
-    private readonly WrapPanel screens = new() { Orientation = Orientation.Horizontal };
-    private readonly CheckBox input = new() { Content = "允许键鼠控制和远程终端", IsChecked = true };
-    private readonly CheckBox audio = new() { Content = "共享系统声音（不采集麦克风）", IsChecked = true };
-    private readonly CheckBox clipboard = new() { Content = "同步文本剪贴板", IsChecked = true };
-    private readonly ComboBox duration = new() { ItemsSource = new[] { "保持开启，直到停止", "5 分钟", "30 分钟", "1 小时" }, SelectedIndex = 0 };
-    private readonly ToggleSwitch hostSwitch = new() { OnContent = null, OffContent = null, IsEnabled = false };
     private bool updatingHostSwitch;
     private void SetHostSwitch(bool enabled)
     {
@@ -28,7 +18,6 @@ public sealed partial class URemoteView : UserControl, IDisposable
         try { hostSwitch.IsChecked = enabled; }
         finally { updatingHostSwitch = false; }
     }
-    private readonly StackPanel settings = new() { Spacing = 14 };
     private readonly List<(uint Id, CheckBox Check)> outputs = [];
     private readonly CancellationTokenSource lifetime = new();
     private readonly string settingsFile;
@@ -38,14 +27,8 @@ public sealed partial class URemoteView : UserControl, IDisposable
     private bool loginBusy;
     private bool loggingOut;
     private int accountGeneration;
-    private readonly Button logout = new() { Content = "退出登录", IsVisible = false };
-    private readonly TextBox mobile = new() { PlaceholderText = "手机号（+86）", MaxLength = 11 };
-    private readonly TextBox code = new() { PlaceholderText = "短信验证码", MaxLength = 10, PasswordChar = '●' };
-    private readonly Button sendCode = new() { Content = "发送验证码" };
     private readonly DispatcherTimer sendCodeTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private bool sendingCode;
-    private readonly Button completeLogin = new() { Content = "登录并启用被控" };
-    private readonly StackPanel loginPanel = new() { Spacing = 10, IsVisible = false };
     private CancellationTokenSource? sessionStop;
     private bool disposed, restoreFailed, starting;
     private bool hostEnabled = true;
@@ -53,7 +36,14 @@ public sealed partial class URemoteView : UserControl, IDisposable
     private readonly Task initialize;
     private sealed record Settings(string Identity, string Encoder, bool AllowAssistance = true, bool HostEnabled = true);
 
-    public URemoteView(string dataDirectory)
+    public URemoteView()
+    {
+        InitializeComponent();
+        settingsFile = "";
+        initialize = Task.CompletedTask;
+    }
+
+    public URemoteView(string dataDirectory) : this()
     {
         if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS()) termination = System.Runtime.InteropServices.PosixSignalRegistration.Create(
             System.Runtime.InteropServices.PosixSignal.SIGTERM, context =>
@@ -71,12 +61,11 @@ public sealed partial class URemoteView : UserControl, IDisposable
         try { URemote.Core.HostAssistance.SetEnabled(DesktopHostSession.ReadIdentity(identity.Text!).State.DeviceId, allowAssistance); } catch { }
         LoadAssistanceSettings();
         if (OperatingSystem.IsMacOS()) { audio.IsChecked = false; audio.IsEnabled = false; audio.Content = "macOS 系统声音尚未支持"; input.Content = "允许键鼠控制"; }
-        BuildInterface(dataDirectory);
+        WireShell(dataDirectory);
         sendCode.Click += async (_, _) => await LoginAsync(false);
         sendCodeTimer.Tick += (_, _) => UpdateSendCodeState();
         completeLogin.Click += async (_, _) => await LoginAsync(true);
         logout.Click += async (_, _) => await LogoutAsync();
-        Avalonia.Automation.AutomationProperties.SetName(hostSwitch, "允许本机被远程控制");
         hostSwitch.PropertyChanged += (_, e) =>
         {
             if (e.Property != ToggleSwitch.IsCheckedProperty || updatingHostSwitch) return;

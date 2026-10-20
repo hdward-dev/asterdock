@@ -1,0 +1,28 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="VMCube.Module.Views.CreateVmWindow"
+        x:CompileBindings="False"
+        Title="创建本机虚拟机 · VMCUBE"
+        Width="490" Height="620" MinWidth="390" MinHeight="480"
+        Background="{DynamicResource AppPageBrush}"
+        FontFamily="Microsoft YaHei, PingFang SC, Noto Sans CJK SC, Segoe UI">
+  <ScrollViewer>
+    <StackPanel Margin="24" Spacing="9">
+      <TextBlock Text="创建本机虚拟机" FontSize="22" FontWeight="SemiBold" Foreground="{DynamicResource AppStrongTextBrush}"/>
+      <TextBox x:Name="createName" Text="我的虚拟机" PlaceholderText="虚拟机名称"/>
+      <TextBlock Text="处理器 / vCPU" FontSize="12" Classes="ad-muted"/>
+      <NumericUpDown x:Name="createCpus" Minimum="1" Maximum="64" Value="2"/>
+      <TextBlock Text="内存 / MiB" FontSize="12" Classes="ad-muted"/>
+      <NumericUpDown x:Name="createMemory" Minimum="256" Maximum="262144" Increment="256" Value="2048"/>
+      <TextBlock Text="虚拟磁盘 / GiB（按需占用空间）" FontSize="12" Classes="ad-muted"/>
+      <NumericUpDown x:Name="createDisk" Minimum="1" Maximum="2048" Value="32"/>
+      <TextBlock x:Name="protocolCaption" Text="显示协议" FontSize="12" Classes="ad-muted"/>
+      <ComboBox x:Name="createProtocol"/>
+      <TextBox x:Name="createIso" PlaceholderText="安装 ISO 路径（可选）"/>
+      <Button Content="选择安装镜像" HorizontalAlignment="Left" Click="ChooseIso_Click"/>
+      <TextBlock Text="x86_64 虚拟机。优先使用系统硬件加速，无法使用时以软件模拟运行。" FontSize="12" TextWrapping="Wrap" Classes="ad-muted"/>
+      <TextBlock x:Name="createError" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource AppDangerBrush}"/>
+      <Button x:Name="createSubmit" Classes="ad-primary" Content="创建虚拟机" HorizontalAlignment="Left" Click="Create_Click"/>
+    </StackPanel>
+  </ScrollViewer>
+</Window>

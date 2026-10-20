@@ -243,7 +243,7 @@ AppBuilder.Configure<UiCheckApp>().UsePlatformDetect().AfterSetup(builder =>
     }, TimeSpan.FromMilliseconds(100));
 }).StartWithClassicDesktopLifetime(args);
 
-public sealed class UiCheckApp : Application { public override void Initialize() => AvaloniaXamlLoader.Load(this); }
+public sealed partial class UiCheckApp : Application { public override void Initialize() => AvaloniaXamlLoader.Load(this); }
 internal sealed class CheckContext(string directory) : IApplicationContext
 {
     public string ApplicationId => "vmcube";

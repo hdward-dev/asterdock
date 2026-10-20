@@ -31,7 +31,8 @@ public sealed partial class URemoteView
             foreach (var record in records)
             {
                 var account = record.Protocol == LocalDesktopProtocol.Rdp ?
-                    (string.IsNullOrEmpty(record.Domain) ? record.Username : record.Domain + "\\" + record.Username) : "VNC";
+                    (string.IsNullOrEmpty(record.Domain) ? record.Username : record.Domain + "\\" + record.Username) :
+                    string.IsNullOrEmpty(record.Username) ? "VNC" : record.Username;
                 var host = record.Host.Contains(':') ? "[" + record.Host + "]" : record.Host;
                 var current = record;
                 historyItems.Add(new LocalHistoryModel {
@@ -79,7 +80,7 @@ public sealed partial class URemoteView
             var host = (address.Text ?? "").Trim();
             if (host.StartsWith('[') && host.EndsWith(']')) host = host[1..^1];
             var options = new LocalDesktopOptions(vnc ? LocalDesktopProtocol.Vnc : LocalDesktopProtocol.Rdp, host, (int)value,
-                vnc ? "" : rdpUsername.Text?.Trim() ?? "", password.Text ?? "", vnc ? "" : rdpDomain.Text?.Trim() ?? "");
+                (vnc ? vncUsername.Text : rdpUsername.Text)?.Trim() ?? "", password.Text ?? "", vnc ? "" : rdpDomain.Text?.Trim() ?? "");
             options.Validate();
             OpenLocalConnection(options, state, rememberLocal!);
             password.Text = "";
@@ -101,7 +102,7 @@ public sealed partial class URemoteView
         SetClass(localVncTab, "selected", vnc);
         if (vnc)
         {
-            vncAddress.Text = record.Host; vncPort.Value = record.Port; vncPassword.Text = ""; vncState.Text = "";
+            vncAddress.Text = record.Host; vncPort.Value = record.Port; vncUsername.Text = record.Username; vncPassword.Text = ""; vncState.Text = "";
         }
         else
         {

@@ -390,9 +390,11 @@
             <TextBox x:Name="vncAddress" PlaceholderText="例如 192.168.1.10 或 desktop.local" AutomationProperties.Name="VNC 服务器地址"/>
             <NumericUpDown x:Name="vncPort" Grid.Column="1" Minimum="1" Maximum="65535" Value="5900" FormatString="0" Width="120" AutomationProperties.Name="VNC 端口"/>
           </Grid>
+          <TextBlock Text="用户名（macOS 屏幕共享需要）" FontSize="13" Foreground="{DynamicResource AppStrongTextBrush}"/>
+          <TextBox x:Name="vncUsername" PlaceholderText="可选，这台 Mac 的账户名" AutomationProperties.Name="VNC 用户名"/>
           <TextBlock Text="密码" FontSize="13" Foreground="{DynamicResource AppStrongTextBrush}"/>
-          <TextBox x:Name="vncPassword" PasswordChar="●" PlaceholderText="VNC 访问密码" AutomationProperties.Name="VNC 密码"/>
-          <TextBlock Text="连接到已启用 VNC 的电脑，默认端口 5900；支持无认证或 VNC 密码认证（前 8 字节）。" FontSize="12" TextWrapping="Wrap" Classes="ad-muted"/>
+          <TextBox x:Name="vncPassword" PasswordChar="●" PlaceholderText="VNC 访问密码或 Mac 登录密码" AutomationProperties.Name="VNC 密码"/>
+          <TextBlock Text="连接到已启用 VNC 的电脑，默认端口 5900。普通 VNC 可留空用户名；macOS 屏幕共享请填写 Mac 账户和密码。" FontSize="12" TextWrapping="Wrap" Classes="ad-muted"/>
           <TextBlock Text="画面将在 U远程独立窗口中打开。密码仅用于本次连接，不会保存。" FontSize="12" TextWrapping="Wrap" Classes="ad-muted"/>
           <Button Content="连接 VNC" HorizontalAlignment="Left" Padding="24,10" Click="LocalConnect_Click" Tag="1"/>
           <TextBlock x:Name="vncState" FontSize="12" TextWrapping="Wrap" Classes="ad-muted"/>

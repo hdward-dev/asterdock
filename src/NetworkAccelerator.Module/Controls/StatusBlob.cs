@@ -5,54 +5,33 @@ using Avalonia.Media;
 namespace NetworkAccelerator.Module.Controls;
 
 /// <summary>
-/// Pale organic shape behind the start button. A reused transform drifts it while running.
+/// Neutral scalloped panel anchored to the status card's right edge.
+/// The right, top-right, and bottom-right stay pinned; only the inner lobes drift.
 /// </summary>
 public class StatusBlob : Control
 {
-    public static readonly StyledProperty<bool> IsRunningProperty =
-        AvaloniaProperty.Register<StatusBlob, bool>(nameof(IsRunning));
-
     public static readonly StyledProperty<IBrush?> FillBrushProperty =
         AvaloniaProperty.Register<StatusBlob, IBrush?>(nameof(FillBrush));
 
-    public static readonly StyledProperty<IBrush?> TintBrushProperty =
-        AvaloniaProperty.Register<StatusBlob, IBrush?>(nameof(TintBrush));
+    private const double DriftPeriodMs = 8000;
+    private const double DriftAmplitude = 0.008;
 
-    private readonly StreamGeometry _shape;
-    private readonly ScaleTransform _scale = new(1, 1);
-    private readonly RotateTransform _rotate = new();
-    private readonly TranslateTransform _translate = new();
-    private readonly TransformGroup _motion;
-    private double _state;
-    private double _stateFrom;
-    private double _stateTo;
-    private double _stateElapsed;
-    private bool _stateAnimating;
-    private double _drift;
+    private StreamGeometry? _shape;
+    private Size _builtFor;
+    private double _builtPhase = -1;
+    private double _phase;
     private bool _clocked;
     private bool _attached;
     private IBrush _fill = Brushes.Transparent;
-    private IBrush _tint = Brushes.DodgerBlue;
 
     static StatusBlob()
     {
-        AffectsRender<StatusBlob>(IsRunningProperty, FillBrushProperty, TintBrushProperty);
-        IsRunningProperty.Changed.AddClassHandler<StatusBlob>((blob, _) => blob.OnRunningChanged());
+        AffectsRender<StatusBlob>(FillBrushProperty);
     }
 
     public StatusBlob()
     {
         IsHitTestVisible = false;
-        _shape = CreateShape();
-        _motion = new TransformGroup { Children = { _scale, _rotate, _translate } };
-        RenderTransform = _motion;
-        RenderTransformOrigin = new RelativePoint(0.62, 0.48, RelativeUnit.Relative);
-    }
-
-    public bool IsRunning
-    {
-        get => GetValue(IsRunningProperty);
-        set => SetValue(IsRunningProperty, value);
     }
 
     public IBrush? FillBrush
@@ -61,21 +40,13 @@ public class StatusBlob : Control
         set => SetValue(FillBrushProperty, value);
     }
 
-    public IBrush? TintBrush
-    {
-        get => GetValue(TintBrushProperty);
-        set => SetValue(TintBrushProperty, value);
-    }
-
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
         _attached = true;
-        ActualThemeVariantChanged += (_, _) => CacheBrushes();
+        ActualThemeVariantChanged += (_, _) => CacheBrush();
         DashboardMotion.Changed += OnMotionSetting;
-        CacheBrushes();
-        _state = IsRunning ? 1 : 0;
-        ApplyPose();
+        CacheBrush();
         EnsureClock();
     }
 
@@ -94,97 +65,38 @@ public class StatusBlob : Control
 
     public override void Render(DrawingContext context)
     {
+        var size = Bounds.Size;
+        if (size.Width < 2 || size.Height < 2) return;
+        var phase = DashboardMotion.ReduceMotion ? 0 : _phase;
+        if (_shape is null || _builtFor != size || Math.Abs(_builtPhase - phase) > 0.0008)
+        {
+            _builtFor = size;
+            _builtPhase = phase;
+            _shape = CreateShape(size.Width, size.Height, phase);
+        }
+
         context.DrawGeometry(FillBrush ?? _fill, null, _shape);
-        if (_state > 0.01)
-        {
-            using (context.PushOpacity(0.10 * Math.Clamp(_state, 0, 1)))
-                context.DrawGeometry(TintBrush ?? _tint, null, _shape);
-        }
-    }
-
-    private void OnRunningChanged()
-    {
-        if (!_attached)
-        {
-            _state = IsRunning ? 1 : 0;
-            ApplyPose();
-            return;
-        }
-
-        BeginState(IsRunning ? 1 : 0);
     }
 
     private void OnMotionSetting()
     {
         if (!DashboardMotion.ReduceMotion) return;
-        _stateAnimating = false;
-        _state = IsRunning ? 1 : 0;
-        _drift = 0;
-        ApplyPose();
-        EnsureClock();
-    }
-
-    private void BeginState(double target)
-    {
-        if (DashboardMotion.ReduceMotion || Math.Abs(_state - target) < 0.001)
-        {
-            _state = target;
-            _stateAnimating = false;
-            ApplyPose();
-            InvalidateVisual();
-            EnsureClock();
-            return;
-        }
-
-        _stateFrom = _state;
-        _stateTo = target;
-        _stateElapsed = 0;
-        _stateAnimating = true;
+        _phase = 0;
+        InvalidateVisual();
         EnsureClock();
     }
 
     private void Tick(TimeSpan elapsed)
     {
-        var ms = elapsed.TotalMilliseconds;
-        if (_stateAnimating)
-        {
-            _stateElapsed += ms;
-            var t = Math.Clamp(_stateElapsed / DashboardMotion.PowerMorph.TotalMilliseconds, 0, 1);
-            var eased = _stateTo > _stateFrom ? EaseOutBack(t) : t * t * t;
-            _state = _stateFrom + (_stateTo - _stateFrom) * eased;
-            if (t >= 1)
-            {
-                _state = _stateTo;
-                _stateAnimating = false;
-            }
-
-            InvalidateVisual();
-        }
-
-        if (IsRunning && !DashboardMotion.ReduceMotion)
-            _drift = (_drift + ms / DashboardMotion.BlobDrift.TotalMilliseconds) % 1;
-
-        ApplyPose();
-        EnsureClock();
+        _phase = (_phase + elapsed.TotalMilliseconds / DriftPeriodMs) % 1;
+        InvalidateVisual();
     }
 
-    private void ApplyPose()
-    {
-        var wave = IsRunning && !DashboardMotion.ReduceMotion ? Math.Sin(_drift * Math.PI * 2) : 0;
-        var cross = IsRunning && !DashboardMotion.ReduceMotion ? Math.Cos(_drift * Math.PI * 2) : 0;
-        var settle = Math.Clamp(_state, 0, 1.08);
-        _scale.ScaleX = _scale.ScaleY = 1 + 0.08 * settle + 0.012 * wave;
-        _rotate.Angle = 8 * settle + 4 * wave;
-        _translate.X = 3 * cross * settle;
-        _translate.Y = 2 * wave * settle;
-    }
-
-    private bool NeedsClock() =>
-        _stateAnimating || (IsRunning && !DashboardMotion.ReduceMotion);
+    private bool NeedsClock() => _attached && !DashboardMotion.ReduceMotion;
 
     private void EnsureClock()
     {
-        var need = _attached && NeedsClock();
+        var need = NeedsClock();
         if (need && !_clocked)
         {
             _clocked = true;
@@ -197,32 +109,56 @@ public class StatusBlob : Control
         }
     }
 
-    private void CacheBrushes()
+    private void CacheBrush()
     {
-        if (FillBrush is null && TryGetResource("AppSubtleBrush", ActualThemeVariant, out var fill) && fill is IBrush fillBrush)
+        if (FillBrush is null && TryGetResource("AppPageBrush", ActualThemeVariant, out var fill) && fill is IBrush fillBrush)
             _fill = fillBrush;
-        if (TintBrush is null && TryGetResource("AppAccentBrush", ActualThemeVariant, out var tint) && tint is IBrush tintBrush)
-            _tint = tintBrush;
         InvalidateVisual();
     }
 
-    private static StreamGeometry CreateShape()
+    private static StreamGeometry CreateShape(double width, double height, double phase)
     {
+        // Fractions of the card. The first and last points stay pinned so the
+        // top-right and bottom-right corners remain filled. Interior lobes drift.
+        var lobes = new (double X, double Y, double Shift)[]
+        {
+            (0.635, 0.00, 0.0),
+            (0.598, 0.10, 1.0),
+            (0.735, 0.21, 1.6),
+            (0.655, 0.33, 2.2),
+            (0.745, 0.43, 2.7),
+            (0.628, 0.53, 3.3),
+            (0.750, 0.64, 3.8),
+            (0.700, 0.74, 4.3),
+            (0.770, 0.83, 4.8),
+            (0.715, 0.92, 5.2),
+            (0.700, 1.00, 0.0)
+        };
+
+        var points = new Point[lobes.Length];
+        for (var i = 0; i < lobes.Length; i++)
+        {
+            var lobe = lobes[i];
+            var shift = lobe.Shift == 0 ? 0 : Math.Sin(phase * Math.PI * 2 + lobe.Shift) * DriftAmplitude;
+            points[i] = new Point((lobe.X + shift) * width, lobe.Y * height);
+        }
+
         var geometry = new StreamGeometry();
         using var ctx = geometry.Open();
-        ctx.BeginFigure(new Point(28, 78), true);
-        ctx.CubicBezierTo(new Point(6, 48), new Point(18, 8), new Point(72, 16));
-        ctx.CubicBezierTo(new Point(112, 2), new Point(168, 10), new Point(186, 48));
-        ctx.CubicBezierTo(new Point(206, 78), new Point(188, 118), new Point(140, 112));
-        ctx.CubicBezierTo(new Point(96, 132), new Point(48, 118), new Point(28, 78));
+        ctx.BeginFigure(new Point(width + 3, -3), true);
+        ctx.LineTo(new Point(points[0].X, -3));
+        ctx.LineTo(points[0]);
+        for (var i = 0; i < points.Length - 1; i++)
+        {
+            var p1 = points[i];
+            var p2 = points[i + 1];
+            var dy = (p2.Y - p1.Y) / 3d;
+            ctx.CubicBezierTo(new Point(p1.X, p1.Y + dy), new Point(p2.X, p2.Y - dy), p2);
+        }
+
+        ctx.LineTo(new Point(points[^1].X, height + 3));
+        ctx.LineTo(new Point(width + 3, height + 3));
         ctx.EndFigure(true);
         return geometry;
-    }
-
-    private static double EaseOutBack(double t)
-    {
-        const double c1 = 1.70158;
-        const double c3 = c1 + 1;
-        return 1 + c3 * Math.Pow(t - 1, 3) + c1 * Math.Pow(t - 1, 2);
     }
 }

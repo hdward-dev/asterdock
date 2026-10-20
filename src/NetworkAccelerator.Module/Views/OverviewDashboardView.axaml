@@ -236,11 +236,9 @@
       <controls:EntranceFrame Order="0" controls:DashboardWrapPanel.Row="0" controls:DashboardWrapPanel.Weight="2.4" controls:DashboardWrapPanel.MinItemWidth="460">
         <Border Classes="dash-card dash-hover hero">
         <Grid ColumnDefinitions="*,Auto">
-          <controls:StatusBlob Grid.ColumnSpan="2" Width="230" Height="168"
-                               HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,-16,-40,-16"
-                               IsRunning="{Binding IsConnected}"
-                               FillBrush="{DynamicResource AppSubtleBrush}"
-                               TintBrush="{DynamicResource AppAccentBrush}"/>
+          <controls:StatusBlob Grid.ColumnSpan="2" Margin="-16,-12,-16,-12"
+                               HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                               FillBrush="{DynamicResource AppPageBrush}"/>
           <StackPanel Spacing="6">
             <Border Classes="ad-status-badge" Classes.connected="{Binding IsConnected}" HorizontalAlignment="Left">
               <StackPanel Orientation="Horizontal" Spacing="6">
@@ -254,11 +252,11 @@
               </StackPanel>
             </Border>
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-              <Border MinWidth="36" Height="28" Padding="6,0" CornerRadius="8" Background="{DynamicResource AppSubtleBrush}"
-                      VerticalAlignment="Center" IsVisible="{Binding Dash.HasCountryCode}">
+              <controls:CloverBadge Width="44" Height="40" Fill="{DynamicResource AppPageBrush}"
+                                    VerticalAlignment="Center" IsVisible="{Binding Dash.HasCountryCode}">
                 <TextBlock Text="{Binding Dash.CountryCodeText}" FontSize="12" FontWeight="Bold"
                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
-              </Border>
+              </controls:CloverBadge>
               <TextBlock Grid.Column="1" Text="{Binding Dash.ExitIpText}" FontSize="28" FontWeight="SemiBold"
                          VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
             </Grid>
@@ -281,7 +279,7 @@
               </StackPanel>
             </Grid>
           </StackPanel>
-          <controls:PowerButton Grid.Column="1" Width="88" Height="88" Margin="14,0,8,0"
+          <controls:PowerButton Grid.Column="1" Width="88" Height="88" Margin="18,0,14,0"
                                 VerticalAlignment="Center" HorizontalAlignment="Center"
                                 IsRunning="{Binding IsConnected}" IsConnecting="{Binding IsBusy}"
                                 FaultSignal="{Binding ConnectionFaultSignal}"

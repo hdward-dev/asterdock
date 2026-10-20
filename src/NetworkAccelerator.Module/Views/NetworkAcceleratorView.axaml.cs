@@ -1,10 +1,12 @@
 using AsterDock.Contracts;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Input.Platform;
 using Avalonia.Media;
 using Avalonia.Threading;
 using NetworkAccelerator.Core.Models;
+using NetworkAccelerator.Module.Controls;
 using NetworkAccelerator.Module.Models;
 using NetworkAccelerator.Module.ViewModels;
 
@@ -12,20 +14,74 @@ namespace NetworkAccelerator.Module.Views;
 
 public partial class NetworkAcceleratorView : UserControl
 {
+    private const double NavStride = 76;
+
     private readonly IApplicationContext? _context;
     private readonly NetworkAcceleratorViewModel? _viewModel;
+    private readonly Dictionary<string, Control> _pages = new();
     private bool _initialized;
-    private string _selectedSection = "Overview";
+    private bool _motionHooked;
+    private bool _clocked;
+    private string _selectedSection = "";
+    private string? _shown;
+    private Control? _incoming;
+    private Control? _outgoing;
+    private double _swapMs = double.PositiveInfinity;
+    private double _pillMs = double.PositiveInfinity;
+    private double _pillFrom;
+    private double _pillTo;
+    private readonly TranslateTransform _pillTransform = new();
 
     public NetworkAcceleratorView()
     {
         InitializeComponent();
+        _pages["Overview"] = OverviewPage;
+        _pages["Proxies"] = ProxiesPage;
+        _pages["Configuration"] = SubscriptionCard;
+        _pages["Connections"] = ConnectionsWrap;
+        _pages["Rules"] = RulesPage;
+        _pages["Logs"] = LogsPage;
+        _pages["Settings"] = SettingsPage;
+        foreach (var page in _pages.Values)
+            page.RenderTransform = new TranslateTransform();
+        NavPill.RenderTransform = _pillTransform;
+        Classes.Set("still", DashboardMotion.ReduceMotion);
         OverviewPage.ModeRequested += mode => _ = SetModeAsync(mode);
         OverviewPage.SubscriptionUpdateRequested += (_, _) => UpdateSubscription_Click(this, new RoutedEventArgs());
         OverviewPage.SectionRequested += SelectSection;
         ModeSliderHost.SizeChanged += (_, _) => UpdateModeSlider();
         SizeChanged += (_, _) => UpdateLayoutForWidth();
         SelectSection("Overview");
+    }
+
+    public void PreviewNavigate(string section) => SelectSection(section);
+
+    public void PreviewNavPress(int index, bool down)
+    {
+        var buttons = SectionNavigation.Children.OfType<Button>().ToList();
+        if ((uint)index >= (uint)buttons.Count) return;
+        buttons[index].Classes.Set("down", down);
+    }
+
+    protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        if (_motionHooked) return;
+        _motionHooked = true;
+        DashboardMotion.Changed += OnMotionChanged;
+        Classes.Set("still", DashboardMotion.ReduceMotion);
+    }
+
+    protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
+    {
+        if (_motionHooked)
+        {
+            _motionHooked = false;
+            DashboardMotion.Changed -= OnMotionChanged;
+        }
+
+        ReleaseClock();
+        base.OnDetachedFromVisualTree(e);
     }
 
     private void Navigate_Click(object? sender, RoutedEventArgs e)
@@ -47,25 +103,191 @@ public partial class NetworkAcceleratorView : UserControl
             _ => (string.Empty, string.Empty)
         };
         if (title.Length == 0) return;
+        if (section == _selectedSection && _shown == section && _outgoing is null) return;
+
         _selectedSection = section;
         SectionTitle.Text = title;
         SectionDescription.Text = description;
-        ConnectionCard.IsVisible = section == "Connections";
-        PageStatus.IsVisible = section is not "Overview" && section is not "Connections";
-        OverviewPage.IsVisible = section == "Overview";
-        ConnectionsPage.IsVisible = section == "Connections";
-        RulesPage.IsVisible = section == "Rules";
-        LogsPage.IsVisible = section == "Logs";
-        WorkspaceGrid.IsVisible = section is "Proxies" or "Configuration" or "Settings";
-        NodesCard.IsVisible = section == "Proxies";
-        ProxySettingsCard.IsVisible = section is "Proxies" or "Settings";
-        SubscriptionCard.IsVisible = section == "Configuration";
-        CoreCard.IsVisible = section == "Settings";
+        PageStatus.IsVisible = section != "Overview" && section != "Connections";
+        PlaceSharedCard(section);
+        UpdateLayoutForWidth();
         foreach (var button in SectionNavigation.Children.OfType<Button>())
             button.Classes.Set("selected", Equals(button.Tag, section));
-        PageScroll.Offset = default;
-        UpdateLayoutForWidth();
+        AnimatePill(section);
+
+        if (!_pages.TryGetValue(section, out var target)) return;
+        Control? from = null;
+        var animate = !DashboardMotion.ReduceMotion
+            && IsLoaded
+            && _shown is not null
+            && _shown != section
+            && _pages.TryGetValue(_shown, out from);
+        if (!animate || from is null)
+        {
+            if (_outgoing is not null) ResetPage(_outgoing, false);
+            ShowOnly(target);
+            _shown = section;
+            return;
+        }
+
+        if (_outgoing is not null && _outgoing != from && _outgoing != target)
+            ResetPage(_outgoing, false);
+
+        _outgoing = from;
+        _incoming = target;
+        _shown = section;
+        _swapMs = 0;
+        from.Opacity = 1;
+        SetShift(from, 0);
+        from.IsHitTestVisible = false;
+        target.Opacity = 0;
+        SetShift(target, DashboardMotion.PageSwapShift);
+        target.IsHitTestVisible = false;
+        PageHost.MinHeight = Math.Max(from.Bounds.Height, PageHost.Bounds.Height);
+        target.IsVisible = true;
+        EnsureClock();
     }
+
+    private void PlaceSharedCard(string section)
+    {
+        if (section == "Proxies") MoveCard(ProxiesSide, insertAtStart: false);
+        else if (section == "Settings") MoveCard(SettingsPage, insertAtStart: true);
+    }
+
+    private void MoveCard(Panel destination, bool insertAtStart)
+    {
+        if (ReferenceEquals(ProxySettingsCard.Parent, destination)) return;
+        if (ProxySettingsCard.Parent is Panel panel)
+            panel.Children.Remove(ProxySettingsCard);
+        if (insertAtStart) destination.Children.Insert(0, ProxySettingsCard);
+        else destination.Children.Add(ProxySettingsCard);
+    }
+
+    private void ShowOnly(Control target)
+    {
+        foreach (var page in _pages.Values)
+            ResetPage(page, ReferenceEquals(page, target));
+        _incoming = null;
+        _outgoing = null;
+        _swapMs = SwapDuration;
+        PageHost.MinHeight = 0;
+        PageScroll.Offset = default;
+    }
+
+    private static void ResetPage(Control page, bool visible)
+    {
+        page.IsVisible = visible;
+        page.Opacity = 1;
+        page.IsHitTestVisible = true;
+        SetShift(page, 0);
+    }
+
+    private static void SetShift(Control page, double y)
+    {
+        if (page.RenderTransform is TranslateTransform transform)
+            transform.Y = y;
+    }
+
+    private void AnimatePill(string section)
+    {
+        _pillFrom = _pillTransform.Y;
+        _pillTo = SectionIndex(section) * NavStride;
+        if (DashboardMotion.ReduceMotion || !IsLoaded)
+        {
+            _pillTransform.Y = _pillTo;
+            _pillMs = PillDuration;
+            return;
+        }
+
+        _pillMs = 0;
+        EnsureClock();
+    }
+
+    private void OnMotionTick(TimeSpan elapsed)
+    {
+        var ms = elapsed.TotalMilliseconds;
+        if (_pillMs < PillDuration)
+        {
+            _pillMs += ms;
+            var t = EaseOutCubic(Math.Clamp(_pillMs / PillDuration, 0, 1));
+            _pillTransform.Y = _pillFrom + (_pillTo - _pillFrom) * t;
+        }
+
+        if (_outgoing is not null && _incoming is not null)
+        {
+            _swapMs += ms;
+            var t = EaseOutCubic(Math.Clamp(_swapMs / SwapDuration, 0, 1));
+            _incoming.Opacity = t;
+            _outgoing.Opacity = 1 - t;
+            SetShift(_incoming, DashboardMotion.PageSwapShift * (1 - t));
+            SetShift(_outgoing, -DashboardMotion.PageSwapShift * t);
+            if (t >= 1)
+            {
+                var done = _incoming;
+                ResetPage(_outgoing, false);
+                ResetPage(done, true);
+                _outgoing = null;
+                _incoming = null;
+                PageHost.MinHeight = 0;
+                PageScroll.Offset = default;
+            }
+        }
+
+        if (_pillMs >= PillDuration && _outgoing is null)
+            ReleaseClock();
+    }
+
+    private void OnMotionChanged()
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(OnMotionChanged);
+            return;
+        }
+
+        Classes.Set("still", DashboardMotion.ReduceMotion);
+        if (!DashboardMotion.ReduceMotion) return;
+        _pillTransform.Y = _pillTo;
+        _pillMs = PillDuration;
+        if (_incoming is not null) ShowOnly(_incoming);
+        else if (_shown is not null && _pages.TryGetValue(_shown, out var page)) ShowOnly(page);
+        ReleaseClock();
+    }
+
+    private void EnsureClock()
+    {
+        if (_clocked) return;
+        _clocked = true;
+        MotionClock.Subscribe(OnMotionTick);
+    }
+
+    private void ReleaseClock()
+    {
+        if (!_clocked) return;
+        _clocked = false;
+        MotionClock.Unsubscribe(OnMotionTick);
+    }
+
+    private static double PillDuration => DashboardMotion.NavSlide.TotalMilliseconds;
+
+    private static double SwapDuration => DashboardMotion.PageSwap.TotalMilliseconds;
+
+    private static double EaseOutCubic(double t)
+    {
+        var inverse = 1 - t;
+        return 1 - inverse * inverse * inverse;
+    }
+
+    private static int SectionIndex(string section) => section switch
+    {
+        "Proxies" => 1,
+        "Configuration" => 2,
+        "Connections" => 3,
+        "Rules" => 4,
+        "Logs" => 5,
+        "Settings" => 6,
+        _ => 0
+    };
 
     private void ClearLogs_Click(object? sender, RoutedEventArgs e) => _viewModel?.ClearLogs();
 
@@ -74,10 +296,10 @@ public partial class NetworkAcceleratorView : UserControl
         var contentWidth = Math.Max(0, Bounds.Width - 88);
         var stackedProxies = _selectedSection == "Proxies" && contentWidth < 900;
         var splitProxies = _selectedSection == "Proxies" && !stackedProxies;
-        WorkspaceGrid.ColumnDefinitions = new ColumnDefinitions(splitProxies ? "*,20,300" : "*");
-        Grid.SetColumn(SettingsPanel, splitProxies ? 2 : 0);
-        Grid.SetRow(SettingsPanel, stackedProxies ? 1 : 0);
-        SettingsPanel.Margin = new Avalonia.Thickness(0, stackedProxies ? 20 : 0, 0, 0);
+        ProxiesPage.ColumnDefinitions = new ColumnDefinitions(splitProxies ? "*,20,300" : "*");
+        Grid.SetColumn(ProxiesSide, splitProxies ? 2 : 0);
+        Grid.SetRow(ProxiesSide, stackedProxies ? 1 : 0);
+        ProxiesSide.Margin = new Thickness(0, stackedProxies ? 20 : 0, 0, 0);
 
         var compact = contentWidth < 620;
         ConnectionHeader.ColumnDefinitions = new ColumnDefinitions(compact ? "*" : "*,Auto");

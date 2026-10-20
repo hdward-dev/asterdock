@@ -31,6 +31,7 @@ Capture("overview-dark-populated", ThemeVariant.Dark, Populated(allowLan: true),
 Capture("overview-narrow-populated", ThemeVariant.Light, Populated(allowLan: false), 760, 2200, output);
 CaptureMotion(Path.Combine(output, "overview-motion"));
 CapturePowerClip(Path.Combine(output, "power-button"));
+CaptureNavClip(Path.Combine(output, "nav-and-power"));
 Console.WriteLine("PASS dashboard screenshots in " + output);
 
 static void CaptureMotion(string directory)
@@ -138,7 +139,11 @@ static void Capture(string name, ThemeVariant theme, DashboardPreview preview, d
         var path = Path.Combine(output, name + ".png");
         frame.Save(path, new PngBitmapEncoderOptions());
         if (name is "overview-light-disconnected" or "overview-light-populated")
-            SaveButtonCloseup(window, frame, Path.Combine(output, name == "overview-light-populated" ? "power-running-2x.png" : "power-stopped-2x.png"));
+        {
+            var running = name == "overview-light-populated";
+            SaveButtonCloseup(window, frame, Path.Combine(output, running ? "power-running-2x.png" : "power-stopped-2x.png"));
+            SaveHeroCard(window, frame, Path.Combine(output, running ? "status-card-running-2x.png" : "status-card-stopped-2x.png"));
+        }
         Console.WriteLine(path);
     }
     finally
@@ -204,6 +209,96 @@ static void CapturePowerClip(string directory)
         DashboardMotion.ReduceMotion = true;
         MotionClock.Manual = false;
     }
+}
+
+static void CaptureNavClip(string directory)
+{
+    DashboardMotion.ReduceMotion = false;
+    MotionClock.Manual = true;
+    Directory.CreateDirectory(directory);
+    var temp = Path.Combine(Path.GetTempPath(), "na-nav-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(temp);
+    Application.Current!.RequestedThemeVariant = ThemeVariant.Light;
+    var viewModel = new NetworkAcceleratorViewModel(temp, temp);
+    Window? window = null;
+    try
+    {
+        viewModel.ShowDashboardPreview(Disconnected());
+        var view = new NetworkAcceleratorView
+        {
+            DataContext = viewModel,
+            Width = 1360,
+            Height = 1280,
+            FontFamily = new FontFamily("WenQuanYi Micro Hei, Droid Sans Fallback, Inter")
+        };
+        window = new Window
+        {
+            Width = 1360,
+            Height = 1280,
+            Content = view,
+            Background = Brushes.Transparent,
+            WindowDecorations = WindowDecorations.None,
+            FontFamily = view.FontFamily
+        };
+        window.Show();
+        var shot = window;
+        var button = shot.GetVisualDescendants().OfType<PowerButton>().First();
+        var frame = 0;
+        void Hold(int count)
+        {
+            for (var i = 0; i < count; i++) SaveMotion(shot, directory, ref frame);
+        }
+
+        Hold(3);
+        foreach (var section in new[] { "Proxies", "Connections", "Rules", "Settings", "Overview" })
+        {
+            view.PreviewNavigate(section);
+            Hold(8);
+        }
+
+        view.PreviewNavPress(2, true);
+        Hold(4);
+        view.PreviewNavPress(2, false);
+        Hold(3);
+        button.PreviewHover(true);
+        Hold(6);
+        button.PreviewPress(true);
+        Hold(5);
+        button.PreviewPress(false);
+        Hold(4);
+        viewModel.PreviewSetConnection(connected: false, busy: true);
+        Hold(12);
+        viewModel.PreviewSetConnection(connected: true, busy: false);
+        Hold(10);
+        Console.WriteLine("nav frames " + frame);
+    }
+    finally
+    {
+        window?.Close();
+        viewModel.Dispose();
+        Directory.Delete(temp, recursive: true);
+        DashboardMotion.ReduceMotion = true;
+        MotionClock.Manual = false;
+    }
+}
+
+static void SaveHeroCard(Window window, Bitmap frame, string path)
+{
+    var blob = window.GetVisualDescendants().OfType<StatusBlob>().FirstOrDefault();
+    if (blob?.Parent?.Parent is not Visual card) return;
+    var origin = card.TranslatePoint(new Point(0, 0), window);
+    if (origin is null) return;
+    var scale = frame.PixelSize.Width / window.Bounds.Width;
+    const int pad = 10;
+    var x = (int)Math.Max(0, Math.Floor((origin.Value.X - pad) * scale));
+    var y = (int)Math.Max(0, Math.Floor((origin.Value.Y - pad) * scale));
+    var w = (int)Math.Min(frame.PixelSize.Width - x, Math.Ceiling((card.Bounds.Width + pad * 2) * scale));
+    var h = (int)Math.Min(frame.PixelSize.Height - y, Math.Ceiling((card.Bounds.Height + pad * 2) * scale));
+    var zoom = new RenderTargetBitmap(new PixelSize(w * 2, h * 2), new Vector(96, 96));
+    using (var context = zoom.CreateDrawingContext())
+        context.DrawImage(frame, new Rect(x, y, w, h), new Rect(0, 0, w * 2, h * 2));
+    zoom.Save(path, new PngBitmapEncoderOptions());
+    Console.WriteLine(path);
 }
 
 static void SaveButtonCloseup(Window window, Bitmap frame, string path)

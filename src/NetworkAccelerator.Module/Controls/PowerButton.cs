@@ -33,16 +33,14 @@ public class PowerButton : Panel
     private const double Diameter = 88;
     private const double GlyphBox = 46;
 
-    // One primary-tinted Gaussian in the reference: offset (0, 6), blur radius 14
-    // (sigma 7), alpha 0.30, same for stopped and running. Avalonia converts
-    // BoxShadow.Blur with sigma = 0.288675 * blur + 0.5 and clips the shadow to
-    // the outside of the circle. The key layer lands on sigma 7; the ambient layer
-    // fills the inner part of that same falloff. Together the alphas weigh about 0.30.
-    private const double ShadowKeyOffsetY = 6;
-    private const double ShadowKeyBlur = 22.5;
-    private const double ShadowKeyAlpha = 0.22;
-    private const double ShadowAmbientOffsetY = 2;
-    private const double ShadowAmbientBlur = 12;
+    // Soft primary glow, stronger below the circle. Avalonia converts
+    // BoxShadow.Blur with sigma = 0.288675 * blur + 0.5, so blur 26 is about sigma 8.
+    // Key alpha 0.35. Both layers stay outside the circle.
+    private const double ShadowKeyOffsetY = 9;
+    private const double ShadowKeyBlur = 26;
+    private const double ShadowKeyAlpha = 0.35;
+    private const double ShadowAmbientOffsetY = 3;
+    private const double ShadowAmbientBlur = 14;
     private const double ShadowAmbientAlpha = 0.10;
 
     private readonly Border _shadowHost;

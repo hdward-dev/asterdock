@@ -125,11 +125,29 @@
       <Setter Property="Background" Value="Transparent"/>
       <Setter Property="BorderThickness" Value="0"/>
       <Setter Property="Foreground" Value="{DynamicResource AppMutedBrush}"/>
+      <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+      <Setter Property="RenderTransform" Value="scale(1)"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Foreground" Duration="0:0:0.15"/>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12"/>
+        </Transitions>
+      </Setter>
     </Style>
     <Style Selector="Button.section-nav.selected">
-      <Setter Property="Background" Value="{DynamicResource AppAccentSurfaceBrush}"/>
       <Setter Property="Foreground" Value="{DynamicResource AppAccentBrush}"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="Button.section-nav:pressed, Button.section-nav.down">
+      <Setter Property="RenderTransform" Value="scale(0.96)"/>
+    </Style>
+    <Style Selector="Button.section-nav:pointerover /template/ ContentPresenter,
+                     Button.section-nav:pressed /template/ ContentPresenter,
+                     Button.section-nav.down /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="UserControl.still Button.section-nav">
+      <Setter Property="Transitions" Value="{x:Null}"/>
     </Style>
     <Style Selector="TextBlock.page-title">
       <Setter Property="FontSize" Value="21"/>
@@ -155,6 +173,9 @@
             <ProgressBar IsVisible="{Binding IsBusy}" IsIndeterminate="True" Height="3"/>
           </StackPanel>
         </Border>
+        <Grid x:Name="PageHost">
+        <views:OverviewDashboardView x:Name="OverviewPage" VerticalAlignment="Top"/>
+        <StackPanel x:Name="ConnectionsWrap" Spacing="20" IsVisible="False" VerticalAlignment="Top">
         <Border x:Name="ConnectionCard" Classes="card" Padding="24" CornerRadius="16">
           <StackPanel Spacing="20">
             <Grid x:Name="ConnectionHeader" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
@@ -203,10 +224,7 @@
             </Border>
           </StackPanel>
         </Border>
-
-        <views:OverviewDashboardView x:Name="OverviewPage"/>
-
-        <Border x:Name="ConnectionsPage" Classes="card" Padding="24" CornerRadius="16" IsVisible="False">
+        <Border x:Name="ConnectionsPage" Classes="card" Padding="24" CornerRadius="16">
           <StackPanel Spacing="18">
             <TextBlock Text="本地连接" FontSize="17" FontWeight="SemiBold"/>
             <TextBlock Classes="description" Text="查看当前代理入口，或复制命令供终端使用。"/>
@@ -217,8 +235,9 @@
             <Button Content="复制终端代理命令" Click="CopyTerminalProxyCommand_Click"/>
           </StackPanel>
         </Border>
+        </StackPanel>
 
-        <StackPanel x:Name="RulesPage" Spacing="16" IsVisible="False">
+        <StackPanel x:Name="RulesPage" Spacing="16" IsVisible="False" VerticalAlignment="Top">
           <Border Classes="card" Padding="24" CornerRadius="16">
             <StackPanel Spacing="14">
               <TextBlock Text="当前路由策略" FontSize="17" FontWeight="SemiBold"/>
@@ -238,7 +257,7 @@
           </Border>
         </StackPanel>
 
-        <Border x:Name="LogsPage" Classes="card" Padding="20" CornerRadius="16" IsVisible="False">
+        <Border x:Name="LogsPage" Classes="card" Padding="20" CornerRadius="16" IsVisible="False" VerticalAlignment="Top">
           <Grid RowDefinitions="Auto,Auto,*">
             <Grid ColumnDefinitions="*,Auto"><TextBlock Text="运行日志" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center"/><Button Grid.Column="1" Content="清空显示" Click="ClearLogs_Click"/></Grid>
             <TextBlock Grid.Row="1" Classes="description" Text="本次会话最近 300 条日志，随核心运行实时更新。" Margin="0,10,0,16"/>
@@ -252,7 +271,7 @@
             </Grid>
           </Grid>
         </Border>
-        <Grid x:Name="WorkspaceGrid" ColumnDefinitions="*,20,320" RowDefinitions="Auto,Auto">
+        <Grid x:Name="ProxiesPage" ColumnDefinitions="*,20,300" RowDefinitions="Auto,Auto" IsVisible="False" VerticalAlignment="Top">
           <Border x:Name="NodesCard" Classes="card" Padding="20" CornerRadius="16" VerticalAlignment="Top">
             <Grid RowDefinitions="Auto,Auto,Auto,Auto">
               <Grid ColumnDefinitions="*,Auto">
@@ -339,7 +358,9 @@
             </Grid>
           </Border>
 
-          <StackPanel x:Name="SettingsPanel" Grid.Column="2" Spacing="16">
+          <StackPanel x:Name="ProxiesSide" Grid.Column="2"/>
+        </Grid>
+        <StackPanel x:Name="SettingsPage" Spacing="16" IsVisible="False" VerticalAlignment="Top">
             <Border x:Name="ProxySettingsCard" Classes="card" Padding="20" CornerRadius="16">
               <StackPanel Spacing="14">
                 <TextBlock Text="连接设置" FontSize="18" FontWeight="SemiBold"/>
@@ -386,7 +407,29 @@
                            Foreground="{DynamicResource AppWarningBrush}" IsVisible="{Binding TunRequiresAdministrator}"/>
               </StackPanel>
             </Border>
-            <Border x:Name="SubscriptionCard" Classes="card" Padding="20" CornerRadius="16">
+            <Border x:Name="CoreCard" Classes="card" Padding="20" CornerRadius="16">
+              <StackPanel Spacing="10">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Classes="core-state" Classes.ready="{Binding IsCoreAvailable}" Text="{Binding CoreStatusText}"
+                             FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                  <Button Grid.Column="1" Content="安装核心" IsVisible="{Binding IsCoreMissing}" IsEnabled="{Binding !IsBusy}" Padding="10,4" Click="InstallCore_Click"/>
+                </Grid>
+                <TextBlock Text="{Binding RulesText}" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/>
+                <Border BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,1,0,0" Padding="0,12,0,0">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="4">
+                      <TextBlock Text="减少动画" FontSize="14" FontWeight="SemiBold"/>
+                      <TextBlock Text="关闭卡片、数字和列表的过渡" FontSize="12" Foreground="{DynamicResource AppMutedBrush}"/>
+                    </StackPanel>
+                    <controls:AccentSwitch Grid.Column="1" x:Name="ReduceMotionSwitch" VerticalAlignment="Center"
+                                           IsChecked="{Binding ReduceMotion}" AutomationProperties.Name="减少动画"
+                                           Click="ReduceMotion_Click"/>
+                  </Grid>
+                </Border>
+              </StackPanel>
+            </Border>
+        </StackPanel>
+        <Border x:Name="SubscriptionCard" Classes="card" Padding="20" CornerRadius="16" IsVisible="False" VerticalAlignment="Top">
               <StackPanel Spacing="14">
                 <Grid ColumnDefinitions="*,Auto">
                   <TextBlock Text="我的订阅" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
@@ -423,35 +466,21 @@
                 <Button Content="更新订阅" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Height="36"
                         IsEnabled="{Binding !IsBusy}" Click="UpdateSubscription_Click"/>
               </StackPanel>
-            </Border>
-            <Border x:Name="CoreCard" Classes="card" Padding="20" CornerRadius="16">
-              <StackPanel Spacing="10">
-                <Grid ColumnDefinitions="*,Auto">
-                  <TextBlock Classes="core-state" Classes.ready="{Binding IsCoreAvailable}" Text="{Binding CoreStatusText}"
-                             FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center"/>
-                  <Button Grid.Column="1" Content="安装核心" IsVisible="{Binding IsCoreMissing}" IsEnabled="{Binding !IsBusy}" Padding="10,4" Click="InstallCore_Click"/>
-                </Grid>
-                <TextBlock Text="{Binding RulesText}" FontSize="11" Foreground="{DynamicResource AppMutedBrush}"/>
-                <Border BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,1,0,0" Padding="0,12,0,0">
-                  <Grid ColumnDefinitions="*,Auto">
-                    <StackPanel Spacing="4">
-                      <TextBlock Text="减少动画" FontSize="14" FontWeight="SemiBold"/>
-                      <TextBlock Text="关闭卡片、数字和列表的过渡" FontSize="12" Foreground="{DynamicResource AppMutedBrush}"/>
-                    </StackPanel>
-                    <controls:AccentSwitch Grid.Column="1" x:Name="ReduceMotionSwitch" VerticalAlignment="Center"
-                                           IsChecked="{Binding ReduceMotion}" AutomationProperties.Name="减少动画"
-                                           Click="ReduceMotion_Click"/>
-                  </Grid>
-                </Border>
-              </StackPanel>
-            </Border>
-          </StackPanel>
+        </Border>
         </Grid>
       </StackPanel>
     </ScrollViewer>
     <Border Grid.Column="1" Background="{DynamicResource AppSurfaceBrush}" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="1,0,0,0">
       <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel x:Name="SectionNavigation" Margin="10,24" Spacing="8">
+        <Grid Margin="10,24">
+          <Border x:Name="NavPill" Height="68" CornerRadius="12"
+                  Background="{DynamicResource AppAccentSurfaceBrush}"
+                  HorizontalAlignment="Stretch" VerticalAlignment="Top" IsHitTestVisible="False">
+            <Border.RenderTransform>
+              <TranslateTransform/>
+            </Border.RenderTransform>
+          </Border>
+          <StackPanel x:Name="SectionNavigation" Spacing="8">
           <Button Classes="section-nav" Tag="Overview" Click="Navigate_Click" AutomationProperties.Name="概览" ToolTip.Tip="概览">
             <StackPanel Spacing="7"><Path Data="{StaticResource RiDashboard3Line}" Width="22" Height="22" Stretch="Uniform" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center"/><TextBlock Text="概览" FontSize="12" HorizontalAlignment="Center"/></StackPanel>
           </Button>
@@ -473,7 +502,8 @@
           <Button Classes="section-nav" Tag="Settings" Click="Navigate_Click" AutomationProperties.Name="设置" ToolTip.Tip="设置">
             <StackPanel Spacing="7"><Path Data="{StaticResource RiEqualizerLine}" Width="22" Height="22" Stretch="Uniform" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center"/><TextBlock Text="设置" FontSize="12" HorizontalAlignment="Center"/></StackPanel>
           </Button>
-        </StackPanel>
+          </StackPanel>
+        </Grid>
       </ScrollViewer>
     </Border>
   </Grid>

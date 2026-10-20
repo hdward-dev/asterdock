@@ -1,0 +1,83 @@
+<Border xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:VMCube.Module.Views"
+        x:Class="VMCube.Module.Views.MachineCard"
+        x:DataType="local:MachineCardModel"
+        x:CompileBindings="True"
+        Classes="ad-card"
+        Classes.selected="{Binding IsSelected}"
+        Padding="3"
+        ClipToBounds="True">
+  <Border.Styles>
+    <Style Selector="Border.selected">
+      <Setter Property="BorderBrush" Value="{DynamicResource AppAccentBrush}"/>
+    </Style>
+  </Border.Styles>
+  <StackPanel>
+    <Button Classes="ad-flat" Padding="0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+            IsVisible="{Binding ShowPreview}" IsEnabled="{Binding ActionsEnabled}"
+            AutomationProperties.Name="{Binding OpenDesktopName}" Click="Preview_Click">
+      <Grid Height="138" ClipToBounds="True" Background="{DynamicResource AppAccentSurfaceBrush}">
+        <Image x:Name="previewImage" Stretch="Uniform" Source="{Binding Preview}" IsVisible="{Binding HasPreview}"/>
+        <StackPanel Spacing="9" VerticalAlignment="Center" HorizontalAlignment="Center" IsVisible="{Binding ShowPlaceholder}">
+          <Path Width="44" Height="44" Stretch="Uniform" StrokeThickness="1.5" Stroke="{DynamicResource AppAccentBrush}"
+                Data="M2,3 H22 V17 H2 Z M12,17 V21 M6,21 H18 M5,6 H19 V14 H5 Z"/>
+          <TextBlock Text="{Binding Placeholder}" FontSize="11" Classes="ad-muted"/>
+        </StackPanel>
+        <Border Classes="ad-scrim" Margin="6" VerticalAlignment="Bottom" HorizontalAlignment="Left" IsVisible="{Binding HasPreview}">
+          <TextBlock Text="{Binding PreviewCaption}" Classes="ad-on-scrim"/>
+        </Border>
+      </Grid>
+    </Button>
+    <StackPanel Spacing="8" Margin="14,12">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+        <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                   Foreground="{DynamicResource AppStrongTextBrush}" ToolTip.Tip="{Binding Name}"/>
+        <Button x:Name="VmFavorite" Grid.Column="1" Classes="ad-icon" Background="Transparent" BorderThickness="0"
+                IsEnabled="{Binding ActionsEnabled}" ToolTip.Tip="{Binding FavoriteTip}" AutomationProperties.Name="{Binding FavoriteTip}" Click="Favorite_Click">
+          <Panel>
+            <Path Width="18" Height="18" Stretch="Uniform" StrokeThickness="1.5" IsVisible="{Binding IsFavorite}"
+                  Stroke="{DynamicResource AppStrongTextBrush}" Fill="{DynamicResource AppStrongTextBrush}"
+                  Data="M12,3 L15,9 L22,10 L17,15 L18,22 L12,18 L6,22 L7,15 L2,10 L9,9 Z"/>
+            <Path Width="18" Height="18" Stretch="Uniform" StrokeThickness="1.5" IsVisible="{Binding ShowStarOutline}"
+                  Stroke="{DynamicResource AppStrongTextBrush}"
+                  Data="M12,3 L15,9 L22,10 L17,15 L18,22 L12,18 L6,22 L7,15 L2,10 L9,9 Z"/>
+          </Panel>
+        </Button>
+      </Grid>
+      <WrapPanel ItemSpacing="10" LineSpacing="5">
+        <Border Padding="9,4" CornerRadius="12" HorizontalAlignment="Left" Background="{DynamicResource AppPositiveSurfaceBrush}" IsVisible="{Binding IsRunning}">
+          <TextBlock Text="{Binding StateText}" FontSize="11" Foreground="{DynamicResource AppPositiveBrush}"/>
+        </Border>
+        <Border Padding="9,4" CornerRadius="12" HorizontalAlignment="Left" Background="{DynamicResource AppSubtleBrush}" IsVisible="{Binding IsNotRunning}">
+          <Panel>
+            <TextBlock Text="{Binding StateText}" FontSize="11" Foreground="{DynamicResource AppWarningBrush}" IsVisible="{Binding IsPaused}"/>
+            <TextBlock Text="{Binding StateText}" FontSize="11" Classes="ad-muted" IsVisible="{Binding IsQuiet}"/>
+          </Panel>
+        </Border>
+        <TextBlock Text="{Binding Protocol}" FontSize="11" Classes="ad-muted" VerticalAlignment="Center"/>
+      </WrapPanel>
+      <TextBlock Text="{Binding Spec}" FontSize="12" Classes="ad-muted"/>
+    </StackPanel>
+    <Border BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,1,0,0">
+      <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="6" Margin="8" IsEnabled="{Binding ActionsEnabled}">
+        <Button x:Name="VmConnect" Classes="ad-primary" IsEnabled="{Binding CanPrimary}"
+                ToolTip.Tip="{Binding PrimaryTip}" AutomationProperties.Name="{Binding PrimaryTip}" Click="Primary_Click">
+          <Path Width="18" Height="18" Stretch="Uniform" StrokeThickness="1.5" Stroke="{DynamicResource AppOnAccentBrush}" Data="{Binding PrimaryIcon}"/>
+        </Button>
+        <Button x:Name="VmPause" Grid.Column="1" Classes="ad-icon" IsEnabled="{Binding CanPause}"
+                ToolTip.Tip="暂停虚拟机" AutomationProperties.Name="暂停虚拟机" Click="Pause_Click">
+          <Path Width="18" Height="18" Stretch="Uniform" StrokeThickness="1.5" Stroke="{DynamicResource AppStrongTextBrush}" Data="M6,4 H9 V20 H6 Z M15,4 H18 V20 H15 Z"/>
+        </Button>
+        <Button x:Name="VmPower" Grid.Column="2" Classes="ad-icon" IsEnabled="{Binding CanPower}"
+                ToolTip.Tip="正常关机" AutomationProperties.Name="正常关机" Click="Power_Click">
+          <Path Width="18" Height="18" Stretch="Uniform" StrokeThickness="1.5" Stroke="{DynamicResource AppStrongTextBrush}" Data="M12,2 V12 M6,5 A9,9 0 1 0 18,5"/>
+        </Button>
+        <Button x:Name="VmDetails" Grid.Column="3" Classes="ad-icon"
+                ToolTip.Tip="虚拟机详情" AutomationProperties.Name="虚拟机详情" Click="Details_Click">
+          <Path Width="18" Height="18" Stretch="Uniform" StrokeThickness="1.5" Stroke="{DynamicResource AppStrongTextBrush}" Data="M12,2 A10,10 0 1 1 11.99,2 M12,10 V17 M12,6 V7"/>
+        </Button>
+      </Grid>
+    </Border>
+  </StackPanel>
+</Border>

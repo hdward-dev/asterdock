@@ -426,4 +426,8 @@
   <Style Selector="Button.ad-flat:pointerover /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource AppCaptionHoverBrush}"/>
   </Style>
+  <Style Selector="Button.ad-flat:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderBrush" Value="Transparent"/>
+  </Style>
 </Styles>

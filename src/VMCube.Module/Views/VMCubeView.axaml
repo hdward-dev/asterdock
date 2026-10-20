@@ -64,7 +64,7 @@
       <Border Grid.Row="1" Grid.ColumnSpan="3" Padding="18,9" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,1,0,0">
         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
           <TextBlock x:Name="_status" Text="尚未连接 · 输入连接 URI，或打开演示模式" FontSize="11" MaxLines="2" TextTrimming="CharacterEllipsis" TextWrapping="Wrap" Classes="ad-muted"/>
-          <TextBlock Grid.Column="1" Text="VMCUBE 0.7.0" FontSize="11" Classes="ad-muted" VerticalAlignment="Center"/>
+          <TextBlock Grid.Column="1" Text="VMCUBE 0.7.1" FontSize="11" Classes="ad-muted" VerticalAlignment="Center"/>
         </Grid>
       </Border>
     </Grid>
@@ -149,7 +149,13 @@
         <TextBlock Text="操作记录" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource AppStrongTextBrush}"/>
         <TextBlock Text="查看本次打开 VMCUBE 后的连接、虚拟机操作与错误详情。" FontSize="13" TextWrapping="Wrap" Classes="ad-muted"/>
         <Border Classes="ad-card" Padding="18">
-          <StackPanel x:Name="_log" Spacing="6"/>
+          <ItemsControl x:Name="_log">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="x:String" x:CompileBindings="True">
+                <TextBlock Text="{Binding}" FontSize="12" TextWrapping="Wrap" Classes="ad-muted" Margin="0,0,0,6"/>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
         </Border>
       </StackPanel>
 
@@ -180,7 +186,7 @@
             <TextBlock Text="体验与帮助" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource AppStrongTextBrush}"/>
             <TextBlock Text="无需创建虚拟机，即可查看卡片布局和操作流程。" FontSize="13" TextWrapping="Wrap" Classes="ad-muted"/>
             <Button Content="查看演示" HorizontalAlignment="Left" Click="Demo_Click"/>
-            <TextBlock Text="VMCUBE 0.7.0 · 本机 QEMU / KVM · 远程 SSH · SPICE / VNC" FontSize="11" Classes="ad-muted"/>
+            <TextBlock Text="VMCUBE 0.7.1 · 本机 QEMU / KVM · 远程 SSH · SPICE / VNC" FontSize="11" Classes="ad-muted"/>
           </StackPanel>
         </Border>
       </StackPanel>

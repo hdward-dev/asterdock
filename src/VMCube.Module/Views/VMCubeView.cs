@@ -43,10 +43,11 @@ public sealed partial class VMCubeView : UserControl, IDisposable
             if (File.Exists(SettingsPath)) _uri.Text = JsonSerializer.Deserialize<string>(File.ReadAllText(SettingsPath)) ?? _uri.Text;
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException) { _status.Text = "连接配置读取失败，请重新输入 URI。"; }
+        _log.ItemsSource = _logItems;
         WireInterface();
         _search.TextChanged += (_, _) => Filter();
         _filter.SelectionChanged += (_, _) => Filter();
-        UpdateStats(); Filter(); AddLog("VMCUBE 0.7.0 已就绪");
+        UpdateStats(); Filter(); AddLog("VMCUBE 0.7.1 已就绪");
         AttachedToVisualTree += async (_, _) => { if (!_disposed && IsLocal && _connectedUri is null && !_demo) await ExecuteAsync(ConnectAsync); };
     }
 
@@ -59,31 +60,6 @@ public sealed partial class VMCubeView : UserControl, IDisposable
     private async void ExitDemo_Click(object? sender, RoutedEventArgs e) => await ExecuteAsync(ConnectAsync);
     private async void Demo_Click(object? sender, RoutedEventArgs e) => await ExecuteAsync(DemoAsync);
 
-    private static TextBlock Text(string value, double size = 14, bool muted = false)
-    {
-        var block = new TextBlock { Text = value, FontSize = size, TextWrapping = TextWrapping.Wrap };
-        block.Bind(TextBlock.ForegroundProperty, new DynamicResourceExtension(muted ? "AppMutedBrush" : "AppStrongTextBrush"));
-        return block;
-    }
-    private static Border Card(Control content)
-    {
-        var border = new Border { Child = content, Padding = new Thickness(18) };
-        border.Classes.Add("ad-card");
-        return border;
-    }
-    private Button ActionButton(string label, Func<Task> action, bool primary = false)
-    {
-        var button = new Button { Content = label, Padding = new Thickness(14, 9), CornerRadius = new CornerRadius(8) };
-        if (primary) button.Classes.Add("ad-primary");
-        button.Click += async (_, _) => await ExecuteAsync(action);
-        return button;
-    }
-    private Button IconActionButton(string label, string icon, Func<Task> action, bool primary = false, bool danger = false)
-    {
-        var button = VMCubeIcons.Button(label, icon, primary, danger);
-        button.Click += async (_, _) => await ExecuteAsync(action);
-        return button;
-    }
     private async Task ExecuteAsync(Func<Task> action)
     {
         if (_busy || _disposed) return;
@@ -154,55 +130,56 @@ public sealed partial class VMCubeView : UserControl, IDisposable
     private void RenderDetails()
     {
         var vm = _machines.FirstOrDefault(x => x.Id == _selectedVmId);
-        if (vm is null) { RenderEmptyDetails(); return; }
-        _details.Children.Clear(); _details.Children.Add(Text("当前虚拟机", 12, true));
-        var name = Text(vm.Name, 20); name.TextWrapping = TextWrapping.NoWrap; name.TextTrimming = TextTrimming.CharacterEllipsis; ToolTip.SetTip(name, vm.Name); _details.Children.Add(name);
-        _details.Children.Add(StateBadge(vm));
-        _details.Children.Add(Text($"处理器   {vm.Cpus} vCPU\n最大配置内存   {vm.MemoryGiB:0.#} GiB"));
-        if (_connectedUri == "local" && _local.GetDefinition(vm.Id).Imported is { } imported)
+        _details.Children.Clear();
+        if (vm is null)
         {
-            _details.Children.Add(Text("已导入 · " + (imported.FirmwareCodePath is null ? "BIOS" : "UEFI") +
-                (imported.SecureBoot ? " / Secure Boot" : "") + (imported.TpmStateDirectory is null ? "" : " / TPM 2.0"), 12, true));
-            _details.Children.Add(new Expander { Header = "磁盘与标识", Content = new SelectableTextBlock { Text = "磁盘\n" + imported.DiskPath + "\n\nUUID\n" + vm.Id, FontSize = 12, TextWrapping = TextWrapping.Wrap } });
+            _details.Children.Add(new VmDetailsView { DataContext = new VmDetailsModel { IsEmpty = true } });
+            return;
         }
-        var actions = new WrapPanel { IsEnabled = !_busy, ItemSpacing = 8, LineSpacing = 8 };
-        if (vm.State == "shut off")
-        {
-            actions.Children.Add(IconActionButton("启动虚拟机", "play", () => ActAsync(vm, "start"), true));
-            if (_connectedUri == "local" && _local.GetDefinition(vm.Id).IsoPath is not null) actions.Children.Add(IconActionButton("移除安装镜像", "eject", async () => { await _local.DetachIsoAsync(vm.Id, _lifetime.Token); AddLog(vm.Name + " · 已移除安装 ISO，磁盘保留"); }));
-        }
-        if (vm.State == "running")
-        {
-            actions.Children.Add(IconActionButton("连接桌面", "connect", () => ConnectConsoleAsync(vm), true));
-            actions.Children.Add(IconActionButton("暂停虚拟机", "pause", () => ActAsync(vm, "suspend")));
-            actions.Children.Add(IconActionButton("正常关机", "power", () => { _confirmation = vm.Id; RenderDetails(); return Task.CompletedTask; }));
-        }
-        if (vm.State == "paused") actions.Children.Add(IconActionButton("恢复运行", "play", () => ActAsync(vm, "resume"), true));
-        if (_connectedUri == "local" && vm.State is "running" or "paused")
-            actions.Children.Add(IconActionButton("强制关机（相当于断电）", "stop", () => { _confirmation = "force/" + vm.Id; RenderDetails(); return Task.CompletedTask; }, danger: true));
-        if (vm.State == "running" && !_demo && _connectedUri != "local")
+        var imported = _connectedUri == "local" ? _local.GetDefinition(vm.Id).Imported : null;
+        var showRemote = vm.State == "running" && !_demo && _connectedUri != "local";
+        var view = new VmDetailsView { DataContext = new VmDetailsModel {
+            Name = vm.Name,
+            Spec = $"处理器   {vm.Cpus} vCPU\n最大配置内存   {vm.MemoryGiB:0.#} GiB",
+            StateText = "●  " + vm.StateLabel,
+            IsRunning = vm.State == "running",
+            IsPaused = vm.State == "paused",
+            ShowImported = imported is not null,
+            ImportedSummary = imported is null ? "" : "已导入 · " + (imported.FirmwareCodePath is null ? "BIOS" : "UEFI") +
+                (imported.SecureBoot ? " / Secure Boot" : "") + (imported.TpmStateDirectory is null ? "" : " / TPM 2.0"),
+            DiskText = imported is null ? "" : "磁盘\n" + imported.DiskPath + "\n\nUUID\n" + vm.Id,
+            ShowRemoteConsole = showRemote,
+            ShowStart = vm.State == "shut off",
+            ShowEject = vm.State == "shut off" && _connectedUri == "local" && _local.GetDefinition(vm.Id).IsoPath is not null,
+            ShowConnect = vm.State == "running",
+            ShowPause = vm.State == "running",
+            ShowShutdown = vm.State == "running",
+            ShowResume = vm.State == "paused",
+            ShowForce = _connectedUri == "local" && vm.State is "running" or "paused",
+            ActionsEnabled = !_busy,
+            ShowShutdownConfirm = _confirmation == vm.Id,
+            ShowForceConfirm = _confirmation == "force/" + vm.Id,
+            ShowLocalNote = _connectedUri == "local",
+            Footer = _demo ? "演示操作不会连接真实服务器。" : "操作后读取实际状态。正常关机请求可能不会立即完成。",
+            Start = () => ExecuteAsync(() => ActAsync(vm, "start")),
+            Eject = () => ExecuteAsync(async () => { await _local.DetachIsoAsync(vm.Id, _lifetime.Token); AddLog(vm.Name + " · 已移除安装 ISO，磁盘保留"); }),
+            Connect = () => ExecuteAsync(() => ConnectConsoleAsync(vm)),
+            Pause = () => ExecuteAsync(() => ActAsync(vm, "suspend")),
+            Shutdown = () => ExecuteAsync(() => { _confirmation = vm.Id; RenderDetails(); return Task.CompletedTask; }),
+            Resume = () => ExecuteAsync(() => ActAsync(vm, "resume")),
+            Force = () => ExecuteAsync(() => { _confirmation = "force/" + vm.Id; RenderDetails(); return Task.CompletedTask; }),
+            ConfirmShutdown = () => ExecuteAsync(() => ActAsync(vm, "shutdown")),
+            ConfirmForce = () => ExecuteAsync(() => ActAsync(vm, "destroy")),
+            CancelConfirm = () => ExecuteAsync(() => { _confirmation = null; RenderDetails(); return Task.CompletedTask; })
+        } };
+        _details.Children.Add(view);
+        if (showRemote)
         {
             if (_consoleProtocol.Parent is Panel protocolParent) protocolParent.Children.Remove(_consoleProtocol);
             if (_consolePassword.Parent is Panel passwordParent) passwordParent.Children.Remove(_consolePassword);
-            _details.Children.Add(_consoleProtocol);
-            _details.Children.Add(_consolePassword);
-            _details.Children.Add(Text("进入虚拟机 SPICE/VNC 控制台，密码仅用于本次连接。", 12, true));
+            view.ConsoleHost.Children.Add(_consoleProtocol);
+            view.ConsoleHost.Children.Add(_consolePassword);
         }
-        _details.Children.Add(actions);
-        if (_confirmation == vm.Id)
-        {
-            _details.Children.Add(Text("确认向此虚拟机发送正常关机请求？完成时间取决于来宾系统，请刷新确认状态。", 12));
-            _details.Children.Add(ActionButton("确认关机", () => ActAsync(vm, "shutdown")));
-            _details.Children.Add(ActionButton("取消", () => { _confirmation = null; RenderDetails(); return Task.CompletedTask; }));
-        }
-        if (_confirmation == "force/" + vm.Id)
-        {
-            _details.Children.Add(Text("强制关机相当于断电，未保存数据可能丢失。确认停止此虚拟机？", 12));
-            _details.Children.Add(ActionButton("确认强制关机", () => ActAsync(vm, "destroy")));
-            _details.Children.Add(ActionButton("取消", () => { _confirmation = null; RenderDetails(); return Task.CompletedTask; }));
-        }
-        if (_connectedUri == "local") _details.Children.Add(Text("关闭控制台或退出 VMCUBE 后，虚拟机会继续运行；请通过正常关机停止。", 12, true));
-        _details.Children.Add(Text(_demo ? "演示操作不会连接真实服务器。" : "操作后读取实际状态。正常关机请求可能不会立即完成。", 12, true));
     }
     private async Task ConnectConsoleAsync(VirtualMachine vm)
     {
@@ -315,10 +292,11 @@ public sealed partial class VMCubeView : UserControl, IDisposable
         if (_disposed) return;
         AddLog($"{vm.Name} · {action} 请求成功" + (_demo ? "（演示）" : "")); await RefreshAsync();
     }
+    private readonly System.Collections.ObjectModel.ObservableCollection<string> _logItems = [];
     private void AddLog(string message)
     {
-        _log.Children.Insert(0, Text($"{DateTimeOffset.Now:HH:mm:ss}  {message}", 12, true));
-        while (_log.Children.Count > 20) _log.Children.RemoveAt(_log.Children.Count - 1);
+        _logItems.Insert(0, $"{DateTimeOffset.Now:HH:mm:ss}  {message}");
+        while (_logItems.Count > 20) _logItems.RemoveAt(_logItems.Count - 1);
     }
     public void Dispose()
     {

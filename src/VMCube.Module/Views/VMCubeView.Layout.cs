@@ -30,8 +30,6 @@ public sealed partial class VMCubeView
         else control.Classes.Remove(name);
     }
 
-    private static Control Icon(string name, double size = 20) => VMCubeIcons.Draw(name, size);
-
     private void WireInterface()
     {
         try { if (File.Exists(FavoritesPath)) foreach (var key in JsonSerializer.Deserialize<string[]>(File.ReadAllText(FavoritesPath)) ?? []) _favorites.Add(key); }
@@ -162,69 +160,52 @@ public sealed partial class VMCubeView
         _machineCards.RowDefinitions = new(string.Join(",", Enumerable.Repeat("Auto", Math.Max(1, (matches.Length + columns - 1) / columns))));
         if (!matches.Any(x => x.Id == _selectedVmId)) { _selectedVmId = matches.FirstOrDefault()?.Id; _confirmation = null; _consolePassword.Text = ""; }
         if (matches.Length == 0) {
-            var empty = new StackPanel { Spacing = 12, Margin = new Thickness(0, 24), HorizontalAlignment = HorizontalAlignment.Stretch,
-                Children = { Icon("cube", 42), Text(_machines.Count == 0 ? IsLocal ? "创建你的第一台虚拟机" : "连接你的 KVM 主机" : "没有符合条件的虚拟机", 18),
-                Text(_machines.Count == 0 ? IsLocal ? "创建新虚拟机，或导入已有的 qcow2 磁盘。" : "填写 SSH 连接地址，查看主机上的现有虚拟机。" : "试试其他关键词，或切换到全部虚拟机。", 12, true) } };
-            _machineCards.Children.Add(Card(empty));
+            _machineCards.Children.Add(new EmptyMachineCard { DataContext = new EmptyMachineModel {
+                Title = _machines.Count == 0 ? IsLocal ? "创建你的第一台虚拟机" : "连接你的 KVM 主机" : "没有符合条件的虚拟机",
+                Message = _machines.Count == 0 ? IsLocal ? "创建新虚拟机，或导入已有的 qcow2 磁盘。" : "填写 SSH 连接地址，查看主机上的现有虚拟机。" : "试试其他关键词，或切换到全部虚拟机。" } });
         }
         for (var i = 0; i < matches.Length; i++) {
             var card = BuildMachineCard(matches[i]); Grid.SetRow(card, i / columns); Grid.SetColumn(card, i % columns); _machineCards.Children.Add(card);
         }
         RenderDetails(); UpdateWorkspaceDisplay();
     }
-    private static Control StateBadge(VirtualMachine vm)
+    private MachineCard BuildMachineCard(VirtualMachine vm)
     {
-        var label = Text("●  " + vm.StateLabel, 11);
-        ApplyTheme(label, TextBlock.ForegroundProperty, vm.State == "running" ? "AppPositiveBrush" : vm.State == "paused" ? "AppWarningBrush" : "AppMutedBrush");
-        var badge = new Border { Child = label, Padding = new Thickness(9, 4), CornerRadius = new CornerRadius(12), HorizontalAlignment = HorizontalAlignment.Left };
-        ApplyTheme(badge, Border.BackgroundProperty, vm.State == "running" ? "AppPositiveSurfaceBrush" : "AppSubtleBrush"); return badge;
-    }
-    private Control BuildMachineCard(VirtualMachine vm)
-    {
-        var preview = new Grid { Height = _listView ? 0 : 138, IsVisible = !_listView, ClipToBounds = true };
-        ApplyTheme(preview, Panel.BackgroundProperty, "AppAccentSurfaceBrush");
-        var placeholder = new StackPanel { Spacing = 9, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center,
-            Children = { Icon("desktop", 44), Text(vm.State == "running" ? "连接后显示桌面预览" : vm.State == "paused" ? "恢复后连接桌面" : "启动后连接桌面", 11, true) } };
-        preview.Children.Add(placeholder); AddDesktopPreview(preview, placeholder, vm);
-        var previewButton = new Button { Content = preview, Padding = new Thickness(0), Classes = { "ad-flat" },
-            HorizontalContentAlignment = HorizontalAlignment.Stretch, HorizontalAlignment = HorizontalAlignment.Stretch, IsVisible = !_listView, IsEnabled = !_busy };
-        previewButton.Click += async (_, _) => await ExecuteAsync(async () => { SelectVm(vm); if (vm.State == "running") await ConnectConsoleAsync(vm); });
-        AutomationProperties.SetName(previewButton, "打开桌面 " + vm.Name);
-        var title = Text(vm.Name, 16); title.FontWeight = FontWeight.SemiBold; title.TextWrapping = TextWrapping.NoWrap; title.TextTrimming = TextTrimming.CharacterEllipsis;
-        ToolTip.SetTip(title, vm.Name);
-        var favorite = VMCubeIcons.Button(_favorites.Contains(FavoriteKey(vm)) ? "取消收藏" : "收藏虚拟机", _favorites.Contains(FavoriteKey(vm)) ? "star-filled" : "star");
-        favorite.Name = "VmFavorite"; favorite.Background = Brushes.Transparent; favorite.BorderThickness = new Thickness(0); favorite.IsEnabled = !_busy;
-        favorite.Click += async (_, _) => await ExecuteAsync(() => ToggleFavoriteAsync(vm));
-        var heading = new Grid { ColumnDefinitions = new("*,Auto"), ColumnSpacing = 8 }; heading.Children.Add(title); Grid.SetColumn(favorite, 1); heading.Children.Add(favorite);
-        var protocol = _connectedUri == "local" ? _local.GetDefinition(vm.Id).Protocol.ToString().ToUpperInvariant() : "SPICE / VNC";
-        var metadata = new WrapPanel { ItemSpacing = 10, LineSpacing = 5, Children = { StateBadge(vm), Text(protocol, 11, true) } };
-        var info = new StackPanel { Spacing = 8, Margin = new Thickness(14, 12), Children = { heading, metadata, Text($"{vm.Cpus} vCPU  ·  {vm.MemoryGiB:0.#} GiB 内存", 12, true) } };
-        var actions = new Grid { ColumnDefinitions = new("*,*,*,*"), ColumnSpacing = 6, Margin = new Thickness(8), IsEnabled = !_busy };
-        var primary = IconActionButton(vm.State == "running" ? "连接桌面" : vm.State == "paused" ? "恢复运行" : "启动虚拟机", vm.State == "running" ? "connect" : "play", async () => {
-            SelectVm(vm); if (vm.State == "running") await ConnectConsoleAsync(vm); else await ActAsync(vm, vm.State == "paused" ? "resume" : "start"); }, true);
-        primary.Name = "VmConnect"; primary.IsEnabled = vm.State is "running" or "paused" or "shut off";
-        var pause = IconActionButton("暂停虚拟机", "pause", async () => { SelectVm(vm); await ActAsync(vm, "suspend"); });
-        pause.Name = "VmPause"; pause.IsEnabled = vm.State == "running";
-        var power = IconActionButton("正常关机", "power", () => { SelectVm(vm); _confirmation = vm.Id; RenderDetails(); RevealDetails(); return Task.CompletedTask; });
-        power.Name = "VmPower"; power.IsEnabled = vm.State == "running";
-        var inspect = VMCubeIcons.Button("虚拟机详情", "info"); inspect.Name = "VmDetails";
-        inspect.Click += (_, _) => { SelectVm(vm); RevealDetails(); };
-        var buttons = new[] { primary, pause, power, inspect };
-        for (var i = 0; i < buttons.Length; i++) { Grid.SetColumn(buttons[i], i); actions.Children.Add(buttons[i]); }
-        var actionBar = new Border { Child = actions, BorderThickness = new Thickness(0, 1, 0, 0) }; ApplyTheme(actionBar, Border.BorderBrushProperty, "AppBorderBrush");
-        var content = new StackPanel { Children = { previewButton, info, actionBar } };
-        var card = Card(content); card.Padding = new Thickness(3); card.ClipToBounds = true; card.Tag = vm.Id;
+        var favorite = _favorites.Contains(FavoriteKey(vm));
+        var primaryIcon = vm.State == "running"
+            ? "M3,4 H21 V17 H3 Z M8,21 H16 M12,17 V21 M8,10 H16 M13,7 L16,10 L13,13"
+            : "M7,4 L20,12 L7,20 Z";
+        var card = new MachineCard { Tag = vm.Id, DataContext = new MachineCardModel {
+            Name = vm.Name,
+            Spec = $"{vm.Cpus} vCPU  ·  {vm.MemoryGiB:0.#} GiB 内存",
+            Protocol = _connectedUri == "local" ? _local.GetDefinition(vm.Id).Protocol.ToString().ToUpperInvariant() : "SPICE / VNC",
+            StateText = "●  " + vm.StateLabel,
+            Placeholder = vm.State == "running" ? "连接后显示桌面预览" : vm.State == "paused" ? "恢复后连接桌面" : "启动后连接桌面",
+            PrimaryTip = vm.State == "running" ? "连接桌面" : vm.State == "paused" ? "恢复运行" : "启动虚拟机",
+            PrimaryIcon = Geometry.Parse(primaryIcon),
+            FavoriteTip = favorite ? "取消收藏" : "收藏虚拟机",
+            IsRunning = vm.State == "running",
+            IsPaused = vm.State == "paused",
+            ShowPreview = !_listView,
+            IsFavorite = favorite,
+            IsSelected = _selectedVmId == vm.Id,
+            CanPrimary = vm.State is "running" or "paused" or "shut off",
+            CanPause = vm.State == "running",
+            CanPower = vm.State == "running",
+            ActionsEnabled = !_busy,
+            OpenPreview = () => ExecuteAsync(async () => { SelectVm(vm); if (vm.State == "running") await ConnectConsoleAsync(vm); }),
+            Primary = () => ExecuteAsync(async () => { SelectVm(vm); if (vm.State == "running") await ConnectConsoleAsync(vm); else await ActAsync(vm, vm.State == "paused" ? "resume" : "start"); }),
+            Pause = () => ExecuteAsync(async () => { SelectVm(vm); await ActAsync(vm, "suspend"); }),
+            Power = () => ExecuteAsync(() => { SelectVm(vm); _confirmation = vm.Id; RenderDetails(); RevealDetails(); return Task.CompletedTask; }),
+            Favorite = () => ExecuteAsync(() => ToggleFavoriteAsync(vm)),
+            Details = () => { SelectVm(vm); RevealDetails(); }
+        } };
         if (_selectedVmId == vm.Id) ApplyTheme(card, Border.BorderBrushProperty, "AppAccentBrush");
+        RegisterPreview(card, vm);
         return card;
     }
     private void RevealDetails()
     {
         if (_compact && _inlineExpander is not null) { _inlineExpander.IsExpanded = true; _inlineExpander.BringIntoView(); }
-    }
-    private void RenderEmptyDetails()
-    {
-        _details.Children.Clear(); _details.Children.Add(Text("虚拟机详情", 12, true));
-        _details.Children.Add(Text("选择一台虚拟机", 18));
-        _details.Children.Add(Text("在卡片中启动或连接桌面，点击“详情”查看更多操作。", 12, true));
     }
 }

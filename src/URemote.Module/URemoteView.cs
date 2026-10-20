@@ -18,7 +18,9 @@ public sealed partial class URemoteView : UserControl, IDisposable
         try { hostSwitch.IsChecked = enabled; }
         finally { updatingHostSwitch = false; }
     }
-    private readonly List<(uint Id, CheckBox Check)> outputs = [];
+    private readonly System.Collections.ObjectModel.ObservableCollection<ScreenShareModel> outputs = [];
+    private readonly System.Collections.ObjectModel.ObservableCollection<LocalScreenModel> localScreenItems = [];
+    private readonly System.Collections.ObjectModel.ObservableCollection<LocalHistoryModel> historyItems = [];
     private readonly CancellationTokenSource lifetime = new();
     private readonly string settingsFile;
     private Task? session;
@@ -94,12 +96,7 @@ public sealed partial class URemoteView : UserControl, IDisposable
             if (!(OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())) { status.Text = "当前被控后端支持 Linux / Wayland 和 macOS"; hostSwitch.IsEnabled = false; return; }
             var globals = await DesktopBackend.DiscoverAsync(lifetime.Token);
             if (disposed) return;
-            foreach (var id in globals.Where(g => g.Interface == "wl_output").Select(g => g.Name).Order().Take(5))
-            {
-                var check = new CheckBox { Content = "显示屏 " + (outputs.Count + 1), IsChecked = true, Margin = new Thickness(0, 0, 16, 8) };
-                outputs.Add((id, check)); screens.Children.Add(check);
-            }
-            if (outputs.Count == 0) screens.Children.Add(Text("开启被控后读取显示器；若出现系统授权窗口，请选择需要共享的屏幕。", 12, true));
+            ReplaceScreens(globals.Where(g => g.Interface == "wl_output").Select(g => g.Name).Order().Take(5).ToArray(), _ => true, "开启被控后读取显示器；若出现系统授权窗口，请选择需要共享的屏幕。");
             _ = RefreshLocalScreensAsync();
             hostSwitch.IsEnabled = true;
             if (Environment.GetEnvironmentVariable("UREMOTE_NO_AUTO_START") != "1") StartCore();
@@ -132,17 +129,9 @@ public sealed partial class URemoteView : UserControl, IDisposable
             var current = globals.Where(g => g.Interface == "wl_output").Select(g => g.Name).Order().Take(5).ToArray();
             if (!outputs.Select(o => o.Id).SequenceEqual(current))
             {
-                var allSelected = outputs.All(o => o.Check.IsChecked == true);
-                var selections = outputs.Select(o => o.Check.IsChecked == true).ToArray();
-                outputs.Clear(); screens.Children.Clear();
-                for (var i = 0; i < current.Length; i++)
-                {
-                    var check = new CheckBox { Content = "显示屏 " + (i + 1),
-                        IsChecked = allSelected || (i < selections.Length && selections[i]),
-                        Margin = new Thickness(0, 0, 16, 8) };
-                    outputs.Add((current[i], check)); screens.Children.Add(check);
-                }
-                if (current.Length == 0) screens.Children.Add(Text("请在系统授权窗口选择需要共享的屏幕。", 12, true));
+                var allSelected = outputs.All(o => o.IsChecked == true);
+                var selections = outputs.Select(o => o.IsChecked == true).ToArray();
+                ReplaceScreens(current, i => allSelected || (i < selections.Length && selections[i]), "请在系统授权窗口选择需要共享的屏幕。");
                 Report("display-list-refreshed;count=" + current.Length);
             }
             _ = RefreshLocalScreensAsync();
@@ -159,7 +148,7 @@ public sealed partial class URemoteView : UserControl, IDisposable
     private void StartCore()
     {
         if (disposed || session is { IsCompleted: false }) return;
-        var selected = outputs.Where(x => x.Check.IsChecked == true).Select(x => x.Id).ToArray();
+        var selected = outputs.Where(x => x.IsChecked == true).Select(x => x.Id).ToArray();
         var path = identity.Text ?? ""; var ffmpeg = appliedEncoder;
         try
         {
@@ -178,7 +167,7 @@ public sealed partial class URemoteView : UserControl, IDisposable
             hostBadge.Text = "○  尚未就绪"; ApplyTheme(hostBadge, TextBlock.ForegroundProperty, "AppMutedBrush");
             status.Text = "尚未就绪"; detail.Text = authenticated ? "请选择屏幕并检查编码器路径。" : "请先登录 UU 账号，验证码仅在点击发送后请求。"; return;
         }
-        var indices = outputs.Count == 0 ? null : outputs.Select((o, i) => (o, i)).Where(x => x.o.Check.IsChecked == true).Select(x => x.i).ToArray();
+        var indices = outputs.Count == 0 ? null : outputs.Select((o, i) => (o, i)).Where(x => x.o.IsChecked == true).Select(x => x.i).ToArray();
         var minutes = duration.SelectedIndex switch { 1 => 5, 2 => 30, 3 => 60, _ => 0 };
         var limit = minutes == 0 ? Timeout.InfiniteTimeSpan : TimeSpan.FromMinutes(minutes);
         var enabled = input.IsChecked == true; var sound = audio.IsChecked == true; var sync = clipboard.IsChecked == true;
@@ -269,7 +258,7 @@ public sealed partial class URemoteView : UserControl, IDisposable
             if (disposed) return;
             devices = []; selectedDeviceId = null; deviceDetail.Children.Clear(); deviceDetail.IsVisible = false;
             foreach (var bitmap in previewCache.Values) bitmap.Dispose(); previewCache.Clear();
-            foreach (var bitmap in localBitmaps) bitmap.Dispose(); localBitmaps.Clear(); localScreens.Children.Clear();
+            foreach (var bitmap in localBitmaps) bitmap.Dispose(); localBitmaps.Clear(); localScreenItems.Clear();
             mobile.Text = ""; code.Text = ""; assistanceDevice = null; codeSettings = null;
             assistanceId.Text = "尚未登录"; assistanceCode.Text = "";
             assistanceHint.Text = "登录后获取本机协助信息。";

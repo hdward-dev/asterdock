@@ -25,29 +25,28 @@ public sealed partial class URemoteView
         }
         void RenderHistory()
         {
-            localHistoryRows.Children.Clear();
+            historyItems.Clear();
             var records = history.Load();
-            if (records.Count == 0) { localHistoryRows.Children.Add(Text("连接成功后，最近 5 条记录会显示在这里。", 12, true)); return; }
+            localHistoryEmpty.IsVisible = records.Count == 0;
             foreach (var record in records)
             {
                 var account = record.Protocol == LocalDesktopProtocol.Rdp ?
                     (string.IsNullOrEmpty(record.Domain) ? record.Username : record.Domain + "\\" + record.Username) : "VNC";
                 var host = record.Host.Contains(':') ? "[" + record.Host + "]" : record.Host;
-                var quick = new Button { Content = "快速连接", VerticalAlignment = VerticalAlignment.Center };
-                var row = new Grid { ColumnDefinitions = new("*,Auto"), ColumnSpacing = 12 };
-                row.Children.Add(new StackPanel { Spacing = 4, Children = {
-                    Text($"{record.Protocol.ToString().ToUpperInvariant()} · {host}:{record.Port}"), Text(account, 12, true) } });
-                Grid.SetColumn(quick, 1); row.Children.Add(quick);
-                quick.Click += async (_, _) =>
-                {
-                    ApplyLocalRecord(record);
-                    var options = record.Options();
-                    if (localWindows.TryGetValue(LocalConnectionKey(options), out var active) && !active.Completion.IsCompleted)
-                    { OpenLocalConnection(options, localHistoryState, Remember); return; }
-                    var password = await PromptLocalPasswordAsync(record);
-                    if (password is not null && !disposed) OpenLocalConnection(record.Options(password), localHistoryState, Remember);
-                };
-                localHistoryRows.Children.Add(Card(row, 14));
+                var current = record;
+                historyItems.Add(new LocalHistoryModel {
+                    Title = $"{current.Protocol.ToString().ToUpperInvariant()} · {host}:{current.Port}",
+                    Account = account,
+                    QuickConnect = new AsyncCommand(async () =>
+                    {
+                        ApplyLocalRecord(current);
+                        var options = current.Options();
+                        if (localWindows.TryGetValue(LocalConnectionKey(options), out var active) && !active.Completion.IsCompleted)
+                        { OpenLocalConnection(options, localHistoryState, Remember); return; }
+                        var password = await PromptLocalPasswordAsync(current);
+                        if (password is not null && !disposed) OpenLocalConnection(current.Options(password), localHistoryState, Remember);
+                    })
+                });
             }
         }
         rememberLocal = Remember;

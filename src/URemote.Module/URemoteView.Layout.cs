@@ -49,27 +49,6 @@ public sealed partial class URemoteView
         if (on) { if (!control.Classes.Contains(name)) control.Classes.Add(name); }
         else control.Classes.Remove(name);
     }
-    private static TextBlock Text(string value, double size = 13, bool muted = false)
-    {
-        var text = new TextBlock { Text = value, FontSize = size, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
-        ApplyTheme(text, TextBlock.ForegroundProperty, muted ? "AppMutedBrush" : "AppStrongTextBrush"); return text;
-    }
-    private static Border Card(Control child, int padding = 20)
-    {
-        var border = new Border { Child = child, Padding = new Thickness(padding) };
-        border.Classes.Add("ad-card");
-        return border;
-    }
-    private static PathIcon DeviceIcon(bool mobile = false)
-    {
-        var icon = new PathIcon
-        {
-            Width = 22, Height = 22,
-            Data = Geometry.Parse(mobile ? "M7,2 H17 V22 H7 Z M9,4 V18 H15 V4 Z M11,20 H13 V21 H11 Z" : "M2,3 H22 V17 H13 V20 H18 V22 H6 V20 H11 V17 H2 Z M4,5 V15 H20 V5 Z")
-        };
-        ApplyTheme(icon, PathIcon.ForegroundProperty, "AppMutedBrush");
-        return icon;
-    }
     private void WireShell(string dataDirectory)
     {
         favoriteFile = Path.Combine(dataDirectory, "device-favorites.json");
@@ -80,6 +59,9 @@ public sealed partial class URemoteView
         detail.IsVisible = !string.IsNullOrWhiteSpace(detail.Text);
         detail.PropertyChanged += (_, e) => { if (e.Property == TextBlock.TextProperty) detail.IsVisible = !string.IsNullOrWhiteSpace(detail.Text); };
         status.PropertyChanged += (_, e) => { if (e.Property == TextBlock.TextProperty) UpdateHostBadge(); };
+        screens.ItemsSource = outputs;
+        localScreens.ItemsSource = localScreenItems;
+        localHistoryRows.ItemsSource = historyItems;
         navigation.AddRange([navDevices, navHost, navAccount, navAssist, navFiles, navLocal]);
         pages = [devicePage, hostPage, accountPage, assistancePage, filePage, localPage];
         hostIntro.Text = $"在其他设备的 UU 官方客户端中，选择「{LinuxDeviceProfile.DeviceName}」连接。";
@@ -233,9 +215,10 @@ public sealed partial class URemoteView
         catalogCount.Text = devices.Count > 0 ? $"我的设备  {matches.Length}" : "我的设备";
         if (matches.Length == 0)
         {
-            deviceRows.Children.Add(Card(new StackPanel { Spacing = 10, Margin = new Thickness(0, 20), Children = {
-                Text(devices.Count == 0 ? "还没有加载设备" : "没有符合条件的设备", 18),
-                Text(devices.Count == 0 ? "登录后点击刷新，即可查看同一 UU 账号下的电脑和移动设备。" : "试试其他关键词，或将筛选切换为“全部设备”。", 13, true) } })); return;
+            deviceRows.Children.Add(new CatalogMessageCard { DataContext = new CatalogMessageModel {
+                Title = devices.Count == 0 ? "还没有加载设备" : "没有符合条件的设备",
+                Message = devices.Count == 0 ? "登录后点击刷新，即可查看同一 UU 账号下的电脑和移动设备。" : "试试其他关键词，或将筛选切换为“全部设备”。" } });
+            return;
         }
         var columns = listView ? 1 : deviceColumns;
         deviceRows.ColumnDefinitions = new ColumnDefinitions(columns == 2 ? "*,*" : "*");
@@ -245,6 +228,52 @@ public sealed partial class URemoteView
             var card = BuildPreviewCard(matches[i]);
             Grid.SetColumn(card, i % columns); Grid.SetRow(card, i / columns); deviceRows.Children.Add(card);
         }
+    }
+
+    private void ReplaceScreens(uint[] ids, Func<int, bool> isChecked, string? emptyHint)
+    {
+        outputs.Clear();
+        for (var i = 0; i < ids.Length; i++)
+            outputs.Add(new ScreenShareModel { Id = ids[i], Label = "显示屏 " + (i + 1), IsChecked = isChecked(i) });
+        if (!string.IsNullOrEmpty(emptyHint)) screenHint.Text = emptyHint;
+        screenHint.IsVisible = ids.Length == 0 && !string.IsNullOrEmpty(emptyHint);
+    }
+
+    private DeviceCard BuildPreviewCard(UuDevice device)
+    {
+        var allowed = !device.IsCurrent && device.Online && device.Controllable && device.ControlledSupport && device.Category == "desktop";
+        var wallpaperKey = device.IsCurrent && previewCache.ContainsKey("local-wallpaper") ? "local-wallpaper" : device.WallpaperUrl;
+        previewCache.TryGetValue(wallpaperKey, out var wallpaper);
+        return new DeviceCard { DataContext = new DeviceCardModel {
+            Name = device.Name,
+            StatusText = "●  " + device.StatusName,
+            PlatformName = device.PlatformName,
+            BadgeText = device.IsCurrent ? "本机" : device.StatusName,
+            FavoriteLabel = favorites.Contains(device.Id) ? "取消收藏" : "收藏设备",
+            Online = device.Online,
+            HasWallpaper = wallpaper is not null,
+            Wallpaper = wallpaper,
+            WallpaperOpacity = device.Online ? 1 : .5,
+            IsMobile = device.Category == "mobile",
+            ShowBadge = device.IsCurrent || !device.Online,
+            CanControl = allowed,
+            ListView = listView,
+            PreviewHeight = listView ? 120 : 190,
+            IsSelected = selectedDeviceId == device.Id,
+            ConnectTip = allowed ? "点击预览进入远程控制" : null,
+            ConnectName = allowed ? "远程控制 " + device.Name : "",
+            TransferTip = allowed ? "在独立窗口中浏览、上传和下载远端文件" : "设备需在线并允许被控",
+            TerminalTip = allowed ? "打开远程终端命令窗口" : "设备需在线并允许被控",
+            TransferName = "文件传输 " + device.Name,
+            TerminalName = "终端 " + device.Name,
+            PortName = "端口映射 " + device.Name,
+            WakeName = "远程开机 " + device.Name,
+            RequestRemote = () => OpenRemote(device),
+            RequestFiles = () => OpenTool(device, false),
+            RequestTerminal = () => OpenTool(device, true),
+            RequestFavorite = () => { if (!favorites.Add(device.Id)) favorites.Remove(device.Id); SaveFavorites(); RenderDevices(); },
+            RequestDetails = () => { ShowDevice(device); RenderDevices(); }
+        } };
     }
     private void OpenRemote(UuDevice device)
     {
@@ -287,17 +316,15 @@ public sealed partial class URemoteView
         selectedDeviceId = device.Id;
         deviceDetail.IsVisible = true;
         deviceDetail.Children.Clear();
-        var copy = new Button { Content = "复制设备编号" };
-        copy.Click += async (_, _) =>
-        {
-            try { if (TopLevel.GetTopLevel(this)?.Clipboard is { } board) { await board.SetTextAsync(device.Id); copy.Content = "已复制"; } }
-            catch { copy.Content = "复制失败"; }
-        };
-        var close = new Button { Content = "收起" }; close.Click += (_, _) => { selectedDeviceId = null; deviceDetail.Children.Clear(); deviceDetail.IsVisible = false; RenderDevices(); };
-        deviceDetail.Children.Add(Card(new StackPanel { Spacing = 10, Children = {
-            Text(device.Name, 18), Text($"{device.PlatformName} · {device.StatusName}"),
-            Text("设备编号  " + device.Id, 12, true), Text("客户端版本  " + (device.Version.Length == 0 ? "未提供" : device.Version), 12, true),
-            Text(device.IsCurrent ? "这是本机。可在其他设备的 UU 官方客户端中发起桌面或终端连接。" : "可通过设备列表中的远程控制，在独立窗口中连接。", 13, true),
-            new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { copy, close } } } }));
+        var detailView = new DeviceDetailView { DataContext = new DeviceDetailModel {
+            Name = device.Name,
+            Summary = $"{device.PlatformName} · {device.StatusName}",
+            Identifier = "设备编号  " + device.Id,
+            Version = "客户端版本  " + (device.Version.Length == 0 ? "未提供" : device.Version),
+            Description = device.IsCurrent ? "这是本机。可在其他设备的 UU 官方客户端中发起桌面或终端连接。" : "可通过设备列表中的远程控制，在独立窗口中连接。",
+            DeviceId = device.Id
+        } };
+        detailView.Dismissed += (_, _) => { selectedDeviceId = null; deviceDetail.Children.Clear(); deviceDetail.IsVisible = false; RenderDevices(); };
+        deviceDetail.Children.Add(detailView);
     }
 }

@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:URemote.Module"
              x:Class="URemote.Module.URemoteView"
              x:CompileBindings="False"
              Background="{DynamicResource AppPageBrush}"
@@ -19,7 +20,21 @@
               <ToggleSwitch x:Name="hostSwitch" Grid.Column="1" MinWidth="0" IsEnabled="False" OnContent="{x:Null}" OffContent="{x:Null}"
                             AutomationProperties.Name="允许本机被远程控制"/>
             </Grid>
-            <WrapPanel x:Name="localScreens" Orientation="Horizontal"/>
+            <ItemsControl x:Name="localScreens">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><WrapPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="local:LocalScreenModel" x:CompileBindings="True">
+                  <Button Classes="ad-flat" Padding="4" Margin="0,0,6,2" Command="{Binding OpenSettings}" ToolTip.Tip="本机屏幕快照 · 点击修改共享设置">
+                    <StackPanel Spacing="3">
+                      <Image Width="112" Height="63" Stretch="Uniform" Source="{Binding Snapshot}" IsVisible="{Binding ShowSnapshot}"/>
+                      <TextBlock Text="{Binding Caption}" FontSize="11" Classes="ad-muted"/>
+                    </StackPanel>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
             <TextBlock x:Name="detail" Text="正在读取登录状态和显示器…" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource AppMutedBrush}"/>
             <Button Content="显示器与共享设置" HorizontalAlignment="Stretch" Click="ScreenLink_Click"/>
             <Separator/>
@@ -187,7 +202,17 @@
         <Border Classes="ad-card" Padding="20">
           <StackPanel x:Name="settings" Spacing="14">
             <TextBlock Text="共享哪些屏幕" Classes="ad-heading"/>
-            <WrapPanel x:Name="screens" Orientation="Horizontal"/>
+            <ItemsControl x:Name="screens">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><WrapPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="local:ScreenShareModel" x:CompileBindings="True">
+                  <CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}" Margin="0,0,16,8"/>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock x:Name="screenHint" FontSize="12" TextWrapping="Wrap" Classes="ad-muted" IsVisible="False"/>
             <Separator/>
             <TextBlock Text="连接权限" Classes="ad-heading"/>
             <CheckBox x:Name="input" Content="允许键鼠控制和远程终端" IsChecked="True"/>
@@ -320,7 +345,22 @@
         <ContentControl x:Name="localForms"/>
         <TextBlock Text="最近连接" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource AppStrongTextBrush}"/>
         <TextBlock Text="保留最近 5 条成功连接，不保存密码。" FontSize="12" Classes="ad-muted"/>
-        <StackPanel x:Name="localHistoryRows" Spacing="10"/>
+        <TextBlock x:Name="localHistoryEmpty" Text="连接成功后，最近 5 条记录会显示在这里。" FontSize="12" TextWrapping="Wrap" Classes="ad-muted" IsVisible="False"/>
+        <ItemsControl x:Name="localHistoryRows">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="local:LocalHistoryModel" x:CompileBindings="True">
+              <Border Classes="ad-card" Padding="14" Margin="0,0,0,10">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                  <StackPanel Spacing="4">
+                    <TextBlock Text="{Binding Title}" Foreground="{DynamicResource AppStrongTextBrush}"/>
+                    <TextBlock Text="{Binding Account}" FontSize="12" Classes="ad-muted"/>
+                  </StackPanel>
+                  <Button Grid.Column="1" Content="快速连接" VerticalAlignment="Center" Command="{Binding QuickConnect}"/>
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
         <TextBlock x:Name="localHistoryState" FontSize="12" TextWrapping="Wrap" Classes="ad-muted"/>
       </StackPanel>
 

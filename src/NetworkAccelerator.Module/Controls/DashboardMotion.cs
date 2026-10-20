@@ -27,7 +27,6 @@ public static class DashboardMotion
     public static readonly TimeSpan PowerRing = TimeSpan.FromMilliseconds(1000);
     public static readonly TimeSpan PowerGlow = TimeSpan.FromMilliseconds(1800);
     public static readonly TimeSpan PowerShake = TimeSpan.FromMilliseconds(420);
-    public static readonly TimeSpan BlobDrift = TimeSpan.FromMilliseconds(8000);
     public static readonly TimeSpan NavSlide = TimeSpan.FromMilliseconds(250);
     public static readonly TimeSpan PageSwap = TimeSpan.FromMilliseconds(200);
     public const double PageSwapShift = 10;

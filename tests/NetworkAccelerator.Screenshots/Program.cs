@@ -29,9 +29,12 @@ Capture("overview-light-populated", ThemeVariant.Light, Populated(allowLan: fals
 Capture("overview-dark-disconnected", ThemeVariant.Dark, Disconnected(), 1360, 1180, output);
 Capture("overview-dark-populated", ThemeVariant.Dark, Populated(allowLan: true), 1360, 1560, output);
 Capture("overview-narrow-populated", ThemeVariant.Light, Populated(allowLan: false), 760, 2200, output);
-CaptureMotion(Path.Combine(output, "overview-motion"));
-CapturePowerClip(Path.Combine(output, "power-button"));
-CaptureNavClip(Path.Combine(output, "nav-and-power"));
+if (!args.Contains("--stills"))
+{
+    CaptureMotion(Path.Combine(output, "overview-motion"));
+    CapturePowerClip(Path.Combine(output, "power-button"));
+    CaptureNavClip(Path.Combine(output, "nav-and-power"));
+}
 Console.WriteLine("PASS dashboard screenshots in " + output);
 
 static void CaptureMotion(string directory)

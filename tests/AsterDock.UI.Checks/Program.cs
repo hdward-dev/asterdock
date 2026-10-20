@@ -164,6 +164,9 @@ static void RunShapeChecks(Action<bool, string> check)
     LoadingShapes.Interpolate(TimeSpan.Zero, reduceMotion: false, buffer);
     check(buffer.SequenceEqual(LoadingShapes.Frames[0]), "morph starts on the cookie");
     check(PeakCount(LoadingShapes.Frames[0]) >= 10, "cookie has twelve lobes");
+    check(LoadingShapes.Frames[0].Min() > 0.84, "cookie lobes stay soft");
+    check(LoadingShapes.Frames[1].Min() > 0.68, "clover stays plump");
+    check(LoadingShapes.Frames[2].Min() > 0.75, "pentagon stays rounded");
     check(PeakCount(LoadingShapes.Frames[1]) == 4, "clover has four petals");
     check(PeakCount(LoadingShapes.Frames[2]) == 5, "pentagon has five corners");
     check(LoadingShapes.Frames[3].All(value => Math.Abs(value - 1) < 0.001), "circle is even");
@@ -201,11 +204,15 @@ static void RunEasingChecks(Action<bool, string> check)
 static int PeakCount(float[] radii)
 {
     var count = 0;
+    var window = Math.Max(1, radii.Length / 96);
     for (var i = 0; i < radii.Length; i++)
     {
-        var previous = radii[(i + radii.Length - 1) % radii.Length];
-        var next = radii[(i + 1) % radii.Length];
-        if (radii[i] > previous + 0.001 && radii[i] > next + 0.001 && radii[i] > 0.8) count++;
+        var previous = radii[(i - window + radii.Length) % radii.Length];
+        var next = radii[(i + window) % radii.Length];
+        var left = radii[(i + radii.Length - 1) % radii.Length];
+        var right = radii[(i + 1) % radii.Length];
+        if (radii[i] >= left && radii[i] >= right && radii[i] > previous + 0.0005 && radii[i] > next + 0.0005 && radii[i] > 0.9)
+            count++;
     }
 
     return count;

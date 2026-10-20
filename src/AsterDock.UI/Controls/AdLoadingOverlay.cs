@@ -41,6 +41,7 @@ public class AdLoadingOverlay : ContentControl, ILoadingClockClient
     private DispatcherTimer? _deadline;
     private Border? _watched;
     private Border? _scrim;
+    private Border? _card;
     private ContentPresenter? _content;
     private ScaleTransform? _scale;
     private AdLoadingIndicator? _indicator;
@@ -107,15 +108,16 @@ public class AdLoadingOverlay : ContentControl, ILoadingClockClient
         base.OnApplyTemplate(e);
         if (_cancel is not null) _cancel.Click -= OnCancelClick;
         _scrim = e.NameScope.Find<Border>("PART_Scrim");
+        _card = e.NameScope.Find<Border>("PART_Card");
         _content = e.NameScope.Find<ContentPresenter>("PART_Content");
         _indicator = e.NameScope.Find<AdLoadingIndicator>("PART_Indicator");
         _cancel = e.NameScope.Find<Button>("PART_Cancel");
-        var chrome = e.NameScope.Find<StackPanel>("PART_Chrome");
-        if (chrome is not null)
+        var scaled = (Control?)_card ?? e.NameScope.Find<StackPanel>("PART_Chrome");
+        if (scaled is not null)
         {
-            chrome.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
-            _scale = chrome.RenderTransform as ScaleTransform ?? new ScaleTransform(1, 1);
-            chrome.RenderTransform = _scale;
+            scaled.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
+            _scale = scaled.RenderTransform as ScaleTransform ?? new ScaleTransform(1, 1);
+            scaled.RenderTransform = _scale;
         }
 
         if (_cancel is not null) _cancel.Click += OnCancelClick;
@@ -287,7 +289,8 @@ public class AdLoadingOverlay : ContentControl, ILoadingClockClient
         {
             _indicator.Size = IndicatorSize;
             _indicator.Text = Text;
-            _indicator.ShowContainer = true;
+            _indicator.Variant = AdLoadingVariant.Contained;
+            _indicator.FontSize = 14;
         }
 
         if (_cancel is not null) _cancel.IsVisible = IsCancellable;

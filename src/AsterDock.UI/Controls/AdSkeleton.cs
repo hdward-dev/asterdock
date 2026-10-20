@@ -84,11 +84,12 @@ public class AdSkeleton : Control, ILoadingClockClient
         {
             context.DrawRectangle(_base, null, rect);
             if (MotionPreferences.ReduceMotion || _shine is null) return;
-            var band = Math.Max(48, size.Width * 0.42);
             var phase = (LoadingClock.Now.TotalMilliseconds % LoopMs) / LoopMs;
             if (phase < 0) phase += 1;
-            var x = -band + (phase * (size.Width + band));
-            context.DrawRectangle(_shine, null, new Rect(x, -size.Height, band, size.Height * 3));
+            var start = (phase * 1.8) - 0.9;
+            _shine.StartPoint = new RelativePoint(start, start, RelativeUnit.Relative);
+            _shine.EndPoint = new RelativePoint(start + 0.7, start + 0.7, RelativeUnit.Relative);
+            context.DrawRectangle(_shine, null, rect);
         }
     }
 
@@ -174,17 +175,21 @@ public class AdSkeleton : Control, ILoadingClockClient
         else
             _base = new SolidColorBrush(dark ? Color.Parse("#2A313B") : Color.Parse("#E7ECF3"));
 
-        var highlight = dark ? Color.FromArgb(110, 255, 255, 255) : Color.FromArgb(210, 255, 255, 255);
+        Color highlight;
+        if (TryGetResource("AppSkeletonHighlightBrush", ActualThemeVariant, out var shineValue) && shineValue is ISolidColorBrush shineBrush)
+            highlight = Color.FromArgb(dark ? (byte)150 : (byte)230, shineBrush.Color.R, shineBrush.Color.G, shineBrush.Color.B);
+        else
+            highlight = dark ? Color.FromArgb(150, 58, 66, 80) : Color.FromArgb(230, 248, 250, 252);
         _shine = new LinearGradientBrush
         {
-            StartPoint = new RelativePoint(0, 0.5, RelativeUnit.Relative),
-            EndPoint = new RelativePoint(1, 0.5, RelativeUnit.Relative),
+            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+            EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
             GradientStops =
             {
                 new GradientStop(Colors.Transparent, 0),
-                new GradientStop(Colors.Transparent, 0.28),
+                new GradientStop(Colors.Transparent, 0.34),
                 new GradientStop(highlight, 0.5),
-                new GradientStop(Colors.Transparent, 0.72),
+                new GradientStop(Colors.Transparent, 0.66),
                 new GradientStop(Colors.Transparent, 1)
             }
         };

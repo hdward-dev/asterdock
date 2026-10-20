@@ -103,7 +103,6 @@ internal static class GalleryExport
             LoadingClock.Freeze(time);
             if (time >= TimeSpan.FromSeconds(4.8) && !overlay.IsLoading) overlay.IsLoading = true;
             LoadingClock.TickAll();
-            Dispatcher.UIThread.RunJobs();
             window.UpdateLayout();
             SaveBitmap(window, Path.Combine(frameDirectory, $"frame_{frame:0000}.png"), width, height);
         }
@@ -125,7 +124,7 @@ internal static class GalleryExport
             {
                 Labeled("小 · 20", new AdLoadingIndicator { Size = AdLoadingSize.Small }),
                 Labeled("中 · 36", new AdLoadingIndicator { Size = AdLoadingSize.Medium, Text = "加载中…" }),
-                Labeled("大 · 56", new AdLoadingIndicator { Size = AdLoadingSize.Large }),
+                Labeled("大 · 56", new AdLoadingIndicator { Size = AdLoadingSize.Large, Text = "加载中…" }),
                 Labeled("确定进度", new AdLoadingIndicator { Size = AdLoadingSize.Large, Progress = 0.62, Text = "62%" })
             }
         };
@@ -261,13 +260,20 @@ internal static class GalleryExport
 
     private static StackPanel Labeled(string caption, Control control) => new()
     {
-        Spacing = 12,
+        Spacing = 10,
         HorizontalAlignment = HorizontalAlignment.Center,
         VerticalAlignment = VerticalAlignment.Center,
         Children =
         {
             control,
-            new TextBlock { Text = caption, Classes = { "ad-muted" }, HorizontalAlignment = HorizontalAlignment.Center }
+            new TextBlock
+            {
+                Text = caption,
+                Classes = { "ad-muted" },
+                FontSize = 12,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                TextAlignment = TextAlignment.Center
+            }
         }
     };
 
@@ -275,7 +281,6 @@ internal static class GalleryExport
     {
         LoadingClock.Freeze(time);
         var window = Show(content, width, height, dark);
-        Dispatcher.UIThread.RunJobs();
         window.UpdateLayout();
         LoadingClock.TickAll();
         SaveBitmap(window, path, width, height);
@@ -310,7 +315,6 @@ internal static class GalleryExport
         window.Width = width;
         window.Height = height;
         window.UpdateLayout();
-        Dispatcher.UIThread.RunJobs();
         var pixelSize = new PixelSize(width, height);
         using var bitmap = new RenderTargetBitmap(pixelSize, new Vector(96, 96));
         bitmap.Render(window);

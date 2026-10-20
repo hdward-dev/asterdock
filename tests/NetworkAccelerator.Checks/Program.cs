@@ -9,6 +9,10 @@ static void Check(bool condition, string message)
 }
 
 var now = new DateTimeOffset(2026, 10, 20, 12, 0, 0, TimeSpan.Zero);
+TrafficFormatter.SplitRate(0, out var zeroValue, out var zeroUnit);
+Check(zeroValue == "0" && zeroUnit == "B/s", "split zero rate");
+TrafficFormatter.SplitRate(128 * 1024, out var kiloValue, out var kiloUnit);
+Check(kiloValue == "128" && kiloUnit == "KB/s" && TrafficFormatter.FormatRate(128 * 1024) == "128 KB/s", "split kilobyte rate");
 Check(TrafficFormatter.FormatRate(0) == "0 B/s", "zero rate");
 Check(TrafficFormatter.FormatRate(1023) == "1023 B/s", "byte rate");
 Check(TrafficFormatter.FormatRate(1024) == "1 KB/s", "kilobyte boundary");

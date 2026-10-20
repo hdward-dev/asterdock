@@ -24,6 +24,7 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
     private DateTimeOffset _connectedAt;
     private bool _disposed;
     private bool _isBusy;
+    private int _connectionFaultSignal;
     private bool _isRefreshingLatencies;
     private string _nodeSearchText = string.Empty;
     private bool _isConnected;
@@ -75,6 +76,12 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
         {
             if (SetField(ref _isBusy, value)) OnPropertyChanged(nameof(ShowOverviewAlert));
         }
+    }
+
+    public int ConnectionFaultSignal
+    {
+        get => _connectionFaultSignal;
+        private set => SetField(ref _connectionFaultSignal, value);
     }
     public bool IsRefreshingLatencies
     {
@@ -232,10 +239,11 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
     public async Task ToggleConnectionAsync()
     {
         if (IsBusy) return;
+        var stopping = _engine.IsRunning;
         IsBusy = true;
         try
         {
-            if (_engine.IsRunning)
+            if (stopping)
             {
                 await _engine.StopAsync().ConfigureAwait(false);
                 await Dispatcher.UIThread.InvokeAsync(ApplyDisconnectedState);
@@ -270,6 +278,7 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
             {
                 ApplyDisconnectedState();
                 StatusMessage = $"连接失败：{exception.GetBaseException().Message}";
+                if (!stopping) ConnectionFaultSignal++;
             });
         }
         finally

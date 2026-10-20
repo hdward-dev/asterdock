@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Avalonia.Styling;
 
 namespace NetworkAccelerator.Module.Controls;
 
@@ -22,7 +23,14 @@ public class SlidingPillBar : Control
     public static readonly StyledProperty<double> PillOffsetProperty =
         AvaloniaProperty.Register<SlidingPillBar, double>(nameof(PillOffset));
 
-    private IBrush _subtle = Brushes.LightGray;
+    public static readonly StyledProperty<IBrush?> TrackBrushProperty =
+        AvaloniaProperty.Register<SlidingPillBar, IBrush?>(nameof(TrackBrush));
+
+    public static readonly StyledProperty<IBrush?> AccentBrushProperty =
+        AvaloniaProperty.Register<SlidingPillBar, IBrush?>(nameof(AccentBrush));
+
+    private static readonly IBrush LightTrack = new SolidColorBrush(Color.Parse("#F5F7FA"));
+    private static readonly IBrush DarkTrack = new SolidColorBrush(Color.Parse("#161A20"));
     private IBrush _accent = Brushes.DodgerBlue;
     private int _placedIndex = -1;
     private double _placedTarget = double.NaN;
@@ -33,7 +41,7 @@ public class SlidingPillBar : Control
 
     static SlidingPillBar()
     {
-        AffectsRender<SlidingPillBar>(PillOffsetProperty, SelectedIndexProperty, SegmentCountProperty, GapProperty);
+        AffectsRender<SlidingPillBar>(PillOffsetProperty, SelectedIndexProperty, SegmentCountProperty, GapProperty, TrackBrushProperty, AccentBrushProperty);
     }
 
     public int SelectedIndex
@@ -58,6 +66,18 @@ public class SlidingPillBar : Control
     {
         get => GetValue(PillOffsetProperty);
         set => SetValue(PillOffsetProperty, value);
+    }
+
+    public IBrush? TrackBrush
+    {
+        get => GetValue(TrackBrushProperty);
+        set => SetValue(TrackBrushProperty, value);
+    }
+
+    public IBrush? AccentBrush
+    {
+        get => GetValue(AccentBrushProperty);
+        set => SetValue(AccentBrushProperty, value);
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -86,11 +106,11 @@ public class SlidingPillBar : Control
         for (var i = 0; i < count; i++)
         {
             var slot = new RoundedRect(new Rect(i * (segment + gap), 0, segment, height), radius);
-            context.DrawRectangle(_subtle, null, slot);
+            context.DrawRectangle(ResolveTrack(), null, slot);
         }
 
         var pill = new RoundedRect(new Rect(PillOffset, 0, segment, height), radius);
-        context.DrawRectangle(_accent, null, pill);
+        context.DrawRectangle(AccentBrush ?? _accent, null, pill);
     }
 
     private void MovePill()
@@ -142,9 +162,14 @@ public class SlidingPillBar : Control
 
     private void CacheBrushes()
     {
-        _subtle = Brush("AppSubtleBrush", Brushes.LightGray);
         _accent = Brush("AppAccentBrush", Brushes.DodgerBlue);
         InvalidateVisual();
+    }
+
+    private IBrush ResolveTrack()
+    {
+        if (TrackBrush is { } brush) return brush;
+        return ActualThemeVariant == ThemeVariant.Dark ? DarkTrack : LightTrack;
     }
 
     private IBrush Brush(string key, IBrush fallback) =>

@@ -21,6 +21,16 @@ public static class DashboardMotion
     public const double EntranceScale = 0.98;
     public const double HoverScale = 1.012;
     public const double PressScale = 0.98;
+    public static readonly TimeSpan PowerState = TimeSpan.FromMilliseconds(150);
+    public static readonly TimeSpan PowerMorph = TimeSpan.FromMilliseconds(450);
+    public static readonly TimeSpan PowerRipple = TimeSpan.FromMilliseconds(400);
+    public static readonly TimeSpan PowerRing = TimeSpan.FromMilliseconds(1000);
+    public static readonly TimeSpan PowerGlow = TimeSpan.FromMilliseconds(1800);
+    public static readonly TimeSpan PowerShake = TimeSpan.FromMilliseconds(420);
+    public static readonly TimeSpan BlobDrift = TimeSpan.FromMilliseconds(8000);
+    public const double PowerHoverScale = 1.045;
+    public const double PowerPressScale = 0.94;
+    public const double PowerDiameter = 88;
 
     public static event Action? Changed;
 

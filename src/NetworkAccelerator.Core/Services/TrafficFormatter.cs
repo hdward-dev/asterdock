@@ -4,7 +4,17 @@ namespace NetworkAccelerator.Core.Services;
 
 public static class TrafficFormatter
 {
-    public static string FormatRate(long bytesPerSecond) => FormatScaled(bytesPerSecond) + "/s";
+    public static string FormatRate(long bytesPerSecond)
+    {
+        SplitRate(bytesPerSecond, out var value, out var unit);
+        return value + " " + unit;
+    }
+
+    public static void SplitRate(long bytesPerSecond, out string value, out string unit)
+    {
+        SplitScaled(bytesPerSecond, out value, out var scaled);
+        unit = scaled + "/s";
+    }
 
     public static string FormatTotal(long bytes) => FormatScaled(bytes);
 
@@ -37,11 +47,36 @@ public static class TrafficFormatter
 
     private static string FormatScaled(long bytes)
     {
+        SplitScaled(bytes, out var value, out var unit);
+        return value + " " + unit;
+    }
+
+    private static void SplitScaled(long bytes, out string value, out string unit)
+    {
         if (bytes < 0) bytes = 0;
         const double kilo = 1024d;
-        if (bytes < kilo) return $"{bytes} B";
-        if (bytes < kilo * kilo) return $"{(bytes / kilo).ToString("0.#", CultureInfo.InvariantCulture)} KB";
-        if (bytes < kilo * kilo * kilo) return $"{(bytes / kilo / kilo).ToString("0.#", CultureInfo.InvariantCulture)} MB";
-        return $"{(bytes / kilo / kilo / kilo).ToString("0.#", CultureInfo.InvariantCulture)} GB";
+        if (bytes < kilo)
+        {
+            value = bytes.ToString(CultureInfo.InvariantCulture);
+            unit = "B";
+            return;
+        }
+
+        if (bytes < kilo * kilo)
+        {
+            value = (bytes / kilo).ToString("0.#", CultureInfo.InvariantCulture);
+            unit = "KB";
+            return;
+        }
+
+        if (bytes < kilo * kilo * kilo)
+        {
+            value = (bytes / kilo / kilo).ToString("0.#", CultureInfo.InvariantCulture);
+            unit = "MB";
+            return;
+        }
+
+        value = (bytes / kilo / kilo / kilo).ToString("0.#", CultureInfo.InvariantCulture);
+        unit = "GB";
     }
 }

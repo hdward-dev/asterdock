@@ -13,6 +13,21 @@
       <Setter Property="Padding" Value="18,16"/>
       <Setter Property="ClipToBounds" Value="True"/>
     </Style>
+    <Style Selector="Border.dash-card.hero">
+      <Setter Property="Height" Value="170"/>
+      <Setter Property="Padding" Value="16,12"/>
+    </Style>
+    <Style Selector="Border.dash-card.mid">
+      <Setter Property="MinHeight" Value="150"/>
+      <Setter Property="Padding" Value="14,8"/>
+    </Style>
+    <Style Selector="Button.ad-segment /template/ ContentPresenter#PART_ContentPresenter,
+                     Button.ad-segment:pointerover /template/ ContentPresenter#PART_ContentPresenter,
+                     Button.ad-segment:pressed /template/ ContentPresenter#PART_ContentPresenter,
+                     Button.ad-segment.selected /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
+    </Style>
     <Style Selector="TextBlock.dash-label">
       <Setter Property="FontSize" Value="12"/>
       <Setter Property="Foreground" Value="{DynamicResource AppMutedBrush}"/>
@@ -211,10 +226,15 @@
     </StackPanel>
 
     <controls:DashboardWrapPanel Gap="12">
-      <controls:EntranceFrame Order="0" controls:DashboardWrapPanel.Weight="2.4" controls:DashboardWrapPanel.MinItemWidth="460">
-        <Border Classes="dash-card dash-hover">
+      <controls:EntranceFrame Order="0" controls:DashboardWrapPanel.Row="0" controls:DashboardWrapPanel.Weight="2.4" controls:DashboardWrapPanel.MinItemWidth="460">
+        <Border Classes="dash-card dash-hover hero">
         <Grid ColumnDefinitions="*,Auto">
-          <StackPanel Spacing="12">
+          <controls:StatusBlob Grid.ColumnSpan="2" Width="230" Height="168"
+                               HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,-16,-40,-16"
+                               IsRunning="{Binding IsConnected}"
+                               FillBrush="{DynamicResource AppSubtleBrush}"
+                               TintBrush="{DynamicResource AppAccentBrush}"/>
+          <StackPanel Spacing="6">
             <Border Classes="ad-status-badge" Classes.connected="{Binding IsConnected}" HorizontalAlignment="Left">
               <StackPanel Orientation="Horizontal" Spacing="6">
                 <Ellipse Width="7" Height="7" VerticalAlignment="Center"
@@ -232,18 +252,18 @@
                 <TextBlock Text="{Binding Dash.CountryCodeText}" FontSize="12" FontWeight="Bold"
                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
               </Border>
-              <TextBlock Grid.Column="1" Text="{Binding Dash.ExitIpText}" FontSize="30" FontWeight="SemiBold"
+              <TextBlock Grid.Column="1" Text="{Binding Dash.ExitIpText}" FontSize="28" FontWeight="SemiBold"
                          VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
             </Grid>
             <WrapPanel Orientation="Horizontal">
-              <Border Classes="dash-tag" IsVisible="{Binding Dash.HasExitKind}">
+              <Border Classes="dash-tag" Margin="0,0,6,0" IsVisible="{Binding Dash.HasExitKind}">
                 <TextBlock Text="{Binding Dash.ExitKindText}"/>
               </Border>
-              <Border Classes="dash-tag" IsVisible="{Binding Dash.HasExitRegion}">
+              <Border Classes="dash-tag" Margin="0,0,6,0" IsVisible="{Binding Dash.HasExitRegion}">
                 <TextBlock Text="{Binding Dash.ExitRegionText}"/>
               </Border>
             </WrapPanel>
-            <Grid ColumnDefinitions="*,*" Margin="0,4,0,0">
+            <Grid ColumnDefinitions="*,*" Margin="0,2,0,0">
               <StackPanel Spacing="3">
                 <TextBlock Text="运行时长" Classes="dash-label"/>
                 <TextBlock Text="{Binding OverviewDurationText}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
@@ -254,69 +274,63 @@
               </StackPanel>
             </Grid>
           </StackPanel>
-          <Grid Grid.Column="1" Width="116" Margin="12,0,0,0">
-            <Ellipse Width="108" Height="84" HorizontalAlignment="Right" VerticalAlignment="Center"
-                     Fill="{DynamicResource AppAccentSurfaceBrush}"/>
-            <Ellipse Classes="power-glow" Classes.live="{Binding IsConnected}" Width="86" Height="86"
-                     HorizontalAlignment="Center" VerticalAlignment="Center" Fill="{DynamicResource AppAccentBrush}"/>
-            <Button Classes="dash-power" Classes.running="{Binding IsConnected}" HorizontalAlignment="Center" VerticalAlignment="Center"
-                    AutomationProperties.Name="开始或停止加速"
-                    IsEnabled="{Binding !IsBusy}" Click="ToggleConnection_Click">
-              <Panel>
-                <Path Classes="power-play" Width="20" Height="20" Stretch="Uniform"
-                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                      Data="M8,5 L18,12 L8,19 Z"/>
-                <Path Classes="power-stop" Width="16" Height="16" Stretch="Fill"
-                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                      Data="M3,3 H13 V13 H3 Z"/>
-              </Panel>
-            </Button>
-          </Grid>
+          <controls:PowerButton Grid.Column="1" Width="88" Height="88" Margin="14,0,2,0"
+                                VerticalAlignment="Center" HorizontalAlignment="Center"
+                                IsRunning="{Binding IsConnected}" IsConnecting="{Binding IsBusy}"
+                                FaultSignal="{Binding ConnectionFaultSignal}"
+                                AccentBrush="{DynamicResource AppAccentBrush}"
+                                IconBrush="{DynamicResource AppOnAccentBrush}"
+                                AutomationProperties.Name="开始或停止加速"
+                                Click="ToggleConnection_Click"/>
         </Grid>
         </Border>
       </controls:EntranceFrame>
 
-      <controls:EntranceFrame Order="1" controls:DashboardWrapPanel.Weight="1" controls:DashboardWrapPanel.MinItemWidth="220">
-        <Border Classes="dash-card dash-hover">
-          <Grid RowDefinitions="Auto,Auto,Auto,*">
-            <Grid ColumnDefinitions="*,Auto">
-              <StackPanel Orientation="Horizontal" Spacing="6">
-                <Path Width="16" Height="16" Stretch="Uniform" Stroke="{DynamicResource AppAccentBrush}" StrokeThickness="1.7"
-                      StrokeLineCap="Round" StrokeJoin="Round" Data="M12,19 V5 M7,10 L12,5 L17,10" VerticalAlignment="Center"/>
-                <TextBlock Text="上传" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
-              </StackPanel>
-              <TextBlock Grid.Column="1" Classes="dash-label" Text="{Binding Dash.UploadPeakText, StringFormat=峰值 {0}}" VerticalAlignment="Center"/>
+      <controls:EntranceFrame Order="1" controls:DashboardWrapPanel.Row="0" controls:DashboardWrapPanel.Weight="1" controls:DashboardWrapPanel.MinItemWidth="220">
+        <Border Classes="dash-card dash-hover hero">
+          <Grid>
+            <Grid RowDefinitions="Auto,Auto,Auto" VerticalAlignment="Top">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Path Width="16" Height="16" Stretch="Uniform" Stroke="{DynamicResource AppAccentBrush}" StrokeThickness="1.7"
+                        StrokeLineCap="Round" StrokeJoin="Round" Data="M12,19 V5 M7,10 L12,5 L17,10" VerticalAlignment="Center"/>
+                  <TextBlock Text="上传" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock Grid.Column="1" Classes="dash-label" Text="{Binding Dash.UploadPeakText, StringFormat=峰值 {0}}" VerticalAlignment="Center"/>
+              </Grid>
+              <controls:AnimatedFigure Grid.Row="1" Kind="Rate" Value="{Binding Dash.UploadRateValue}" Margin="0,10,0,2"/>
+              <TextBlock Grid.Row="2" Classes="dash-label" Text="{Binding Dash.UploadTotalText, StringFormat=累计 {0}}"/>
             </Grid>
-            <controls:AnimatedFigure Grid.Row="1" Classes="dash-figure" Kind="Rate" Value="{Binding Dash.UploadRateValue}" Margin="0,12,0,4"/>
-            <TextBlock Grid.Row="2" Classes="dash-label" Text="{Binding Dash.UploadTotalText, StringFormat=累计 {0}}"/>
-            <controls:TrafficSparkline Grid.Row="3" Trace="{Binding Dash.UploadTrace}" Soft="True"
-                                       Stroke="{DynamicResource AppAccentBrush}" Height="48"
-                                       Margin="0,8,-18,-16" VerticalAlignment="Bottom"/>
+            <controls:TrafficSparkline Trace="{Binding Dash.UploadTrace}" Soft="True"
+                                       Stroke="{DynamicResource AppAccentBrush}" Height="34" Opacity="0.55"
+                                       Margin="0,0,-16,-12" VerticalAlignment="Bottom" IsHitTestVisible="False"/>
           </Grid>
         </Border>
       </controls:EntranceFrame>
 
-      <controls:EntranceFrame Order="2" controls:DashboardWrapPanel.Weight="1" controls:DashboardWrapPanel.MinItemWidth="220">
-        <Border Classes="dash-card dash-hover">
-          <Grid RowDefinitions="Auto,Auto,Auto,*">
-            <Grid ColumnDefinitions="*,Auto">
-              <StackPanel Orientation="Horizontal" Spacing="6">
-                <Path Width="16" Height="16" Stretch="Uniform" Stroke="{DynamicResource AppAccentBrush}" StrokeThickness="1.7"
-                      StrokeLineCap="Round" StrokeJoin="Round" Data="M12,5 V19 M7,14 L12,19 L17,14" VerticalAlignment="Center"/>
-                <TextBlock Text="下载" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
-              </StackPanel>
-              <TextBlock Grid.Column="1" Classes="dash-label" Text="{Binding Dash.DownloadPeakText, StringFormat=峰值 {0}}" VerticalAlignment="Center"/>
+      <controls:EntranceFrame Order="2" controls:DashboardWrapPanel.Row="0" controls:DashboardWrapPanel.Weight="1" controls:DashboardWrapPanel.MinItemWidth="220">
+        <Border Classes="dash-card dash-hover hero">
+          <Grid>
+            <Grid RowDefinitions="Auto,Auto,Auto" VerticalAlignment="Top">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Path Width="16" Height="16" Stretch="Uniform" Stroke="{DynamicResource AppAccentBrush}" StrokeThickness="1.7"
+                        StrokeLineCap="Round" StrokeJoin="Round" Data="M12,5 V19 M7,14 L12,19 L17,14" VerticalAlignment="Center"/>
+                  <TextBlock Text="下载" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock Grid.Column="1" Classes="dash-label" Text="{Binding Dash.DownloadPeakText, StringFormat=峰值 {0}}" VerticalAlignment="Center"/>
+              </Grid>
+              <controls:AnimatedFigure Grid.Row="1" Kind="Rate" Value="{Binding Dash.DownloadRateValue}" Margin="0,10,0,2"/>
+              <TextBlock Grid.Row="2" Classes="dash-label" Text="{Binding Dash.DownloadTotalText, StringFormat=累计 {0}}"/>
             </Grid>
-            <controls:AnimatedFigure Grid.Row="1" Classes="dash-figure" Kind="Rate" Value="{Binding Dash.DownloadRateValue}" Margin="0,12,0,4"/>
-            <TextBlock Grid.Row="2" Classes="dash-label" Text="{Binding Dash.DownloadTotalText, StringFormat=累计 {0}}"/>
-            <controls:TrafficSparkline Grid.Row="3" Trace="{Binding Dash.DownloadTrace}"
-                                       Stroke="{DynamicResource AppAccentBrush}" Height="48"
-                                       Margin="0,8,-18,-16" VerticalAlignment="Bottom"/>
+            <controls:TrafficSparkline Trace="{Binding Dash.DownloadTrace}"
+                                       Stroke="{DynamicResource AppAccentBrush}" Height="34" Opacity="0.55"
+                                       Margin="0,0,-16,-12" VerticalAlignment="Bottom" IsHitTestVisible="False"/>
           </Grid>
         </Border>
       </controls:EntranceFrame>
 
-      <controls:EntranceFrame Order="3" controls:DashboardWrapPanel.Weight="2.4" controls:DashboardWrapPanel.MinItemWidth="460">
+      <controls:EntranceFrame Order="3" controls:DashboardWrapPanel.Row="1" controls:DashboardWrapPanel.Weight="2.4" controls:DashboardWrapPanel.MinItemWidth="460">
         <Border Classes="ad-pill-card dash-hover">
           <Grid ColumnDefinitions="Auto,*">
             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="2,0,12,0">
@@ -325,9 +339,10 @@
               <TextBlock Text="出站模式" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
             </StackPanel>
             <Grid Grid.Column="1" Height="46" VerticalAlignment="Center" IsEnabled="{Binding !IsBusy}">
-              <controls:SlidingPillBar SelectedIndex="{Binding ModeIndex}" SegmentCount="3" Gap="6"/>
+              <controls:SlidingPillBar SelectedIndex="{Binding ModeIndex}" SegmentCount="3" Gap="6"
+                                     TrackBrush="{DynamicResource AppPageBrush}" AccentBrush="{DynamicResource AppAccentBrush}"/>
               <Grid ColumnDefinitions="*,6,*,6,*">
-              <Button Grid.Column="0" Classes="ad-segment" Classes.selected="{Binding IsRuleMode}" Click="RuleMode_Click" AutomationProperties.Name="规则模式">
+              <Button Grid.Column="0" Classes="ad-segment" Background="Transparent" Classes.selected="{Binding IsRuleMode}" Click="RuleMode_Click" AutomationProperties.Name="规则模式">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                   <Path Width="15" Height="15" Stretch="Uniform" StrokeThickness="1.6" StrokeLineCap="Round"
                         Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
@@ -335,7 +350,7 @@
                   <TextBlock Text="规则" VerticalAlignment="Center"/>
                 </StackPanel>
               </Button>
-              <Button Grid.Column="2" Classes="ad-segment" Classes.selected="{Binding IsGlobalMode}" Click="GlobalMode_Click" AutomationProperties.Name="全局模式">
+              <Button Grid.Column="2" Classes="ad-segment" Background="Transparent" Classes.selected="{Binding IsGlobalMode}" Click="GlobalMode_Click" AutomationProperties.Name="全局模式">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                   <Path Width="15" Height="15" Stretch="Uniform" StrokeThickness="1.6" StrokeLineCap="Round"
                         Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
@@ -343,7 +358,7 @@
                   <TextBlock Text="全局" VerticalAlignment="Center"/>
                 </StackPanel>
               </Button>
-              <Button Grid.Column="4" Classes="ad-segment" Classes.selected="{Binding IsDirectMode}" Click="DirectMode_Click" AutomationProperties.Name="直连模式">
+              <Button Grid.Column="4" Classes="ad-segment" Background="Transparent" Classes.selected="{Binding IsDirectMode}" Click="DirectMode_Click" AutomationProperties.Name="直连模式">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                   <Path Width="15" Height="15" Stretch="Uniform" StrokeThickness="1.6"
                         Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
@@ -357,7 +372,7 @@
         </Border>
       </controls:EntranceFrame>
 
-      <controls:EntranceFrame Order="4" controls:DashboardWrapPanel.Weight="1" controls:DashboardWrapPanel.MinItemWidth="220">
+      <controls:EntranceFrame Order="4" controls:DashboardWrapPanel.Row="1" controls:DashboardWrapPanel.Weight="1" controls:DashboardWrapPanel.MinItemWidth="220">
         <Border Classes="ad-pill-card dash-hover">
           <Grid ColumnDefinitions="Auto,*,Auto">
             <Grid Width="32" Height="32" VerticalAlignment="Center">
@@ -379,7 +394,7 @@
         </Border>
       </controls:EntranceFrame>
 
-      <controls:EntranceFrame Order="5" controls:DashboardWrapPanel.Weight="1" controls:DashboardWrapPanel.MinItemWidth="220">
+      <controls:EntranceFrame Order="5" controls:DashboardWrapPanel.Row="1" controls:DashboardWrapPanel.Weight="1" controls:DashboardWrapPanel.MinItemWidth="220">
         <Border Classes="ad-pill-card dash-hover">
           <Grid ColumnDefinitions="Auto,*,Auto">
             <Path Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center"
@@ -397,9 +412,9 @@
         </Border>
       </controls:EntranceFrame>
 
-      <controls:EntranceFrame Order="6" controls:DashboardWrapPanel.Weight="1" controls:DashboardWrapPanel.MinItemWidth="240">
-        <Border Classes="dash-card dash-hover">
-          <StackPanel Spacing="10">
+      <controls:EntranceFrame Order="6" controls:DashboardWrapPanel.Row="2" controls:DashboardWrapPanel.Weight="1" controls:DashboardWrapPanel.MinItemWidth="240">
+        <Border Classes="dash-card dash-hover mid">
+          <StackPanel Spacing="6">
             <Grid ColumnDefinitions="*,Auto">
               <TextBlock Text="内网 IP" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
               <Button Grid.Column="1" Classes="ad-icon" AutomationProperties.Name="复制内网 IP" ToolTip.Tip="复制内网 IP"
@@ -434,9 +449,9 @@
         </Border>
       </controls:EntranceFrame>
 
-      <controls:EntranceFrame Order="7" controls:DashboardWrapPanel.Weight="1" controls:DashboardWrapPanel.MinItemWidth="240">
-        <Border Classes="dash-card dash-hover">
-          <StackPanel Spacing="10">
+      <controls:EntranceFrame Order="7" controls:DashboardWrapPanel.Row="2" controls:DashboardWrapPanel.Weight="1" controls:DashboardWrapPanel.MinItemWidth="240">
+        <Border Classes="dash-card dash-hover mid">
+          <StackPanel Spacing="6">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto">
               <Path Width="16" Height="16" Stretch="Uniform" Stroke="{DynamicResource AppAccentBrush}" StrokeThickness="1.6"
                     Data="M5,3 H14 L19,8 V21 H5 Z" VerticalAlignment="Center"/>
@@ -459,7 +474,7 @@
                 <TextBlock Text="{Binding ConfigSourceTag}"/>
               </Border>
             </StackPanel>
-            <Grid ColumnDefinitions="*,*,*" Margin="0,6,0,0">
+            <Grid ColumnDefinitions="*,*,*" Margin="0,2,0,0">
               <StackPanel Spacing="2">
                 <TextBlock Text="{Binding StrategyGroupCountText}" FontSize="22" FontWeight="SemiBold"/>
                 <TextBlock Text="策略组" Classes="dash-label"/>
@@ -477,9 +492,9 @@
         </Border>
       </controls:EntranceFrame>
 
-      <controls:EntranceFrame Order="8" controls:DashboardWrapPanel.Weight="2" controls:DashboardWrapPanel.MinItemWidth="480">
-        <Border Classes="dash-card dash-hover">
-          <StackPanel Spacing="12">
+      <controls:EntranceFrame Order="8" controls:DashboardWrapPanel.Row="2" controls:DashboardWrapPanel.Weight="2" controls:DashboardWrapPanel.MinItemWidth="480">
+        <Border Classes="dash-card dash-hover mid">
+          <StackPanel Spacing="4">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
               <Path Width="16" Height="16" Stretch="Uniform" Stroke="{DynamicResource AppAccentBrush}" StrokeThickness="1.6"
                     Data="M12,3 L14,9 H20 L15,13 L17,20 L12,16 L7,20 L9,13 L4,9 H10 Z" VerticalAlignment="Center"/>
@@ -502,11 +517,11 @@
                       StrokeLineCap="Round" StrokeJoin="Round" Data="M9,6 L15,12 L9,18"/>
               </Button>
             </Grid>
-            <Grid ColumnDefinitions="*,10,*" RowDefinitions="Auto,10,Auto">
-              <Border Background="{DynamicResource AppSubtleBrush}" CornerRadius="16" Padding="12,10">
+            <Grid ColumnDefinitions="*,6,*" RowDefinitions="Auto,6,Auto">
+              <Border Background="{DynamicResource AppSubtleBrush}" CornerRadius="14" Padding="8,4">
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                  <Grid Width="36" Height="36">
-                    <Border Width="32" Height="32" CornerRadius="16" Background="{DynamicResource AppSurfaceBrush}" HorizontalAlignment="Left" VerticalAlignment="Top">
+                  <Grid Width="28" Height="28">
+                    <Border Width="26" Height="26" CornerRadius="13" Background="{DynamicResource AppSurfaceBrush}" HorizontalAlignment="Left" VerticalAlignment="Top">
                       <TextBlock Text="G" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <Ellipse Classes="svc-dot" Width="9" Height="9" Stroke="{DynamicResource AppSubtleBrush}" StrokeThickness="2"
@@ -515,14 +530,14 @@
                   </Grid>
                   <StackPanel VerticalAlignment="Center" Spacing="1">
                     <TextBlock Text="Google" FontSize="13" FontWeight="SemiBold"/>
-                    <controls:AnimatedFigure Kind="Milliseconds" Value="{Binding Dash.Google.DelayValue}" FontSize="12" Foreground="{DynamicResource AppMutedBrush}"/>
+                    <controls:AnimatedFigure Kind="Milliseconds" Value="{Binding Dash.Google.DelayValue}"/>
                   </StackPanel>
                 </StackPanel>
               </Border>
-              <Border Grid.Column="2" Background="{DynamicResource AppSubtleBrush}" CornerRadius="16" Padding="12,10">
+              <Border Grid.Column="2" Background="{DynamicResource AppSubtleBrush}" CornerRadius="16" Padding="8,4">
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                  <Grid Width="36" Height="36">
-                    <Border Width="32" Height="32" CornerRadius="16" Background="{DynamicResource AppSurfaceBrush}" HorizontalAlignment="Left" VerticalAlignment="Top">
+                  <Grid Width="28" Height="28">
+                    <Border Width="26" Height="26" CornerRadius="13" Background="{DynamicResource AppSurfaceBrush}" HorizontalAlignment="Left" VerticalAlignment="Top">
                       <Path Width="16" Height="16" Stretch="Uniform" Stroke="{DynamicResource AppStrongTextBrush}" StrokeThickness="1.4"
                             HorizontalAlignment="Center" VerticalAlignment="Center"
                             Data="M8,3 A5,5 0 1 0 8,13 A5,5 0 1 0 8,3 M6.2,8.2 C7,10 9.5,10.4 11,9"/>
@@ -533,14 +548,14 @@
                   </Grid>
                   <StackPanel VerticalAlignment="Center" Spacing="1">
                     <TextBlock Text="GitHub" FontSize="13" FontWeight="SemiBold"/>
-                    <controls:AnimatedFigure Kind="Milliseconds" Value="{Binding Dash.GitHub.DelayValue}" FontSize="12" Foreground="{DynamicResource AppMutedBrush}"/>
+                    <controls:AnimatedFigure Kind="Milliseconds" Value="{Binding Dash.GitHub.DelayValue}"/>
                   </StackPanel>
                 </StackPanel>
               </Border>
-              <Border Grid.Row="2" Background="{DynamicResource AppSubtleBrush}" CornerRadius="16" Padding="12,10">
+              <Border Grid.Row="2" Background="{DynamicResource AppSubtleBrush}" CornerRadius="16" Padding="8,4">
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                  <Grid Width="36" Height="36">
-                    <Border Width="32" Height="32" CornerRadius="16" Background="{DynamicResource AppSurfaceBrush}" HorizontalAlignment="Left" VerticalAlignment="Top">
+                  <Grid Width="28" Height="28">
+                    <Border Width="26" Height="26" CornerRadius="13" Background="{DynamicResource AppSurfaceBrush}" HorizontalAlignment="Left" VerticalAlignment="Top">
                       <Path Width="14" Height="14" Stretch="Uniform" Fill="{DynamicResource AppStrongTextBrush}"
                             HorizontalAlignment="Center" VerticalAlignment="Center" Data="M5,3 L13,8 L5,13 Z"/>
                     </Border>
@@ -550,14 +565,14 @@
                   </Grid>
                   <StackPanel VerticalAlignment="Center" Spacing="1">
                     <TextBlock Text="YouTube" FontSize="13" FontWeight="SemiBold"/>
-                    <controls:AnimatedFigure Kind="Milliseconds" Value="{Binding Dash.YouTube.DelayValue}" FontSize="12" Foreground="{DynamicResource AppMutedBrush}"/>
+                    <controls:AnimatedFigure Kind="Milliseconds" Value="{Binding Dash.YouTube.DelayValue}"/>
                   </StackPanel>
                 </StackPanel>
               </Border>
-              <Border Grid.Row="2" Grid.Column="2" Background="{DynamicResource AppSubtleBrush}" CornerRadius="16" Padding="12,10">
+              <Border Grid.Row="2" Grid.Column="2" Background="{DynamicResource AppSubtleBrush}" CornerRadius="16" Padding="8,4">
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                  <Grid Width="36" Height="36">
-                    <Border Width="32" Height="32" CornerRadius="16" Background="{DynamicResource AppSurfaceBrush}" HorizontalAlignment="Left" VerticalAlignment="Top">
+                  <Grid Width="28" Height="28">
+                    <Border Width="26" Height="26" CornerRadius="13" Background="{DynamicResource AppSurfaceBrush}" HorizontalAlignment="Left" VerticalAlignment="Top">
                       <TextBlock Text="C" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <Ellipse Classes="svc-dot" Width="9" Height="9" Stroke="{DynamicResource AppSubtleBrush}" StrokeThickness="2"
@@ -566,7 +581,7 @@
                   </Grid>
                   <StackPanel VerticalAlignment="Center" Spacing="1">
                     <TextBlock Text="ChatGPT" FontSize="13" FontWeight="SemiBold"/>
-                    <controls:AnimatedFigure Kind="Milliseconds" Value="{Binding Dash.ChatGPT.DelayValue}" FontSize="12" Foreground="{DynamicResource AppMutedBrush}"/>
+                    <controls:AnimatedFigure Kind="Milliseconds" Value="{Binding Dash.ChatGPT.DelayValue}"/>
                   </StackPanel>
                 </StackPanel>
               </Border>
@@ -575,7 +590,7 @@
         </Border>
       </controls:EntranceFrame>
 
-      <controls:EntranceFrame Order="9" controls:DashboardWrapPanel.Weight="2.35" controls:DashboardWrapPanel.MinItemWidth="560">
+      <controls:EntranceFrame Order="9" controls:DashboardWrapPanel.Row="3" controls:DashboardWrapPanel.Weight="2.35" controls:DashboardWrapPanel.MinItemWidth="560">
       <Border Classes="dash-card dash-hover">
         <StackPanel Spacing="10">
           <Grid ColumnDefinitions="*,Auto">
@@ -633,7 +648,7 @@
       </Border>
       </controls:EntranceFrame>
 
-      <controls:EntranceFrame Order="10" controls:DashboardWrapPanel.Weight="1.15" controls:DashboardWrapPanel.MinItemWidth="280">
+      <controls:EntranceFrame Order="10" controls:DashboardWrapPanel.Row="3" controls:DashboardWrapPanel.Weight="1.15" controls:DashboardWrapPanel.MinItemWidth="280">
       <Border Classes="dash-card dash-hover">
         <StackPanel Spacing="8">
           <Grid ColumnDefinitions="Auto,Auto,*,Auto">

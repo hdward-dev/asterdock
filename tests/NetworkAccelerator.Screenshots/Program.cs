@@ -43,7 +43,7 @@ static void CaptureMotion(string directory)
     Window? window = null;
     try
     {
-        viewModel.ShowDashboardPreview(Populated(allowLan: false));
+        viewModel.ShowDashboardPreview(Disconnected());
         var view = new NetworkAcceleratorView
         {
             DataContext = viewModel,
@@ -62,10 +62,21 @@ static void CaptureMotion(string directory)
         };
         window.Show();
         var frame = 0;
+        for (var i = 0; i < 8; i++) SaveMotion(window, directory, ref frame);
+        viewModel.PreviewConnectionFault();
+        for (var i = 0; i < 12; i++) SaveMotion(window, directory, ref frame);
+        viewModel.PreviewSetConnection(connected: false, busy: true);
+        for (var i = 0; i < 16; i++) SaveMotion(window, directory, ref frame);
+        viewModel.PreviewSetConnection(connected: true, busy: false);
         for (var i = 0; i < 18; i++) SaveMotion(window, directory, ref frame);
+        viewModel.PreviewSetConnection(connected: false, busy: false);
+        for (var i = 0; i < 14; i++) SaveMotion(window, directory, ref frame);
+        viewModel.ShowDashboardPreview(Populated(allowLan: false));
+        for (var i = 0; i < 8; i++) SaveMotion(window, directory, ref frame);
         viewModel.PreviewSetMode(ProxyMode.Global);
         for (var i = 0; i < 10; i++) SaveMotion(window, directory, ref frame);
         viewModel.PreviewSetTun(true);
+        viewModel.Dash.NudgeTraffic(280 * 1024, (long)(2.1 * 1024 * 1024));
         viewModel.Dash.NudgeTraffic(320 * 1024, (long)(2.4 * 1024 * 1024));
         viewModel.Dash.Google.Apply(240, true);
         for (var i = 0; i < 12; i++) SaveMotion(window, directory, ref frame);

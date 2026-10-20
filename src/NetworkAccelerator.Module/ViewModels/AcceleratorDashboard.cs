@@ -275,8 +275,6 @@ public sealed class AcceleratorDashboard : INotifyPropertyChanged
             preview.Tcp,
             preview.Udp,
             preview.Groups), recordSample: false);
-        UploadTrace.SeedWave(preview.UploadRate);
-        DownloadTrace.SeedWave(preview.DownloadRate);
         ApplyServiceResults(preview.ServiceDelays);
         ApplyExit(preview.Exit);
     }

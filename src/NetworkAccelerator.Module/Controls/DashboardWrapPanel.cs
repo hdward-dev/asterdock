@@ -14,11 +14,15 @@ public class DashboardWrapPanel : Panel
     public static readonly AttachedProperty<double> MinItemWidthProperty =
         AvaloniaProperty.RegisterAttached<DashboardWrapPanel, Control, double>("MinItemWidth", 220d);
 
+    public static readonly AttachedProperty<int> RowProperty =
+        AvaloniaProperty.RegisterAttached<DashboardWrapPanel, Control, int>("Row", -1);
+
     static DashboardWrapPanel()
     {
         AffectsMeasure<DashboardWrapPanel>(GapProperty);
         WeightProperty.Changed.AddClassHandler<Control>(InvalidateParent);
         MinItemWidthProperty.Changed.AddClassHandler<Control>(InvalidateParent);
+        RowProperty.Changed.AddClassHandler<Control>(InvalidateParent);
     }
 
     public double Gap
@@ -31,6 +35,8 @@ public class DashboardWrapPanel : Panel
     public static void SetWeight(Control control, double value) => control.SetValue(WeightProperty, value);
     public static double GetMinItemWidth(Control control) => control.GetValue(MinItemWidthProperty);
     public static void SetMinItemWidth(Control control, double value) => control.SetValue(MinItemWidthProperty, value);
+    public static int GetRow(Control control) => control.GetValue(RowProperty);
+    public static void SetRow(Control control, int value) => control.SetValue(RowProperty, value);
 
     protected override Size MeasureOverride(Size availableSize)
     {
@@ -79,13 +85,41 @@ public class DashboardWrapPanel : Panel
 
     private List<List<Control>> Pack(double width)
     {
+        var grouped = new SortedDictionary<int, List<Control>>();
+        var loose = new List<Control>();
+        foreach (var child in Children)
+        {
+            if (!child.IsVisible) continue;
+            var row = GetRow(child);
+            if (row < 0)
+            {
+                loose.Add(child);
+                continue;
+            }
+
+            if (!grouped.TryGetValue(row, out var band))
+            {
+                band = [];
+                grouped[row] = band;
+            }
+
+            band.Add(child);
+        }
+
+        var rows = new List<List<Control>>();
+        foreach (var band in grouped.Values) rows.AddRange(Wrap(band, width));
+        if (loose.Count > 0) rows.AddRange(Wrap(loose, width));
+        return rows;
+    }
+
+    private List<List<Control>> Wrap(List<Control> items, double width)
+    {
         var rows = new List<List<Control>>();
         var current = new List<Control>();
         double used = 0;
         var gap = Math.Max(0, Gap);
-        foreach (var child in Children)
+        foreach (var child in items)
         {
-            if (!child.IsVisible) continue;
             var min = Math.Min(Math.Max(0, GetMinItemWidth(child)), width);
             if (current.Count > 0 && used + gap + min > width + 0.5)
             {

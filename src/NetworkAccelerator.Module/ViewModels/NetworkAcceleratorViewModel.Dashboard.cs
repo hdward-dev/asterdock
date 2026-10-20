@@ -85,6 +85,15 @@ public sealed partial class NetworkAcceleratorViewModel
 
     public void PreviewSetTun(bool enabled) => TunEnabled = enabled;
 
+    public void PreviewSetConnection(bool connected, bool busy)
+    {
+        IsConnected = connected;
+        IsBusy = busy;
+        ConnectionStatusText = connected ? "已连接" : "未连接";
+    }
+
+    public void PreviewConnectionFault() => ConnectionFaultSignal++;
+
     public string ConfigUpdatedText => HasDashboardConfig
         ? TrafficFormatter.FormatRelativeUpdate(ConfigUpdatedAt, DateTimeOffset.Now)
         : "尚未更新";
@@ -152,6 +161,7 @@ public sealed partial class NetworkAcceleratorViewModel
         Mode = preview.Mode;
         TunEnabled = preview.TunEnabled;
         AllowLan = preview.AllowLan;
+        IsBusy = false;
         IsConnected = preview.IsConnected;
         ConnectionStatusText = preview.IsConnected ? "已连接" : "未连接";
         ConnectionDurationText = preview.Duration;

@@ -20,6 +20,9 @@ public partial class NetworkAcceleratorView : UserControl
     public NetworkAcceleratorView()
     {
         InitializeComponent();
+        OverviewPage.ModeRequested += mode => _ = SetModeAsync(mode);
+        OverviewPage.SubscriptionUpdateRequested += (_, _) => UpdateSubscription_Click(this, new RoutedEventArgs());
+        OverviewPage.SectionRequested += SelectSection;
         ModeSliderHost.SizeChanged += (_, _) => UpdateModeSlider();
         SizeChanged += (_, _) => UpdateLayoutForWidth();
         SelectSection("Overview");
@@ -34,7 +37,7 @@ public partial class NetworkAcceleratorView : UserControl
     {
         var (title, description) = section switch
         {
-            "Overview" => ("概览", "连接状态与常用功能，一目了然"),
+            "Overview" => ("概览", "出口、流量、连接与策略，一目了然"),
             "Proxies" => ("代理", "选择线路、测试延迟，调整代理方式"),
             "Configuration" => ("配置", "管理订阅来源、切换配置与更新线路"),
             "Connections" => ("连接", "查看当前连接状态与本地代理入口"),
@@ -47,8 +50,8 @@ public partial class NetworkAcceleratorView : UserControl
         _selectedSection = section;
         SectionTitle.Text = title;
         SectionDescription.Text = description;
-        ConnectionCard.IsVisible = section is "Overview" or "Connections";
-        PageStatus.IsVisible = !ConnectionCard.IsVisible;
+        ConnectionCard.IsVisible = section == "Connections";
+        PageStatus.IsVisible = section is not "Overview" && section is not "Connections";
         OverviewPage.IsVisible = section == "Overview";
         ConnectionsPage.IsVisible = section == "Connections";
         RulesPage.IsVisible = section == "Rules";

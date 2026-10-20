@@ -7,6 +7,10 @@ namespace NetworkAccelerator.Core.Services;
 public sealed class SingBoxConfigurationService
 {
     public const int MixedProxyPort = 2080;
+
+    public static string MixedListenAddress(bool allowLan) => allowLan ? "0.0.0.0" : "127.0.0.1";
+
+    public static int CountGeneratedRouteRules(ProxyMode mode) => mode == ProxyMode.Rule ? 4 : 3;
     private readonly string _dataDirectory;
 
     public SingBoxConfigurationService(string dataDirectory)
@@ -77,7 +81,7 @@ public sealed class SingBoxConfigurationService
             {
                 ["type"] = "mixed",
                 ["tag"] = "本地代理",
-                ["listen"] = "127.0.0.1",
+                ["listen"] = MixedListenAddress(settings.AllowLan),
                 ["listen_port"] = MixedProxyPort,
                 ["set_system_proxy"] = !settings.TunEnabled
             }

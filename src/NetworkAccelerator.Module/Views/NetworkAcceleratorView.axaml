@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:models="using:NetworkAccelerator.Module.Models"
+             xmlns:views="using:NetworkAccelerator.Module.Views"
              x:Class="NetworkAccelerator.Module.Views.NetworkAcceleratorView"
              x:CompileBindings="False" Background="{DynamicResource AppPageBrush}">
   <UserControl.Styles>
@@ -195,25 +196,7 @@
           </StackPanel>
         </Border>
 
-        <StackPanel x:Name="OverviewPage" Spacing="16">
-          <Border Classes="card" Padding="22" CornerRadius="16">
-            <StackPanel Spacing="16">
-              <TextBlock Text="常用功能" FontSize="17" FontWeight="SemiBold"/>
-              <Button Tag="Proxies" Click="Navigate_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="16">
-                <Grid ColumnDefinitions="*,Auto"><StackPanel Spacing="6"><TextBlock Text="代理线路" FontWeight="SemiBold"/><TextBlock Classes="description" Text="{Binding NodeCountText}"/></StackPanel><TextBlock Grid.Column="1" Text="选择线路 →" VerticalAlignment="Center" Foreground="{DynamicResource AppAccentBrush}"/></Grid>
-              </Button>
-              <Button Tag="Configuration" Click="Navigate_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="16">
-                <Grid ColumnDefinitions="*,Auto"><StackPanel Spacing="6"><TextBlock Text="{Binding SubscriptionName}" FontWeight="SemiBold"/><TextBlock Classes="description" Text="{Binding SubscriptionUpdatedText}"/></StackPanel><TextBlock Grid.Column="1" Text="管理配置 →" VerticalAlignment="Center" Foreground="{DynamicResource AppAccentBrush}"/></Grid>
-              </Button>
-              <Button Tag="Rules" Click="Navigate_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="16">
-                <Grid ColumnDefinitions="*,Auto"><StackPanel Spacing="6"><TextBlock Text="{Binding RulesText}" FontWeight="SemiBold"/><TextBlock Classes="description" Text="{Binding ModeDescription}"/></StackPanel><TextBlock Grid.Column="1" Text="查看规则 →" VerticalAlignment="Center" Foreground="{DynamicResource AppAccentBrush}"/></Grid>
-              </Button>
-            </StackPanel>
-          </Border>
-          <Border Classes="card" Padding="22" CornerRadius="16">
-            <Grid ColumnDefinitions="*,Auto"><StackPanel Spacing="8"><TextBlock Text="运行环境" FontSize="17" FontWeight="SemiBold"/><TextBlock Classes="core-state" Classes.ready="{Binding IsCoreAvailable}" Text="{Binding CoreStatusText}"/></StackPanel><Button Grid.Column="1" Content="打开设置" Tag="Settings" Click="Navigate_Click" VerticalAlignment="Center"/></Grid>
-          </Border>
-        </StackPanel>
+        <views:OverviewDashboardView x:Name="OverviewPage"/>
 
         <Border x:Name="ConnectionsPage" Classes="card" Padding="24" CornerRadius="16" IsVisible="False">
           <StackPanel Spacing="18">

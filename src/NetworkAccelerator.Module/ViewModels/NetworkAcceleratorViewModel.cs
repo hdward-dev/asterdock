@@ -11,7 +11,7 @@ using System.Text.RegularExpressions;
 
 namespace NetworkAccelerator.Module.ViewModels;
 
-public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDisposable
+public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly SettingsStore _settingsStore;
     private readonly SubscriptionService _subscriptionService;
@@ -68,7 +68,14 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
         LogEntries.Clear();
         OnPropertyChanged(nameof(HasNoLogs));
     }
-    public bool IsBusy { get => _isBusy; private set => SetField(ref _isBusy, value); }
+    public bool IsBusy
+    {
+        get => _isBusy;
+        private set
+        {
+            if (SetField(ref _isBusy, value)) OnPropertyChanged(nameof(ShowOverviewAlert));
+        }
+    }
     public bool IsRefreshingLatencies
     {
         get => _isRefreshingLatencies;
@@ -96,13 +103,27 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
             if (SetField(ref _nodeSearchText, value)) ApplyNodeFilter();
         }
     }
-    public bool IsConnected { get => _isConnected; private set { if (SetField(ref _isConnected, value)) OnPropertyChanged(nameof(ConnectionButtonText)); } }
+    public bool IsConnected
+    {
+        get => _isConnected;
+        private set
+        {
+            if (!SetField(ref _isConnected, value)) return;
+            OnPropertyChanged(nameof(ConnectionButtonText));
+            OnPropertyChanged(nameof(OverviewRunText));
+            OnPropertyChanged(nameof(OverviewDurationText));
+        }
+    }
     public bool TunEnabled
     {
         get => _tunEnabled;
         set
         {
-            if (SetField(ref _tunEnabled, value)) OnPropertyChanged(nameof(ConnectionMethodText));
+            if (!SetField(ref _tunEnabled, value)) return;
+            OnPropertyChanged(nameof(ConnectionMethodText));
+            OnPropertyChanged(nameof(IsSystemProxy));
+            OnPropertyChanged(nameof(SystemProxyDetailText));
+            OnPropertyChanged(nameof(TunDetailText));
         }
     }
     public string ConnectionMethodText => TunEnabled ? "TUN 虚拟网卡" : "系统代理";
@@ -114,6 +135,10 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
             if (!SetField(ref _mode, value)) return;
             OnPropertyChanged(nameof(ModeDescription));
             OnPropertyChanged(nameof(RulesText));
+            OnPropertyChanged(nameof(IsRuleMode));
+            OnPropertyChanged(nameof(IsGlobalMode));
+            OnPropertyChanged(nameof(IsDirectMode));
+            OnPropertyChanged(nameof(RouteRuleCountText));
         }
     }
     public string ModeDescription => Mode switch
@@ -123,10 +148,24 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
         _ => "根据规则分流，局域网直连，其余流量通过代理。"
     };
     public string ConnectionStatusText { get => _connectionStatusText; private set => SetField(ref _connectionStatusText, value); }
-    public string StatusMessage { get => _statusMessage; private set => SetField(ref _statusMessage, value); }
+    public string StatusMessage
+    {
+        get => _statusMessage;
+        private set
+        {
+            if (SetField(ref _statusMessage, value)) OnPropertyChanged(nameof(ShowOverviewAlert));
+        }
+    }
     public string CurrentNodeText { get => _currentNodeText; private set => SetField(ref _currentNodeText, value); }
     public string CurrentLatencyText { get => _currentLatencyText; private set => SetField(ref _currentLatencyText, value); }
-    public string ConnectionDurationText { get => _connectionDurationText; private set => SetField(ref _connectionDurationText, value); }
+    public string ConnectionDurationText
+    {
+        get => _connectionDurationText;
+        private set
+        {
+            if (SetField(ref _connectionDurationText, value)) OnPropertyChanged(nameof(OverviewDurationText));
+        }
+    }
     public string SubscriptionName { get => _subscriptionName; private set => SetField(ref _subscriptionName, value); }
     public string SubscriptionUpdatedText { get => _subscriptionUpdatedText; private set => SetField(ref _subscriptionUpdatedText, value); }
     public string RemainingTrafficText { get => _remainingTrafficText; private set => SetField(ref _remainingTrafficText, value); }
@@ -176,8 +215,11 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
                 Mode = _settings.Mode;
                 TunEnabled = _settings.TunEnabled;
                 RefreshCoreStatus(coreVersion);
+                AllowLan = _settings.AllowLan;
                 ApplyProfile();
+                RefreshLanAddress();
             });
+            _ = RefreshExitIpAsync(throughProxy: false, force: false);
         }
         catch (Exception exception)
         {
@@ -214,8 +256,11 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
                 ConnectionStatusText = "已连接";
                 StatusMessage = TunEnabled ? "TUN 已接管系统网络流量" : "系统代理已启用";
                 StartDurationTimer();
+                StartRealtime();
             });
             _ = RefreshLatenciesAsync();
+            _ = RefreshExitIpAsync(throughProxy: true, force: true);
+            _ = RefreshServiceStatusAsync();
         }
         catch (Exception exception)
         {
@@ -321,6 +366,11 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
             if (ActiveConfiguration is not null) ActiveConfiguration.SelectedNode = item.Tag;
             await _settingsStore.SaveAsync(_settings).ConfigureAwait(false);
             await Dispatcher.UIThread.InvokeAsync(() => SelectNode(item.Tag));
+            if (IsConnected)
+            {
+                _ = RefreshExitIpAsync(throughProxy: true, force: true);
+                _ = RefreshServiceStatusAsync();
+            }
         }
         catch (Exception exception)
         {
@@ -425,6 +475,7 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
     {
         if (_disposed) return;
         _disposed = true;
+        StopRealtime();
         _durationTimer?.Dispose();
         _durationTimer = null;
         _engine.LogReceived -= Engine_LogReceived;
@@ -506,6 +557,7 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
             RefreshNodePresentation();
             OnPropertyChanged(nameof(HasTrafficInformation));
             StatusMessage = "请配置订阅后开始使用";
+            NotifyConfigCard();
             return;
         }
 
@@ -533,6 +585,7 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
             ? _settings.SelectedNode
             : Nodes.FirstOrDefault()?.Tag ?? string.Empty;
         SelectNode(selected);
+        NotifyConfigCard();
     }
 
     private void NormalizeConfigurations()
@@ -636,10 +689,13 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
     {
         _durationTimer?.Dispose();
         _durationTimer = null;
+        StopRealtime();
         IsConnected = false;
         ConnectionStatusText = "未连接";
         ConnectionDurationText = "00:00:00";
+        _dash.ResetLive();
         if (!StatusMessage.StartsWith("连接失败", StringComparison.Ordinal)) StatusMessage = "网络加速已停止";
+        _ = RefreshExitIpAsync(throughProxy: false, force: false);
     }
 
     private void RefreshCoreStatus(string? version = null)

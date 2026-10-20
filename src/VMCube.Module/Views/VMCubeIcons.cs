@@ -29,6 +29,8 @@ internal static class VMCubeIcons
             "disconnect" => "M9,3 H3 V21 H9 M10,12 H22 M17,7 L22,12 L17,17",
             "wake" => "M12,6 A6,6 0 1 1 11.99,6 M12,1 V3 M12,21 V23 M1,12 H3 M21,12 H23 M4,4 L6,6 M18,18 L20,20 M4,20 L6,18 M18,6 L20,4",
             "eject" => "M4,16 L12,4 L20,16 Z M4,20 H20",
+            "upload" => "M12,16 V3 M7,8 L12,3 L17,8 M3,15 V21 H21 V15",
+            "cancel" => "M5,5 L19,19 M19,5 L5,19",
             _ => "M2,3 H22 V17 H2 Z M12,17 V21 M6,21 H18 M5,6 H19 V14 H5 Z" };
         var icon = new Avalonia.Controls.Shapes.Path { Width = size, Height = size, Data = Geometry.Parse(path), StrokeThickness = 1.5, Stretch = Stretch.Uniform };
         icon.Bind(Shape.StrokeProperty, new DynamicResourceExtension(brush));

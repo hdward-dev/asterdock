@@ -7,7 +7,7 @@ using URemote.Core;
 namespace VMCube.Module.Services;
 
 /// <summary>Managed transport for the bundled, isolated spice-client-glib worker.</summary>
-public sealed class SpiceDesktopSession(bool useTls = false, string? caFile = null, string? helperPath = null) : ILocalDesktopSession
+public sealed partial class SpiceDesktopSession(bool useTls = false, string? caFile = null, string? helperPath = null) : ILocalDesktopSession
 {
     private readonly Channel<byte[]> _input = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(512) { FullMode = BoundedChannelFullMode.Wait });
     private volatile bool _ready;
@@ -33,6 +33,7 @@ public sealed class SpiceDesktopSession(bool useTls = false, string? caFile = nu
         options.Validate();
         var executable = helperPath ?? FindHelper();
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _transportStop = stop;
         var info = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true };
         // GLib debug logging uses stdout, which is reserved for the binary frame protocol.
         info.Environment.Remove("SPICE_DEBUG"); info.Environment.Remove("G_MESSAGES_DEBUG");
@@ -65,6 +66,13 @@ public sealed class SpiceDesktopSession(bool useTls = false, string? caFile = nu
                 var first = await stream.ReadAsync(header.AsMemory(0, 1), stop.Token);
                 if (first == 0) break;
                 await stream.ReadExactlyAsync(header.AsMemory(1), stop.Token);
+                if (header.AsSpan(0, 4).SequenceEqual("VMFT"u8))
+                {
+                    var length = BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(12));
+                    if (length is < 16 or > 65536) throw new InvalidDataException("SPICE 文件传输消息长度无效。");
+                    var payload = new byte[(int)length]; await stream.ReadExactlyAsync(payload, stop.Token);
+                    ReceiveTransferEvent(header, payload); continue;
+                }
                 var (width, height, size) = ParseFrameHeader(header);
                 var pixels = new byte[size]; await stream.ReadExactlyAsync(pixels, stop.Token);
                 if (!_ready) { _ready = true; Status?.Invoke("已连接 · SPICE"); }
@@ -77,6 +85,7 @@ public sealed class SpiceDesktopSession(bool useTls = false, string? caFile = nu
         finally
         {
             _ready = false; stop.Cancel(); _input.Writer.TryComplete();
+            EndFileTransfers(); _transportStop = null;
             try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
             await process.WaitForExitAsync(CancellationToken.None);
             if (writer is not null) { try { await writer; } catch (Exception ex) when (ex is OperationCanceledException or IOException or ObjectDisposedException) { } }

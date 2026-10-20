@@ -14,7 +14,7 @@ using VMCube.Module.Services;
 
 namespace VMCube.Module.Views;
 
-public sealed class ConsoleWindow : Window
+public sealed partial class ConsoleWindow : Window
 {
     private readonly CancellationTokenSource stop = new();
     private readonly ILocalDesktopSession session;
@@ -50,18 +50,23 @@ public sealed class ConsoleWindow : Window
             session.Key(ctrl, true); session.Key(alt, true); session.Key(del, true); session.Key(del, false); session.Key(alt, false); session.Key(ctrl, false); }); desktop.Focus(); };
         var full = new Button { Content = "全屏" };
         full.Click += (_, _) => { WindowState = WindowState == WindowState.FullScreen ? WindowState.Normal : WindowState.FullScreen; desktop.Focus(); };
-        var bar = new Grid { ColumnDefinitions = new("*,Auto,Auto,Auto"), ColumnSpacing = 12, Margin = new Thickness(16, 10) };
-        bar.Children.Add(status); Grid.SetColumn(secure, 1); bar.Children.Add(secure); Grid.SetColumn(full, 2); bar.Children.Add(full); Grid.SetColumn(disconnect, 3); bar.Children.Add(disconnect);
+        var upload = VMCubeIcons.Button("发送文件到虚拟机", "upload"); upload.Name = "ConsoleSendFiles";
+        upload.IsVisible = session is SpiceDesktopSession; upload.IsEnabled = false;
+        upload.Click += async (_, _) => await ChooseFilesAsync();
+        _upload = upload;
+        var bar = new Grid { ColumnDefinitions = new("*,Auto,Auto,Auto,Auto"), ColumnSpacing = 12, Margin = new Thickness(16, 10) };
+        bar.Children.Add(status); Grid.SetColumn(upload, 1); bar.Children.Add(upload); Grid.SetColumn(secure, 2); bar.Children.Add(secure); Grid.SetColumn(full, 3); bar.Children.Add(full); Grid.SetColumn(disconnect, 4); bar.Children.Add(disconnect);
         var body = new Grid { RowDefinitions = new("Auto,*,Auto") }; body.Children.Add(bar);
         Grid.SetRow(desktop, 1); body.Children.Add(desktop);
         var hint = new TextBlock { Text = "点击画面控制 · Ctrl + Alt + Esc 释放键鼠 · 关闭窗口断开连接", Foreground = Brushes.LightGray, FontSize = 12, Margin = new Thickness(16, 8) };
-        Grid.SetRow(hint, 2); body.Children.Add(hint); Content = body;
+        var bottom = new StackPanel(); bottom.Children.Add(BuildFileTransfers()); bottom.Children.Add(hint);
+        Grid.SetRow(bottom, 2); body.Children.Add(bottom); Content = body;
         session.Frame += frame => { lock (frameGate) { if (!closed) latest = frame; } };
         session.Status += value => Dispatcher.UIThread.Post(() =>
         {
             if (closed) return;
             status.Text = value;
-            if (!connected && value.StartsWith("已连接", StringComparison.Ordinal)) { connected = true; Connected?.Invoke(); }
+            if (!connected && value.StartsWith("已连接", StringComparison.Ordinal)) { connected = true; _upload.IsEnabled = true; Connected?.Invoke(); }
         });
         paintTimer.Tick += (_, _) => Paint();
         desktop.PointerPressed += (_, e) =>
@@ -129,7 +134,7 @@ public sealed class ConsoleWindow : Window
         {
             if (!closed) status.Text = e is ArgumentException or InvalidOperationException or NotSupportedException or InvalidDataException ? e.Message : "连接失败或已中断，请检查服务端及网络。";
         }
-        finally { if (!closed) { ReleaseInputs(); paintTimer.Stop(); } if (tunnel is not null) await tunnel.DisposeAsync(); ConnectionEnded?.Invoke(); }
+        finally { if (!closed) { ReleaseInputs(); paintTimer.Stop(); _upload.IsEnabled = false; } if (tunnel is not null) await tunnel.DisposeAsync(); ConnectionEnded?.Invoke(); }
     }
 
     private void Send(Action action)

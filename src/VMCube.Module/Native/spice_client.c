@@ -2,10 +2,13 @@
  * One process owns one GLib context, keeping callbacks and SPICE coroutines on one
  * thread, and isolating native codec failures from the Avalonia host.
  * stdout: VMSP + little-endian width,height,byte-count + opaque BGRA pixels.
+ * stdout also carries VMFT + request-id,state,payload-size + uint64 current,total + UTF-8 message.
  * stdin: password length + UTF-8 bytes, then 20-byte little-endian input packets.
+ * kind 3: request-id,path-size,0,0 followed by UTF-8 path; kind 4 cancels request-id.
  */
 #include <spice-client.h>
 #include <spice/enums.h>
+#include <spice/vd_agent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,12 +28,17 @@ static int exit_status;
 static guint buttons;
 static int last_x, last_y;
 static gboolean have_position;
+typedef struct { guint32 id; GCancellable *cancel; GFile *files[2]; gint64 last_progress; guint64 current, total; } FileTransfer;
+static FileTransfer *transfer;
 
 static guint32 read32(const guint8 *b) {
     return (guint32)b[0] | (guint32)b[1] << 8 | (guint32)b[2] << 16 | (guint32)b[3] << 24;
 }
 static void write32(guint8 *b, guint32 v) {
     for (int i = 0; i < 4; i++) b[i] = (guint8)(v >> (8 * i));
+}
+static void write64(guint8 *b, guint64 v) {
+    for (int i = 0; i < 8; i++) b[i] = (guint8)(v >> (8 * i));
 }
 static void fail(const char *message) {
     if (!g_atomic_int_get(&stopping)) {
@@ -43,6 +51,55 @@ static void fail(const char *message) {
 }
 static gboolean stop_from_input(gpointer unused) {
     g_atomic_int_set(&stopping, 1); _Exit(0); return G_SOURCE_REMOVE;
+}
+/* All output (including frames) is written on the GLib main context. */
+static void file_event(guint32 id, guint32 state, guint64 current, guint64 total, const char *message) {
+    guint8 header[16] = {'V','M','F','T'}, counts[16];
+    gsize length = message ? MIN(strlen(message), 60000) : 0;
+    write32(header+4, id); write32(header+8, state); write32(header+12, 16+length);
+    write64(counts, current); write64(counts+8, total);
+    if (fwrite(header, 1, 16, stdout) != 16 || fwrite(counts, 1, 16, stdout) != 16 ||
+        (length && fwrite(message, 1, length, stdout) != length) || fflush(stdout)) stop_from_input(NULL);
+}
+static gboolean file_agent_ready(void) {
+    gboolean connected = FALSE;
+    if (main_channel) g_object_get(main_channel, "agent-connected", &connected, NULL);
+    return connected && !spice_main_channel_agent_test_capability(main_channel, VD_AGENT_CAP_FILE_XFER_DISABLED);
+}
+static void agent_update(SpiceMainChannel *channel, gpointer unused) {
+    gboolean connected = FALSE; g_object_get(channel, "agent-connected", &connected, NULL);
+    gboolean allowed = file_agent_ready();
+    file_event(0, 0, allowed ? 1 : 0, 0, allowed ? "可发送文件；接收位置由虚拟机中的 SPICE Agent 决定。" :
+        connected ? "虚拟机已禁用 SPICE 文件传输，请检查访客端策略。" :
+        "未检测到 SPICE Agent。请在虚拟机中安装 SPICE Guest Tools，并启用 com.redhat.spice.0 通道；安装后登录桌面再重连。");
+}
+static void file_progress(goffset current, goffset total, gpointer data) {
+    FileTransfer *t = data; t->current = MAX(current, 0); t->total = MAX(total, current);
+    gint64 now = g_get_monotonic_time();
+    if (now-t->last_progress < 150000 && current != total) return;
+    t->last_progress = now; file_event(t->id, 1, t->current, t->total, "");
+}
+static void file_done(GObject *source, GAsyncResult *result, gpointer data) {
+    FileTransfer *t = data; GError *error = NULL;
+    gboolean ok = spice_main_channel_file_copy_finish(SPICE_MAIN_CHANNEL(source), result, &error);
+    file_event(t->id, ok ? 2 : g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CANCELLED) ? 4 : 3,
+        t->current, t->total, error ? error->message : "");
+    if (transfer == t) transfer = NULL;
+    g_clear_error(&error); g_object_unref(t->cancel); g_object_unref(t->files[0]); g_free(t);
+}
+static void send_file(guint32 id, const gchar *path, guint32 length) {
+    if (!id || !length || !g_utf8_validate(path, length, NULL) || memchr(path, 0, length) || !g_path_is_absolute(path)) {
+        file_event(id, 3, 0, 0, "无效的文件路径。"); return;
+    }
+    if (transfer) { file_event(id, 3, 0, 0, "已有文件正在传输。"); return; }
+    if (!file_agent_ready()) { file_event(id, 3, 0, 0, "SPICE Agent 未就绪或文件传输被禁用。请安装访客增强组件后重连。"); return; }
+    GFile *file = g_file_new_for_path(path);
+    if (g_file_query_file_type(file, G_FILE_QUERY_INFO_NONE, NULL) != G_FILE_TYPE_REGULAR) {
+        g_object_unref(file); file_event(id, 3, 0, 0, "仅支持普通文件，文件夹请先压缩。"); return;
+    }
+    FileTransfer *t = g_new0(FileTransfer, 1); t->id = id; t->cancel = g_cancellable_new(); t->files[0] = file;
+    transfer = t;
+    spice_main_channel_file_copy_async(main_channel, t->files, G_FILE_COPY_NONE, t->cancel, file_progress, t, file_done, t);
 }
 static gboolean startup_timeout(gpointer unused) {
     if (!received_frame) fail("SPICE 未在 25 秒内提供画面，请检查地址、端口、认证和图形设备配置。");
@@ -76,7 +133,8 @@ static void channel_new(SpiceSession *s, SpiceChannel *channel, gpointer unused)
     int id = 0; g_object_get(channel, "channel-id", &id, NULL);
     if (SPICE_IS_MAIN_CHANNEL(channel)) {
         main_channel = SPICE_MAIN_CHANNEL(channel);
-
+        g_signal_connect(channel, "main-agent-update", G_CALLBACK(agent_update), NULL);
+        agent_update(main_channel, NULL);
     } else if (SPICE_IS_DISPLAY_CHANNEL(channel) && id == 0) {
         display = SPICE_DISPLAY_CHANNEL(channel);
         g_signal_connect(channel, "display-primary-create", G_CALLBACK(primary_create), NULL);
@@ -88,7 +146,7 @@ static void channel_new(SpiceSession *s, SpiceChannel *channel, gpointer unused)
     } else if (SPICE_IS_INPUTS_CHANNEL(channel)) {
         inputs = SPICE_INPUTS_CHANNEL(channel); spice_channel_connect(channel);
     }
-    /* Cursor/audio/USB/file channels are deliberately not opened in this version. */
+    /* File transfer uses the existing main/agent channel; audio/USB stay unopened. */
     if (SPICE_IS_MAIN_CHANNEL(channel) || SPICE_IS_DISPLAY_CHANNEL(channel) || SPICE_IS_INPUTS_CHANNEL(channel))
         g_signal_connect(channel, "channel-event", G_CALLBACK(channel_event), NULL);
 }
@@ -135,12 +193,21 @@ static gboolean paint(gpointer unused) {
     if (!ok) { stop_from_input(NULL); return G_SOURCE_REMOVE; }
     dirty = FALSE; received_frame = TRUE; return G_SOURCE_CONTINUE;
 }
-/* VNC's middle/right mask order differs from SPICE. */
-static guint spice_buttons(guint mask) { return (mask & 1) | ((mask & 2) << 1) | ((mask & 4) >> 1); }
+/* Managed/VNC masks and SPICE both use left=1, middle=2, right=4.
+ * Button numbers passed to spice_inputs_channel_button_* are 1,2,3. */
+static guint spice_buttons(guint mask) {
+    return ((mask & 1) ? SPICE_MOUSE_BUTTON_MASK_LEFT : 0) |
+           ((mask & 2) ? SPICE_MOUSE_BUTTON_MASK_MIDDLE : 0) |
+           ((mask & 4) ? SPICE_MOUSE_BUTTON_MASK_RIGHT : 0);
+}
 static gboolean input_packet(gpointer data) {
     guint8 *p = data;
     guint32 kind = read32(p), a = read32(p+4), b = read32(p+8), c = read32(p+12);
     gint32 wheel = (gint32)read32(p+16);
+    if (!g_atomic_int_get(&stopping)) {
+        if (kind == 3) send_file(a, (gchar *)p+20, b);
+        else if (kind == 4 && transfer && transfer->id == a) g_cancellable_cancel(transfer->cancel);
+    }
     if (!g_atomic_int_get(&stopping) && inputs) {
         if (kind == 1 && a <= 0x1ff) {
             if (b) spice_inputs_channel_key_press(inputs, a); else spice_inputs_channel_key_release(inputs, a);
@@ -165,8 +232,13 @@ static gboolean input_packet(gpointer data) {
 }
 static gpointer read_inputs(gpointer unused) {
     guint8 packet[20];
-    while (!g_atomic_int_get(&stopping) && fread(packet, 1, sizeof packet, stdin) == sizeof packet)
-        g_main_context_invoke(NULL, input_packet, g_memdup2(packet, sizeof packet));
+    while (!g_atomic_int_get(&stopping) && fread(packet, 1, sizeof packet, stdin) == sizeof packet) {
+        guint32 extra = read32(packet) == 3 ? read32(packet+8) : 0;
+        if (extra > 32768) break;
+        guint8 *data = g_malloc0(21+extra); memcpy(data, packet, 20);
+        if (extra && fread(data+20, 1, extra, stdin) != extra) { g_free(data); break; }
+        g_main_context_invoke(NULL, input_packet, data);
+    }
     g_main_context_invoke(NULL, stop_from_input, NULL); return NULL;
 }
 int main(int argc, char **argv) {

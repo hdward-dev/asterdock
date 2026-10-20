@@ -317,9 +317,14 @@ public sealed class LocalVmService(string dataDirectory) : IDisposable
                 }
                 foreach (var arg in new[] { "-chardev", "socket,id=chrtpm,path=" + EscapeComma(tpmSocket), "-tpmdev", "emulator,id=tpm0,chardev=chrtpm", "-device", "tpm-tis,tpmdev=tpm0" }) info.ArgumentList.Add(arg);
             }
+            if (vm.Protocol == ConsoleProtocol.Spice || profile?.GuestAgentSocket is not null)
+                foreach (var arg in new[] { "-device", "virtio-serial-pci,id=vmcubeSerial" }) info.ArgumentList.Add(arg);
             if (profile?.GuestAgentSocket is { } guestAgent)
-                foreach (var arg in new[] { "-device", "virtio-serial-pci", "-chardev", "socket,path=" + EscapeComma(guestAgent) + ",server=on,wait=off,id=qga0",
-                    "-device", "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0" }) info.ArgumentList.Add(arg);
+                foreach (var arg in new[] { "-chardev", "socket,path=" + EscapeComma(guestAgent) + ",server=on,wait=off,id=qga0",
+                    "-device", "virtserialport,bus=vmcubeSerial.0,chardev=qga0,name=org.qemu.guest_agent.0" }) info.ArgumentList.Add(arg);
+            if (vm.Protocol == ConsoleProtocol.Spice)
+                foreach (var arg in new[] { "-chardev", "spicevmc,id=vmcubeAgent,name=vdagent", "-device",
+                    "virtserialport,bus=vmcubeSerial.0,chardev=vmcubeAgent,name=com.redhat.spice.0" }) info.ArgumentList.Add(arg);
             CaptureUnixLog(info, qemuLog);
             process = Process.Start(info) ?? throw new InvalidOperationException("QEMU 启动失败。");
             var runtime = new LocalVmRuntime(process.Id, process.StartTime.ToUniversalTime().Ticks, qmpPort, qmpSocket, displayPort, tpm?.Id, tpm?.StartTime.ToUniversalTime().Ticks, ProcessIdentity(process.Id));

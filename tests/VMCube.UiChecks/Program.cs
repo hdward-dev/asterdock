@@ -13,6 +13,8 @@ using URemote.Core;
 using Avalonia.VisualTree;
 using Avalonia.Interactivity;
 using Avalonia.Automation;
+using Avalonia.Input;
+using Avalonia.Platform.Storage;
 
 AppBuilder.Configure<UiCheckApp>().UsePlatformDetect().AfterSetup(builder =>
 {
@@ -74,6 +76,49 @@ AppBuilder.Configure<UiCheckApp>().UsePlatformDetect().AfterSetup(builder =>
                         Click(connect); await Task.Delay(100);
                         actualConsole = context.WindowService.Shown.OfType<ConsoleWindow>().Last();
                         await WaitForPreviewAsync(actualConsole);
+                        if (args.Contains("--right-click"))
+                        {
+                            var input = (ILocalDesktopSession)typeof(ConsoleWindow).GetField("session", flags)!.GetValue(actualConsole)!;
+                            var frame = (LocalDesktopFrame)typeof(ConsoleWindow).GetField("painted", flags)!.GetValue(actualConsole)!;
+                            input.Pointer(frame.Width / 2, frame.Height / 2, 0); await Task.Delay(100);
+                            try
+                            {
+                                input.Pointer(frame.Width / 2, frame.Height / 2, 4); await Task.Delay(80);
+                                input.Pointer(frame.Width / 2, frame.Height / 2, 0); await Task.Delay(650);
+                                using var rightImage = new RenderTargetBitmap(new((int)actualConsole.Width, (int)actualConsole.Height));
+                                rightImage.Render(actualConsole); rightImage.Save(Path.Combine(screenshots, "right-click.png"), PngBitmapEncoderOptions.Default);
+                            }
+                            finally
+                            {
+                                input.Pointer(frame.Width / 2, frame.Height / 2, 0);
+                                input.Key(0x01, true); input.Key(0x01, false); await Task.Delay(120);
+                            }
+                            Console.WriteLine("Actual Windows right press/release rendered; menu dismissed with Escape.");
+                        }
+                        if (args.Contains("--send-file"))
+                        {
+                            var source = args[Array.IndexOf(args, "--send-file") + 1];
+                            var file = await actualConsole.StorageProvider.TryGetFileFromPathAsync(source) ?? throw new Exception("UI test file missing");
+                            var spice = (SpiceDesktopSession)typeof(ConsoleWindow).GetField("session", flags)!.GetValue(actualConsole)!;
+                            for (var i = 0; i < 100 && !spice.CanTransferFiles; i++) await Task.Delay(100);
+                            if (!spice.CanTransferFiles) throw new Exception("Actual guest SPICE Agent is not ready");
+                            var upload = actualConsole.GetVisualDescendants().OfType<Button>().Single(x => x.Name == "ConsoleSendFiles");
+                            if (!upload.IsEnabled || upload.Content is string || ToolTip.GetTip(upload) is null) throw new Exception("Upload icon is missing or disabled");
+                            var surface = (Image)typeof(ConsoleWindow).GetField("desktop", flags)!.GetValue(actualConsole)!;
+                            if (!DragDrop.GetAllowDrop(surface)) throw new Exception("Desktop does not accept files");
+                            using var data = new DataTransfer(); data.Add(DataTransferItem.CreateFile(file));
+                            var over = new DragEventArgs(DragDrop.DragOverEvent, data, surface, new Point(30, 30), KeyModifiers.None);
+                            surface.RaiseEvent(over);
+                            if (over.DragEffects != DragDropEffects.Copy) throw new Exception("File drag was not accepted");
+                            surface.RaiseEvent(new DragEventArgs(DragDrop.DropEvent, data, surface, new Point(30, 30), KeyModifiers.None));
+                            var fileStatus = actualConsole.GetVisualDescendants().OfType<TextBlock>().Single(x => x.Name == "ConsoleFileStatus");
+                            for (var i = 0; i < 150 && fileStatus.Text?.StartsWith("已发送") != true; i++) await Task.Delay(100);
+                            if (fileStatus.Text?.StartsWith("已发送") != true) throw new Exception("Drag upload failed: " + fileStatus.Text);
+                            await Task.Delay(150);
+                            using var consoleImage = new RenderTargetBitmap(new((int)actualConsole.Width, (int)actualConsole.Height));
+                            consoleImage.Render(actualConsole); consoleImage.Save(Path.Combine(screenshots, "file-transfer.png"), PngBitmapEncoderOptions.Default);
+                            Console.WriteLine("Actual Windows drag upload completed and acknowledged by guest.");
+                        }
                     }
                     Capture("actual-light.png"); builder.Instance.RequestedThemeVariant = ThemeVariant.Dark;
                     await Task.Delay(150); Capture("actual-dark.png");
@@ -155,6 +200,18 @@ AppBuilder.Configure<UiCheckApp>().UsePlatformDetect().AfterSetup(builder =>
                     Click(connectButton); await Task.Delay(100);
                     console = context.WindowService.Shown.OfType<ConsoleWindow>().Last();
                     await WaitForPreviewAsync(console);
+                    var upload = console.GetVisualDescendants().OfType<Button>().Single(x => x.Name == "ConsoleSendFiles");
+                    Click(upload); await Task.Delay(120);
+                    var help = life.Windows.Single(x => x.Title == "文件传输配置 · VMCUBE");
+                    if (!help.GetVisualDescendants().OfType<TextBlock>().Any(x => x.Text?.Contains("com.redhat.spice.0") == true)) throw new Exception("Missing Agent setup guide");
+                    var address = help.GetVisualDescendants().OfType<TextBox>().Single(x => x.Name == "GuestToolsDownloadUrl");
+                    if (!address.IsReadOnly || address.Text != "https://www.spice-space.org/download.html") throw new Exception("Visible download link missing");
+                    Click(help.GetVisualDescendants().OfType<Button>().Single(x => x.Name == "GuestToolsCopyDownload")); await Task.Delay(100);
+                    var downloadStatus = help.GetVisualDescendants().OfType<TextBlock>().Single(x => x.Name == "GuestToolsDownloadStatus");
+                    if (!downloadStatus.Text!.Contains("已复制")) throw new Exception("Copy link produced no feedback");
+                    using (var helpImage = new RenderTargetBitmap(new((int)help.Width, (int)help.Bounds.Height)))
+                    { helpImage.Render(help); helpImage.Save(Path.Combine(screenshots, "download-help.png"), PngBitmapEncoderOptions.Default); }
+                    help.Close();
                     Capture("spice-preview.png");
                     var bitmapField = typeof(ConsoleWindow).GetField("bitmap", flags)!;
                     for (var i = 0; i < 100 && bitmapField.GetValue(console) is null && !console.Completion.IsCompleted; i++) await Task.Delay(100);

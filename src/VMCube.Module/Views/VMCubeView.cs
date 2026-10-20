@@ -54,7 +54,7 @@ public sealed partial class VMCubeView : UserControl, IDisposable
         BuildInterface();
         _search.TextChanged += (_, _) => Filter();
         _filter.SelectionChanged += (_, _) => Filter();
-        UpdateStats(); Filter(); AddLog("VMCUBE 0.5.1 已就绪");
+        UpdateStats(); Filter(); AddLog("VMCUBE 0.6.2 已就绪");
         AttachedToVisualTree += async (_, _) => { if (!_disposed && IsLocal && _connectedUri is null && !_demo) await ExecuteAsync(ConnectAsync); };
     }
 

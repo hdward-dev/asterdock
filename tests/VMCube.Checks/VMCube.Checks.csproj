@@ -5,6 +5,8 @@
     <Compile Include="../../src/VMCube.Module/Services/LocalVmService.cs" Link="LocalVmService.cs" />
     <Compile Include="../../src/VMCube.Module/Services/LocalVmImport.cs" Link="LocalVmImport.cs" />
     <Compile Include="../../src/VMCube.Module/Services/SpiceDesktopSession.cs" Link="SpiceDesktopSession.cs" />
+    <Compile Include="../../src/VMCube.Module/Services/SpiceDesktopSession.Files.cs" Link="SpiceDesktopSession.Files.cs" />
+    <Compile Include="../../src/VMCube.Module/Services/ExternalBrowser.cs" Link="ExternalBrowser.cs" />
     <Compile Include="../../src/VMCube.Module/Services/ConsoleEndpoint.cs" Link="ConsoleEndpoint.cs" />
     <Compile Include="../../src/VMCube.Module/Services/ConsoleTunnel.cs" Link="ConsoleTunnel.cs" />
     <Compile Include="../../src/URemote.Core/LocalDesktopSession.cs" Link="LocalDesktopSession.cs" />

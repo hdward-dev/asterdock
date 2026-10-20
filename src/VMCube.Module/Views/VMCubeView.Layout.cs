@@ -140,7 +140,7 @@ public sealed partial class VMCubeView
             ToolTip.SetTip(_status, _status.Text); ApplyTheme(_status, TextBlock.ForegroundProperty,
                 _status.Text?.Contains("失败", StringComparison.Ordinal) == true ? "AppDangerBrush" : "AppMutedBrush"); } };
         var footerContent = new Grid { ColumnDefinitions = new("*,Auto"), ColumnSpacing = 12 };
-        footerContent.Children.Add(_status); var version = Text("VMCUBE 0.5.1", 11, true); Grid.SetColumn(version, 1); footerContent.Children.Add(version);
+        footerContent.Children.Add(_status); var version = Text("VMCUBE 0.6.2", 11, true); Grid.SetColumn(version, 1); footerContent.Children.Add(version);
         var footer = new Border { Padding = new Thickness(18, 9), BorderThickness = new Thickness(0, 1, 0, 0), Child = footerContent };
         ApplyTheme(footer, Border.BorderBrushProperty, "AppBorderBrush"); Grid.SetRow(footer, 1); Grid.SetColumnSpan(footer, 3); body.Children.Add(footer);
         Content = body;
@@ -307,7 +307,7 @@ public sealed partial class VMCubeView
                 Text("新建虚拟机保存在应用数据目录；导入的虚拟机继续使用原有磁盘。", 13, true),
                 new SelectableTextBlock { Text = _context.DataDirectory, FontSize = 12, TextWrapping = TextWrapping.Wrap } } }),
             Card(new StackPanel { Spacing = 10, Children = { Text("体验与帮助", 18), Text("无需创建虚拟机，即可查看卡片布局和操作流程。", 13, true),
-                ActionButton("查看演示", DemoAsync), Text("VMCUBE 0.5.1 · 本机 QEMU / KVM · 远程 SSH · SPICE / VNC", 11, true) } }) } };
+                ActionButton("查看演示", DemoAsync), Text("VMCUBE 0.6.2 · 本机 QEMU / KVM · 远程 SSH · SPICE / VNC", 11, true) } }) } };
     }
     private Control BuildDirectPage()
     {

@@ -5,6 +5,20 @@ using System.Net.Sockets;
 using System.Text;
 using System.Buffers.Binary;
 
+if (args.Length > 0 && args[0] == "--browser-checks") { await BrowserChecks.RunAsync(); return; }
+if (args.Length == 2 && args[0] == "--open-browser")
+{
+    var result = await ExternalBrowser.OpenAsync(new Uri(args[1]), _ => Task.FromResult(false));
+    Console.WriteLine(result.Message); Environment.ExitCode = result.Requested ? 0 : 1; return;
+}
+
+if (args.Contains("--existing-file-target"))
+{
+    var index = Array.IndexOf(args, "--existing-file-target");
+    await SpiceFileChecks.SendToExistingAsync(args[index + 1], args[index + 2], args[index + 3]);
+    return;
+}
+
 if (args.Length == 2 && args[0] == "--verify-local")
 {
     using var child = new LocalVmService(args[1]);
@@ -135,6 +149,8 @@ byte[] challenge = Enumerable.Range(0, 16).Select(x => (byte)x).ToArray();
 foreach (var version in new[] { 3, 7, 8 })
     foreach (var authenticated in new[] { false, true }) await VncLoopback(version, authenticated);
 Console.WriteLine("VNC loopback passed: RFB 3.3/3.7/3.8, authentication, pixels, resize, pointer, keyboard and disconnect.");
+await SpiceFileChecks.RunAsync();
+await BrowserChecks.RunAsync();
 if (args.Contains("--spice-helper")) { await SpiceChecks.RunAsync(args); await LocalVmChecks.RunAsync(args); await ImportChecks.RunAsync(args); }
 void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
 async Task<byte[]> Read(NetworkStream stream, int size, CancellationToken token)

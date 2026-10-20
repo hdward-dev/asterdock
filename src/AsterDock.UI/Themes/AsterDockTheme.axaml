@@ -31,6 +31,9 @@
           <SolidColorBrush x:Key="AppCaptionHoverBrush" Color="#E7EBF1"/>
           <SolidColorBrush x:Key="AppScrimBrush" Color="#CC1B2430"/>
           <SolidColorBrush x:Key="AppOnScrimBrush" Color="#FFFFFF"/>
+          <SolidColorBrush x:Key="AppLoadingScrimBrush" Color="#73141C28"/>
+          <SolidColorBrush x:Key="AppSkeletonBrush" Color="#E4EAF2"/>
+          <SolidColorBrush x:Key="AppSkeletonHighlightBrush" Color="#FFFFFF"/>
         </ResourceDictionary>
         <ResourceDictionary x:Key="Dark">
           <SolidColorBrush x:Key="AppPageBrush" Color="#111318"/>
@@ -59,8 +62,45 @@
           <SolidColorBrush x:Key="AppCaptionHoverBrush" Color="#2A3038"/>
           <SolidColorBrush x:Key="AppScrimBrush" Color="#E610141C"/>
           <SolidColorBrush x:Key="AppOnScrimBrush" Color="#FFFFFF"/>
+          <SolidColorBrush x:Key="AppLoadingScrimBrush" Color="#8C0C1016"/>
+          <SolidColorBrush x:Key="AppSkeletonBrush" Color="#2A313B"/>
+          <SolidColorBrush x:Key="AppSkeletonHighlightBrush" Color="#465062"/>
         </ResourceDictionary>
       </ResourceDictionary.ThemeDictionaries>
+
+      <ControlTheme x:Key="{x:Type controls:AdLoadingOverlay}" TargetType="controls:AdLoadingOverlay">
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <Setter Property="VerticalAlignment" Value="Stretch"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+        <Setter Property="DelayMs" Value="150"/>
+        <Setter Property="MinimumVisibleMs" Value="300"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Grid>
+              <ContentPresenter x:Name="PART_Content"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/>
+              <Border x:Name="PART_Scrim" IsVisible="False" IsHitTestVisible="True"
+                      Background="{DynamicResource AppLoadingScrimBrush}"
+                      CornerRadius="{TemplateBinding CornerRadius}"
+                      ClipToBounds="True">
+                <StackPanel x:Name="PART_Chrome" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+                  <controls:AdLoadingIndicator x:Name="PART_Indicator" HorizontalAlignment="Center"
+                                               Size="{TemplateBinding IndicatorSize}"
+                                               Text="{TemplateBinding Text}"
+                                               ShowContainer="True"/>
+                  <Button x:Name="PART_Cancel" Classes="ad-primary" Content="取消" HorizontalAlignment="Center"
+                          IsVisible="{TemplateBinding IsCancellable}" MinWidth="96"/>
+                </StackPanel>
+              </Border>
+            </Grid>
+          </ControlTemplate>
+        </Setter>
+      </ControlTheme>
 
       <ControlTheme x:Key="{x:Type controls:PageHeader}" TargetType="controls:PageHeader">
         <Setter Property="Template">
@@ -429,5 +469,21 @@
   <Style Selector="Button.ad-flat:disabled /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="Transparent"/>
     <Setter Property="BorderBrush" Value="Transparent"/>
+  </Style>
+
+  <Style Selector="controls|AdLoadingIndicator">
+    <Setter Property="Foreground" Value="{DynamicResource AppMutedBrush}"/>
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="MinWidth" Value="0"/>
+    <Setter Property="MinHeight" Value="0"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="HorizontalAlignment" Value="Center"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="controls|AdSkeleton">
+    <Setter Property="MinWidth" Value="0"/>
+    <Setter Property="MinHeight" Value="0"/>
+    <Setter Property="HorizontalAlignment" Value="Left"/>
   </Style>
 </Styles>

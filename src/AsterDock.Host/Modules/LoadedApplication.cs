@@ -1,5 +1,7 @@
 using AsterDock.Contracts;
 using AsterDock.Host.Services;
+using AsterDock.Host.Views;
+using AsterDock.UI.Services;
 using Avalonia.Controls;
 using Avalonia.Media;
 
@@ -95,7 +97,8 @@ public sealed class LoadedApplication : IDisposable
             ?? throw new InvalidOperationException("无法重新创建轻应用实例");
         if (owner is not IApplicationShell shell)
             throw new InvalidOperationException("宿主窗口未提供应用导航服务");
-        var context = new ApplicationContext(Manifest.Id, owner, shell, systemMetrics);
+        ILoadingService loading = owner is MainWindow main ? main.Loading : new LoadingService();
+        var context = new ApplicationContext(Manifest.Id, owner, shell, systemMetrics, loading);
         try
         {
             if (_module is IApplicationContextAware contextAware) contextAware.Initialize(context);

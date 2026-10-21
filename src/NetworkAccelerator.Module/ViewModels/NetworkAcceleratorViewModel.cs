@@ -251,7 +251,16 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
         if (toast is { } kind) _feedback.Notify(kind, message);
     }
 
-    public async Task InitializeAsync()
+    private int _initializeStarted;
+
+    public Task InitializeAsync()
+    {
+        // Two pages share this model. Only the first attach loads settings and touches the engine.
+        if (System.Threading.Interlocked.Exchange(ref _initializeStarted, 1) != 0) return Task.CompletedTask;
+        return InitializeCoreAsync();
+    }
+
+    private async Task InitializeCoreAsync()
     {
         try
         {

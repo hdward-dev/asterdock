@@ -19,6 +19,7 @@ public partial class NetworkAcceleratorView : UserControl
     private readonly IApplicationContext? _context;
     private readonly NetworkAcceleratorViewModel? _viewModel;
     private readonly Dictionary<string, Control> _pages = new();
+    private readonly bool _ownsModel;
     private bool _initialized;
     private bool _motionHooked;
     private bool _clocked;
@@ -34,6 +35,7 @@ public partial class NetworkAcceleratorView : UserControl
 
     public NetworkAcceleratorView()
     {
+        _ownsModel = false;
         InitializeComponent();
         _pages["Overview"] = OverviewPage;
         _pages["Proxies"] = ProxiesPage;
@@ -345,11 +347,17 @@ public partial class NetworkAcceleratorView : UserControl
         if (_viewModel is not null) _viewModel.NodeSearchText = string.Empty;
     }
 
-    public NetworkAcceleratorView(IApplicationContext context, string moduleDirectory) : this()
+    public NetworkAcceleratorView(IApplicationContext context, string moduleDirectory)
+        : this(context, new NetworkAcceleratorViewModel(context.DataDirectory, moduleDirectory, context.Loading, context.Feedback), ownsModel: true)
+    {
+    }
+
+    public NetworkAcceleratorView(IApplicationContext context, NetworkAcceleratorViewModel viewModel, bool ownsModel = false) : this()
     {
         _context = context;
-        _viewModel = new NetworkAcceleratorViewModel(context.DataDirectory, moduleDirectory, context.Loading, context.Feedback);
-        DataContext = _viewModel;
+        _viewModel = viewModel;
+        _ownsModel = ownsModel;
+        DataContext = viewModel;
         AttachedToVisualTree += (_, _) =>
         {
             if (_initialized || _viewModel is null) return;
@@ -386,7 +394,7 @@ public partial class NetworkAcceleratorView : UserControl
         NavChrome.SizeChanged -= OnViewSize;
         NavGlass.Backdrop = null;
         DataContext = null;
-        _viewModel?.Dispose();
+        if (_ownsModel) _viewModel?.Dispose();
     }
 
     private void OnOverviewMode(ProxyMode mode) => Run(() => SetModeAsync(mode), "切换模式失败");

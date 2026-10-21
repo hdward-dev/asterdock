@@ -97,6 +97,42 @@ var pageClicks = 0;
 pageButton.Click += (_, _) => pageClicks++;
 pageButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 Check(pageClicks == 1, "main page button still receives clicks after pop-out closes");
+
+LoadedApplication ModuleApp(string id, IApplicationModule module) => (LoadedApplication)Activator.CreateInstance(typeof(LoadedApplication),
+    BindingFlags.Instance | BindingFlags.NonPublic, null,
+    [new AppManifest { Id = id, Name = id, Version = "1", EntryAssembly = "fixture", EntryType = "fixture" },
+        "/tmp", module, null], null)!;
+var cachedApp = ModuleApp("cached-page", new CachedPageModule());
+host.Applications.Add(cachedApp);
+Call("OpenApplication", cachedApp);
+host.Activate();
+Dispatcher.UIThread.RunJobs();
+Call("OpenDetachedApplication", cachedApp);
+Dispatcher.UIThread.RunJobs();
+Check(!detached.ContainsKey(cachedApp), "cached page does not open a detached window");
+Check(host.FeedbackService.VisibleToasts.Any(item => item.Message.Contains("无法打开独立窗口", StringComparison.Ordinal)),
+    "canceling pop-out explains that the page was not new");
+foreach (var toast in host.FeedbackService.VisibleToasts.ToArray()) host.FeedbackService.DismissToast(toast.Id);
+var freshModule = new FreshPageModule();
+var freshApp = ModuleApp("fresh-page", freshModule);
+host.Applications.Add(freshApp);
+Call("OpenApplication", freshApp);
+host.UpdateLayout();
+var freshPage = (Control)host.FindControl<ContentControl>("ApplicationContent")!.Content!;
+Call("OpenDetachedApplication", freshApp);
+Check(detached.ContainsKey(freshApp), "shared-state module opens a detached window");
+var freshWindow = detached[freshApp];
+freshWindow.UpdateLayout();
+var freshDetached = freshWindow.GetVisualDescendants().OfType<Button>().Single(button => button.Name == "FreshAction");
+var freshInPage = freshPage.GetVisualDescendants().OfType<Button>().Single(button => button.Name == "FreshAction");
+Check(!ReferenceEquals(freshDetached, freshInPage), "shared-state module uses a distinct page");
+Check(ReferenceEquals(((Border)freshDetached.Parent!).Tag, freshModule.Shared)
+    && ReferenceEquals(((Border)freshInPage.Parent!).Tag, freshModule.Shared),
+    "both pages bind the same module state");
+freshWindow.Close();
+Dispatcher.UIThread.RunJobs();
+Call("StopRunningApplication", cachedApp);
+Call("StopRunningApplication", freshApp);
 Call("StopRunningApplication", foreground);
 var count=FixtureModule.Disposals;
 foreground.Stop(); Check(FixtureModule.Disposals == count, "repeated stop is idempotent");
@@ -201,6 +237,20 @@ public sealed class FixtureModule : IApplicationModule, IApplicationContextAware
     public void OpenChild() { Child=new Window(); context!.Windows.Show(Child, false); }
     public void NotifyFailure() => context!.Feedback.ShowErrorAsync("订阅失败", "未能更新", new InvalidOperationException("stack-line"));
     public void Dispose() { Stopped=true; Disposals++; }
+}
+
+sealed class CachedPageModule : IApplicationModule
+{
+    private Control? _view;
+    public Control CreateView() => _view ??= new Border { Child = new TextBlock { Text = "同一页" } };
+    public void Dispose() { }
+}
+
+sealed class FreshPageModule : IApplicationModule
+{
+    public object Shared { get; } = new();
+    public Control CreateView() => new Border { Tag = Shared, Child = new Button { Name = "FreshAction", Content = "新页面" } };
+    public void Dispose() { }
 }
 
 sealed class RecordingNotifications : ISystemNotificationBackend

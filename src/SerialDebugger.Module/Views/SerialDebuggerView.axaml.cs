@@ -15,6 +15,8 @@ public partial class SerialDebuggerView : UserControl
     private double _workspaceHeight = 600;
     private readonly SerialDebuggerViewModel _viewModel;
     private readonly IUserFeedbackService? _feedback;
+    private readonly bool _ownsModel;
+    private bool _hooked;
     private bool _disposed;
     private SerialPortSessionViewModel? _resizingSession;
     private double _resizeStartX;
@@ -26,23 +28,44 @@ public partial class SerialDebuggerView : UserControl
     }
 
     public SerialDebuggerView(string dataDirectory, IUserFeedbackService? feedback = null)
+        : this(new SerialDebuggerViewModel(dataDirectory, feedback), feedback, ownsModel: true)
+    {
+    }
+
+    public SerialDebuggerView(SerialDebuggerViewModel viewModel, IUserFeedbackService? feedback, bool ownsModel = false)
     {
         InitializeComponent();
         _feedback = feedback;
-        _viewModel = new SerialDebuggerViewModel(dataDirectory, feedback);
-        DataContext = _viewModel;
-        _viewModel.Sessions.CollectionChanged += Sessions_CollectionChanged;
-        foreach (var session in _viewModel.Sessions) AttachSession(session);
-        _ = _viewModel.InitializeAsync();
+        _viewModel = viewModel;
+        _ownsModel = ownsModel;
+        DataContext = viewModel;
+        AttachedToVisualTree += (_, _) => Hook();
+        DetachedFromVisualTree += (_, _) => Unhook();
+        _ = viewModel.InitializeAsync();
     }
 
     public void DisposeResources()
     {
         if (_disposed) return;
         _disposed = true;
+        Unhook();
+        if (_ownsModel) _viewModel.Dispose();
+    }
+
+    private void Hook()
+    {
+        if (_hooked || _disposed) return;
+        _hooked = true;
+        _viewModel.Sessions.CollectionChanged += Sessions_CollectionChanged;
+        foreach (var session in _viewModel.Sessions) AttachSession(session);
+    }
+
+    private void Unhook()
+    {
+        if (!_hooked) return;
+        _hooked = false;
         _viewModel.Sessions.CollectionChanged -= Sessions_CollectionChanged;
         foreach (var session in _viewModel.Sessions) DetachSession(session);
-        _viewModel.Dispose();
     }
 
     private void Sessions_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)

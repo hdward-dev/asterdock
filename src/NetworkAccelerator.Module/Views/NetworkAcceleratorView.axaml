@@ -11,6 +11,16 @@
       <ResourceDictionary.MergedDictionaries>
         <ResourceInclude Source="avares://NetworkAccelerator.Module/Themes/NetworkAcceleratorIcons.axaml"/>
       </ResourceDictionary.MergedDictionaries>
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="NavPillBrush" Color="#C8E4EEFD"/>
+          <SolidColorBrush x:Key="NavPillRimBrush" Color="#99FFFFFF"/>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="NavPillBrush" Color="#C4334E78"/>
+          <SolidColorBrush x:Key="NavPillRimBrush" Color="#55FFFFFF"/>
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
     </ResourceDictionary>
   </UserControl.Resources>
   <UserControl.Styles>
@@ -107,6 +117,7 @@
     </Style>
     <Style Selector="Button.section-nav">
       <Setter Property="Height" Value="68"/>
+      <Setter Property="MinWidth" Value="64"/>
       <Setter Property="HorizontalAlignment" Value="Stretch"/>
       <Setter Property="Padding" Value="8"/>
       <Setter Property="CornerRadius" Value="12"/>
@@ -137,6 +148,12 @@
     <Style Selector="UserControl.still Button.section-nav">
       <Setter Property="Transitions" Value="{x:Null}"/>
     </Style>
+    <Style Selector="Border.nav-float:light">
+      <Setter Property="BoxShadow" Value="0 10 28 0 #2A152033"/>
+    </Style>
+    <Style Selector="Border.nav-float:dark">
+      <Setter Property="BoxShadow" Value="0 12 32 0 #99000000"/>
+    </Style>
     <Style Selector="Button:disabled ui|AdLoadingIndicator.accent-mark">
       <Setter Property="ShapeBrush" Value="{DynamicResource AppMutedBrush}"/>
     </Style>
@@ -151,9 +168,9 @@
     </Style>
   </UserControl.Styles>
 
-  <Grid ColumnDefinitions="*,88">
+  <Grid>
     <ScrollViewer x:Name="PageScroll" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
-      <StackPanel Margin="24" Spacing="20">
+      <StackPanel Margin="24,24,28,24" Spacing="20">
         <StackPanel Spacing="5">
           <TextBlock x:Name="SectionTitle" Classes="page-title" Text="概览"/>
           <TextBlock x:Name="SectionDescription" Classes="description" Text="连接状态与常用功能，一目了然"/>
@@ -474,11 +491,15 @@
         </Grid>
       </StackPanel>
     </ScrollViewer>
-    <Border Grid.Column="1" Background="{DynamicResource AppSurfaceBrush}" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="1,0,0,0">
-      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <Grid Margin="10,24">
-          <Border x:Name="NavPill" Height="68" CornerRadius="12"
-                  Background="{DynamicResource AppAccentSurfaceBrush}"
+    <Border Classes="nav-float" HorizontalAlignment="Right" VerticalAlignment="Center"
+            Margin="0,12,12,12" CornerRadius="24" Background="Transparent" ClipToBounds="False">
+      <Border CornerRadius="24" ClipToBounds="True" Background="Transparent">
+        <controls:LiquidGlassBar x:Name="NavGlass">
+        <Grid Margin="8,10">
+          <Border x:Name="NavPill" Height="68" CornerRadius="16"
+                  Background="{DynamicResource NavPillBrush}"
+                  BorderBrush="{DynamicResource NavPillRimBrush}"
+                  BorderThickness="1"
                   HorizontalAlignment="Stretch" VerticalAlignment="Top" IsHitTestVisible="False">
             <Border.RenderTransform>
               <TranslateTransform/>
@@ -508,7 +529,8 @@
           </Button>
           </StackPanel>
         </Grid>
-      </ScrollViewer>
+        </controls:LiquidGlassBar>
+      </Border>
     </Border>
   </Grid>
 </UserControl>

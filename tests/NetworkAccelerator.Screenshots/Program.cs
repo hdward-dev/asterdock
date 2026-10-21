@@ -8,6 +8,7 @@ using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using NetworkAccelerator.Core.Models;
 using NetworkAccelerator.Module.Controls;
@@ -26,6 +27,12 @@ AppBuilder.Configure<ShotApp>()
     .SetupWithoutStarting();
 
 DashboardMotion.ReduceMotion = true;
+CaptureGlass(output);
+if (args.Contains("--glass"))
+{
+    Console.WriteLine("PASS glass only");
+    return;
+}
 Capture("overview-light-disconnected", ThemeVariant.Light, Disconnected(), 1360, 1180, output);
 Capture("overview-light-populated", ThemeVariant.Light, Populated(allowLan: false), 1360, 1280, output);
 Capture("overview-dark-disconnected", ThemeVariant.Dark, Disconnected(), 1360, 1180, output);
@@ -76,7 +83,7 @@ static void CaptureCookieSizes(string output)
                 FontFamily = view.FontFamily
             };
             window.Show();
-            AvaloniaHeadlessPlatform.ForceRenderTimerTick(2);
+            Settle(window);
             var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("cookie frame missing");
             var path = Path.Combine(output, $"cookie-{size.Name}-{themeName}.png");
             SaveHeroCard(window, frame, path, zoom: 1);
@@ -153,8 +160,7 @@ static void CaptureSubscriptionButtons(string output)
                 FontFamily = view.FontFamily
             };
             window.Show();
-            window.UpdateLayout();
-            AvaloniaHeadlessPlatform.ForceRenderTimerTick(2);
+            Settle(window);
             BringUpdateButton(window, icon: true);
             SaveSubscriptionButton(window, Path.Combine(output, $"subscription-icon-{name}-idle.png"), icon: true);
             viewModel.PreviewSubscriptionUpdate(true);
@@ -236,6 +242,201 @@ static void SaveSubscriptionButton(Window window, string path, bool icon)
         context.DrawImage(frame, new Rect(x, y, w, h), new Rect(0, 0, w * 2, h * 2));
     zoom.Save(path, new PngBitmapEncoderOptions());
     Console.WriteLine(path + $" bounds={button.Bounds.Width:0}x{button.Bounds.Height:0} enabled={button.IsEnabled}");
+}
+
+static void Settle(Window window)
+{
+    window.UpdateLayout();
+    Dispatcher.UIThread.RunJobs(DispatcherPriority.Background);
+    AvaloniaHeadlessPlatform.ForceRenderTimerTick(2);
+}
+
+static void CaptureGlass(string output)
+{
+    foreach (var theme in new[] { ThemeVariant.Light, ThemeVariant.Dark })
+    foreach (var size in new (string Name, double Width)[] { ("default", 1360), ("narrow", 760) })
+    {
+        var themeName = theme == ThemeVariant.Light ? "light" : "dark";
+        DashboardMotion.ReduceMotion = true;
+        Application.Current!.RequestedThemeVariant = theme;
+        var directory = Path.Combine(Path.GetTempPath(), "na-glass-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var viewModel = new NetworkAcceleratorViewModel(directory, directory);
+        Window? window = null;
+        try
+        {
+            viewModel.ShowDashboardPreview(Populated(allowLan: false));
+            var view = new NetworkAcceleratorView
+            {
+                DataContext = viewModel,
+                Width = size.Width,
+                Height = 980,
+                FontFamily = new FontFamily("WenQuanYi Micro Hei, Droid Sans Fallback, Inter")
+            };
+            window = new Window
+            {
+                Width = size.Width,
+                Height = 980,
+                Content = view,
+                Background = Brushes.Transparent,
+                WindowDecorations = WindowDecorations.None,
+                FontFamily = view.FontFamily
+            };
+            window.Show();
+            Settle(window);
+            var glass = window.GetVisualDescendants().OfType<LiquidGlassBar>().First();
+            Console.WriteLine(
+                $"glass {themeName} {size.Name} {glass.Bounds.Width:0}x{glass.Bounds.Height:0} " +
+                $"blur={glass.BackdropBlurActive} {glass.SnapshotNote}");
+            var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("glass frame missing");
+            var path = Path.Combine(output, $"glass-{size.Name}-{themeName}.png");
+            frame.Save(path, new PngBitmapEncoderOptions());
+            SaveGlassCrop(window, frame, Path.Combine(output, $"glass-{size.Name}-{themeName}-bar.png"));
+            Console.WriteLine(path);
+        }
+        finally
+        {
+            window?.Close();
+            viewModel.Dispose();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    CaptureGlassSwitch(output);
+}
+
+static void SaveGlassCrop(Window window, Bitmap frame, string path)
+{
+    var glass = window.GetVisualDescendants().OfType<LiquidGlassBar>().First();
+    var origin = glass.TranslatePoint(default, window);
+    if (origin is null) return;
+    var scale = frame.PixelSize.Width / window.Bounds.Width;
+    const int pad = 28;
+    var x = (int)Math.Max(0, Math.Floor((origin.Value.X - 180) * scale));
+    var y = (int)Math.Max(0, Math.Floor((origin.Value.Y - pad) * scale));
+    var w = (int)Math.Min(frame.PixelSize.Width - x, Math.Ceiling((glass.Bounds.Width + 180 + pad) * scale));
+    var h = (int)Math.Min(frame.PixelSize.Height - y, Math.Ceiling((glass.Bounds.Height + pad * 2) * scale));
+    var zoom = new RenderTargetBitmap(new PixelSize(w * 2, h * 2), new Vector(96, 96));
+    using (var context = zoom.CreateDrawingContext())
+        context.DrawImage(frame, new Rect(x, y, w, h), new Rect(0, 0, w * 2, h * 2));
+    zoom.Save(path, new PngBitmapEncoderOptions());
+    Console.WriteLine(path);
+}
+
+static void CaptureGlassSwitch(string output)
+{
+    DashboardMotion.ReduceMotion = false;
+    MotionClock.Manual = true;
+    var directory = Path.Combine(Path.GetTempPath(), "na-glass-frames-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(directory);
+    var temp = Path.Combine(Path.GetTempPath(), "na-glass-switch-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(temp);
+    Application.Current!.RequestedThemeVariant = ThemeVariant.Light;
+    var viewModel = new NetworkAcceleratorViewModel(temp, temp);
+    Window? window = null;
+    try
+    {
+        viewModel.ShowDashboardPreview(Populated(allowLan: false));
+        var view = new NetworkAcceleratorView
+        {
+            DataContext = viewModel,
+            Width = 1180,
+            Height = 860,
+            FontFamily = new FontFamily("WenQuanYi Micro Hei, Droid Sans Fallback, Inter")
+        };
+        window = new Window
+        {
+            Width = 1180,
+            Height = 860,
+            Content = view,
+            Background = Brushes.Transparent,
+            WindowDecorations = WindowDecorations.None,
+            FontFamily = view.FontFamily
+        };
+        window.Show();
+        Settle(window);
+        var frame = 0;
+        void Hold(int count)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                MotionClock.Advance(TimeSpan.FromMilliseconds(40));
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick(2);
+                var bitmap = window.CaptureRenderedFrame();
+                if (bitmap is null) return;
+                var glass = window.GetVisualDescendants().OfType<LiquidGlassBar>().First();
+                var origin = glass.TranslatePoint(default, window) ?? new Point(window.Bounds.Width - 160, 80);
+                var scale = bitmap.PixelSize.Width / window.Bounds.Width;
+                var x = (int)Math.Max(0, Math.Floor((origin.X - 220) * scale));
+                var y = 0;
+                var w = bitmap.PixelSize.Width - x;
+                var h = bitmap.PixelSize.Height;
+                var crop = new RenderTargetBitmap(new PixelSize(w, h), new Vector(96, 96));
+                using (var context = crop.CreateDrawingContext())
+                    context.DrawImage(bitmap, new Rect(x, y, w, h), new Rect(0, 0, w, h));
+                crop.Save(Path.Combine(directory, $"frame_{frame:0000}.png"), new PngBitmapEncoderOptions());
+                frame++;
+            }
+        }
+
+        Hold(4);
+        foreach (var section in new[] { "Proxies", "Configuration", "Connections", "Rules", "Overview" })
+        {
+            view.PreviewNavigate(section);
+            Dispatcher.UIThread.RunJobs(DispatcherPriority.Background);
+            Hold(8);
+        }
+
+        view.PreviewNavPress(1, true);
+        Hold(3);
+        view.PreviewNavPress(1, false);
+        Hold(3);
+        Console.WriteLine("glass switch frames " + frame);
+        EncodeGlass(directory, Path.Combine(output, "glass-nav-switch.mp4"));
+    }
+    finally
+    {
+        window?.Close();
+        viewModel.Dispose();
+        Directory.Delete(temp, recursive: true);
+        Directory.Delete(directory, recursive: true);
+        DashboardMotion.ReduceMotion = true;
+        MotionClock.Manual = false;
+    }
+}
+
+static void EncodeGlass(string frameDirectory, string output)
+{
+    var process = new System.Diagnostics.Process
+    {
+        StartInfo = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "ffmpeg",
+            RedirectStandardError = true,
+            RedirectStandardOutput = true
+        }
+    };
+    process.StartInfo.ArgumentList.Add("-y");
+    process.StartInfo.ArgumentList.Add("-framerate");
+    process.StartInfo.ArgumentList.Add("25");
+    process.StartInfo.ArgumentList.Add("-start_number");
+    process.StartInfo.ArgumentList.Add("0");
+    process.StartInfo.ArgumentList.Add("-i");
+    process.StartInfo.ArgumentList.Add(Path.Combine(frameDirectory, "frame_%04d.png"));
+    process.StartInfo.ArgumentList.Add("-vf");
+    process.StartInfo.ArgumentList.Add("scale=trunc(iw/2)*2:trunc(ih/2)*2");
+    process.StartInfo.ArgumentList.Add("-c:v");
+    process.StartInfo.ArgumentList.Add("libx264");
+    process.StartInfo.ArgumentList.Add("-pix_fmt");
+    process.StartInfo.ArgumentList.Add("yuv420p");
+    process.StartInfo.ArgumentList.Add("-movflags");
+    process.StartInfo.ArgumentList.Add("+faststart");
+    process.StartInfo.ArgumentList.Add(output);
+    if (!process.Start()) throw new InvalidOperationException("ffmpeg did not start");
+    process.WaitForExit();
+    if (process.ExitCode != 0)
+        throw new InvalidOperationException(process.StandardError.ReadToEnd());
+    Console.WriteLine(output);
 }
 
 static void CaptureMotion(string directory)
@@ -338,7 +539,7 @@ static void Capture(string name, ThemeVariant theme, DashboardPreview preview, d
             FontFamily = view.FontFamily
         };
         window.Show();
-        AvaloniaHeadlessPlatform.ForceRenderTimerTick(2);
+        Settle(window);
         var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException(name + " did not render");
         var path = Path.Combine(output, name + ".png");
         frame.Save(path, new PngBitmapEncoderOptions());

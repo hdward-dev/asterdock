@@ -5,6 +5,7 @@ using Avalonia.Interactivity;
 using Avalonia.Input.Platform;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using NetworkAccelerator.Core.Models;
 using NetworkAccelerator.Module.Controls;
 using NetworkAccelerator.Module.Models;
@@ -51,6 +52,7 @@ public partial class NetworkAcceleratorView : UserControl
         OverviewPage.SectionRequested += SelectSection;
         ModeSliderHost.SizeChanged += (_, _) => UpdateModeSlider();
         SizeChanged += (_, _) => UpdateLayoutForWidth();
+        NavGlass.Backdrop = PageScroll;
         SelectSection("Overview");
     }
 
@@ -172,6 +174,7 @@ public partial class NetworkAcceleratorView : UserControl
         _swapMs = SwapDuration;
         PageHost.MinHeight = 0;
         PageScroll.Offset = default;
+        NavGlass.Refresh();
     }
 
     private static void ResetPage(Control page, bool visible)
@@ -230,6 +233,7 @@ public partial class NetworkAcceleratorView : UserControl
                 _incoming = null;
                 PageHost.MinHeight = 0;
                 PageScroll.Offset = default;
+                NavGlass.Refresh();
             }
         }
 
@@ -291,9 +295,24 @@ public partial class NetworkAcceleratorView : UserControl
 
     private void ClearLogs_Click(object? sender, RoutedEventArgs e) => _viewModel?.ClearLogs();
 
+    private void KeepPowerButtonClear()
+    {
+        var button = OverviewPage.GetVisualDescendants().OfType<PowerButton>().FirstOrDefault();
+        if (button is null || NavGlass.Bounds.Width < 1) return;
+        var glassLeft = NavGlass.TranslatePoint(default, this);
+        var buttonRight = button.TranslatePoint(new Point(button.Bounds.Width, 0), this);
+        if (glassLeft is null || buttonRight is null) return;
+        var delta = buttonRight.Value.X - (glassLeft.Value.X - 8);
+        var next = Math.Max(14, button.Margin.Right + delta);
+        if (Math.Abs(next - button.Margin.Right) < 1) return;
+        button.Margin = new Thickness(18, 0, next, 0);
+    }
+
     private void UpdateLayoutForWidth()
     {
-        var contentWidth = Math.Max(0, Bounds.Width - 88);
+        // The page is full width under the floating bar. 24 + 28 are the page margins.
+        var contentWidth = Math.Max(0, Bounds.Width - 52);
+        KeepPowerButtonClear();
         var stackedProxies = _selectedSection == "Proxies" && contentWidth < 900;
         var splitProxies = _selectedSection == "Proxies" && !stackedProxies;
         ProxiesPage.ColumnDefinitions = new ColumnDefinitions(splitProxies ? "*,20,300" : "*");

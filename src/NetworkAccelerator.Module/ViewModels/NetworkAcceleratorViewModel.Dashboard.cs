@@ -33,7 +33,7 @@ public sealed partial class NetworkAcceleratorViewModel
         ProxyMode.Direct => 2,
         _ => 0
     };
-    public bool IsSystemProxy => !TunEnabled;
+    public bool IsSystemProxy => TakeoverMode.UsesSystemProxy(SystemProxyEnabled, TunEnabled);
     public string SystemProxyDetailText => IsSystemProxy ? $"端口 {ProxyPort}" : "已关闭";
     public string TunDetailText => TunEnabled ? "已开启" : "已关闭";
     public string AllowLanDetailText => AllowLan ? "已开启" : "已关闭";
@@ -41,7 +41,8 @@ public sealed partial class NetworkAcceleratorViewModel
     public bool ShowOverviewAlert =>
         IsBusy ||
         StatusMessage.Contains("失败", StringComparison.Ordinal) ||
-        StatusMessage.Contains("管理员", StringComparison.Ordinal);
+        StatusMessage.Contains("管理员", StringComparison.Ordinal) ||
+        StatusMessage.Contains("授权", StringComparison.Ordinal);
 
     public bool AllowLan
     {
@@ -163,8 +164,10 @@ public sealed partial class NetworkAcceleratorViewModel
         _previewSource = preview.Source;
         _settings.Mode = preview.Mode;
         _settings.TunEnabled = preview.TunEnabled;
+        _settings.SystemProxyEnabled = !preview.TunEnabled;
         _settings.AllowLan = preview.AllowLan;
         Mode = preview.Mode;
+        SystemProxyEnabled = !preview.TunEnabled;
         TunEnabled = preview.TunEnabled;
         AllowLan = preview.AllowLan;
         IsBusy = false;

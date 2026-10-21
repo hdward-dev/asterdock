@@ -83,17 +83,19 @@ public sealed class SingBoxConfigurationService
                 ["tag"] = "本地代理",
                 ["listen"] = MixedListenAddress(settings.AllowLan),
                 ["listen_port"] = MixedProxyPort,
-                ["set_system_proxy"] = !settings.TunEnabled
+                ["set_system_proxy"] = TakeoverMode.UsesSystemProxy(settings.SystemProxyEnabled, settings.TunEnabled)
             }
         };
         if (settings.TunEnabled)
         {
+            var addresses = new JsonArray();
+            foreach (var address in SingBoxTun.Addresses) addresses.Add(address);
             inbounds.Add(new JsonObject
             {
                 ["type"] = "tun",
                 ["tag"] = "TUN",
-                ["interface_name"] = "apphub-tun",
-                ["address"] = new JsonArray("172.19.0.1/30"),
+                ["interface_name"] = SingBoxTun.InterfaceName,
+                ["address"] = addresses,
                 ["mtu"] = 9000,
                 ["auto_route"] = true,
                 ["strict_route"] = true,

@@ -403,9 +403,10 @@
                   <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Spacing="5">
                       <TextBlock Text="TUN 模式" FontSize="14" FontWeight="SemiBold"/>
-                      <TextBlock Text="接管系统网络流量" FontSize="12" Foreground="{DynamicResource AppMutedBrush}"/>
+                      <TextBlock Text="开启后关闭系统代理，关闭后不会自动打开系统代理" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource AppMutedBrush}"/>
                     </StackPanel>
                     <ToggleSwitch Grid.Column="1" x:Name="TunToggle" IsChecked="{Binding TunEnabled}" IsEnabled="{Binding !IsBusy}"
+                                  ToolTip.Tip="开启后关闭系统代理，关闭后不会自动打开系统代理。两者都关闭时核心仍可运行，但不接管系统流量。"
                                   AutomationProperties.Name="TUN 模式" OnContent="" OffContent="" VerticalAlignment="Center" Click="TunToggle_Click"/>
                   </Grid>
                 </Border>

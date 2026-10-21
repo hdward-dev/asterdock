@@ -407,7 +407,7 @@
             </StackPanel>
             <controls:AccentSwitch x:Name="SystemProxyToggle" Grid.Column="2" VerticalAlignment="Center"
                                    IsChecked="{Binding IsSystemProxy}" IsEnabled="{Binding !IsBusy}"
-                                   ToolTip.Tip="系统代理与虚拟网卡互斥，开启一项会关闭另一项"
+                                   ToolTip.Tip="开启后关闭虚拟网卡，关闭后不影响虚拟网卡。两者都关闭时核心仍可运行，但不接管系统流量。"
                                    AutomationProperties.Name="系统代理" Click="SystemProxyToggle_Click"/>
           </Grid>
         </Border>
@@ -424,7 +424,7 @@
             </StackPanel>
             <controls:AccentSwitch x:Name="OverviewTunToggle" Grid.Column="2" VerticalAlignment="Center"
                                    IsChecked="{Binding TunEnabled}" IsEnabled="{Binding !IsBusy}"
-                                   ToolTip.Tip="系统代理与虚拟网卡互斥，开启一项会关闭另一项"
+                                   ToolTip.Tip="开启后关闭系统代理，关闭后不会自动打开系统代理。两者都关闭时核心仍可运行，但不接管系统流量。"
                                    AutomationProperties.Name="虚拟网卡" Click="TunToggle_Click"/>
           </Grid>
         </Border>

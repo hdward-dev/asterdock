@@ -46,7 +46,7 @@ public partial class OverviewDashboardView : UserControl
 
     private async void SystemProxyToggle_Click(object? sender, RoutedEventArgs e)
     {
-        if (ViewModel is not null) await ViewModel.SetTunEnabledAsync(SystemProxyToggle.IsChecked != true);
+        if (ViewModel is not null) await ViewModel.SetSystemProxyEnabledAsync(SystemProxyToggle.IsChecked == true);
     }
 
     private async void TunToggle_Click(object? sender, RoutedEventArgs e)

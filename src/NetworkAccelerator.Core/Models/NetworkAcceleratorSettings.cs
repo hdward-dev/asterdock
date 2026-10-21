@@ -7,7 +7,8 @@ public sealed class NetworkAcceleratorSettings
     public List<SubscriptionConfiguration> SubscriptionConfigurations { get; set; } = [];
     public string ActiveSubscriptionId { get; set; } = string.Empty;
     public ProxyMode Mode { get; set; } = ProxyMode.Rule;
-    public bool TunEnabled { get; set; } = true;
+    public bool TunEnabled { get; set; }
+    public bool SystemProxyEnabled { get; set; } = true;
     public bool AllowLan { get; set; }
     public bool ReduceMotion { get; set; }
     public string SelectedNode { get; set; } = string.Empty;

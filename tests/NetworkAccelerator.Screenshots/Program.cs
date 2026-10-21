@@ -28,6 +28,12 @@ AppBuilder.Configure<ShotApp>()
     .SetupWithoutStarting();
 
 DashboardMotion.ReduceMotion = true;
+VerifyTakeoverSwitches(output);
+if (args.Contains("--toggles"))
+{
+    Console.WriteLine("PASS takeover switches");
+    return;
+}
 CaptureGlass(output);
 if (args.Contains("--glass"))
 {
@@ -750,6 +756,81 @@ static void SaveMotion(Window window, string directory, ref int frame)
     if (bitmap is null) return;
     bitmap.Save(Path.Combine(directory, $"frame-{frame:000}.png"), new PngBitmapEncoderOptions());
     frame++;
+}
+
+static void VerifyTakeoverSwitches(string output)
+{
+    Application.Current!.RequestedThemeVariant = ThemeVariant.Light;
+    var directory = Path.Combine(Path.GetTempPath(), "na-toggle-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(directory);
+    var viewModel = new NetworkAcceleratorViewModel(directory, directory);
+    Window? window = null;
+    try
+    {
+        viewModel.ShowDashboardPreview(Populated(allowLan: false));
+        var view = new NetworkAcceleratorView
+        {
+            DataContext = viewModel,
+            Width = 1360,
+            Height = 1280,
+            FontFamily = new FontFamily("WenQuanYi Micro Hei, Droid Sans Fallback, Inter")
+        };
+        window = new Window
+        {
+            Width = 1360,
+            Height = 1280,
+            Content = view,
+            Background = Brushes.Transparent,
+            WindowDecorations = WindowDecorations.None,
+            FontFamily = view.FontFamily
+        };
+        window.Show();
+        Settle(window);
+        AssertTakeover(window, systemProxy: true, tun: false, "system proxy preview");
+        SaveToggleFrame(window, Path.Combine(output, "takeover-system-proxy.png"));
+        viewModel.ShowDashboardPreview(Disconnected());
+        Settle(window);
+        AssertTakeover(window, systemProxy: false, tun: true, "tun preview");
+        SaveToggleFrame(window, Path.Combine(output, "takeover-tun.png"));
+        viewModel.PreviewSetTun(false);
+        Settle(window);
+        AssertTakeover(window, systemProxy: false, tun: false, "both off");
+        SaveToggleFrame(window, Path.Combine(output, "takeover-both-off.png"));
+    }
+    finally
+    {
+        window?.Close();
+        viewModel.Dispose();
+        Directory.Delete(directory, recursive: true);
+    }
+}
+
+static void AssertTakeover(Window window, bool systemProxy, bool tun, string label)
+{
+    var proxy = window.GetVisualDescendants().OfType<AccentSwitch>()
+        .Single(control => AutomationProperties.GetName(control) == "系统代理");
+    var overviewTun = window.GetVisualDescendants().OfType<AccentSwitch>()
+        .Single(control => AutomationProperties.GetName(control) == "虚拟网卡");
+    var settingsTun = window.GetVisualDescendants().OfType<ToggleSwitch>()
+        .Single(control => AutomationProperties.GetName(control) == "TUN 模式");
+    if (proxy.IsChecked != systemProxy || overviewTun.IsChecked != tun || settingsTun.IsChecked != tun)
+        throw new InvalidOperationException($"{label}: switches were {proxy.IsChecked}/{overviewTun.IsChecked}/{settingsTun.IsChecked}");
+    var proxyTip = ToolTip.GetTip(proxy) as string ?? string.Empty;
+    var tunTip = ToolTip.GetTip(overviewTun) as string ?? string.Empty;
+    var settingsTip = ToolTip.GetTip(settingsTun) as string ?? string.Empty;
+    if (!proxyTip.Contains("关闭后不影响虚拟网卡", StringComparison.Ordinal)
+        || !tunTip.Contains("关闭后不会自动打开系统代理", StringComparison.Ordinal)
+        || !settingsTip.Contains("关闭后不会自动打开系统代理", StringComparison.Ordinal)
+        || proxyTip.Contains("开启一项会关闭另一项", StringComparison.Ordinal)
+        || tunTip.Contains("开启一项会关闭另一项", StringComparison.Ordinal))
+        throw new InvalidOperationException($"{label}: tooltips still describe two-way coupling");
+}
+
+static void SaveToggleFrame(Window window, string path)
+{
+    var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException(path + " did not render");
+    frame.Save(path, new PngBitmapEncoderOptions());
+    Console.WriteLine(path);
 }
 
 static void Capture(string name, ThemeVariant theme, DashboardPreview preview, double width, double height, string output)

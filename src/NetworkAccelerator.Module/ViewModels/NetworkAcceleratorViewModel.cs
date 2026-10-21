@@ -1,3 +1,4 @@
+using AsterDock.Contracts;
 using Avalonia.Threading;
 using NetworkAccelerator.Core.Models;
 using NetworkAccelerator.Core.Services;
@@ -30,6 +31,8 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
     private string _nodeSearchText = string.Empty;
     private bool _isConnected;
     private bool _tunEnabled;
+    private bool _systemProxyEnabled = true;
+    private (bool SystemProxyEnabled, bool TunEnabled)? _pendingTunRevert;
     private ProxyMode _mode;
     private string _connectionStatusText = "未连接";
     private string _statusMessage = "请配置订阅后开始使用";
@@ -48,7 +51,7 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
     private string? _coreVersion;
     private SubscriptionConfiguration? _activeConfiguration;
 
-    public NetworkAcceleratorViewModel(string dataDirectory, string moduleDirectory)
+    public NetworkAcceleratorViewModel(string dataDirectory, string moduleDirectory, ILoadingService? loading = null)
     {
         _settingsStore = new SettingsStore(dataDirectory);
         _subscriptionService = new SubscriptionService(dataDirectory);
@@ -57,6 +60,8 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
         _installer = new SingBoxInstallerService(dataDirectory);
         _engine.LogReceived += Engine_LogReceived;
         _engine.StateChanged += Engine_StateChanged;
+        if (loading is not null)
+            _engine.BeginAuthorization = () => loading.Begin("正在授予 TUN 权限…");
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -140,7 +145,24 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(TunDetailText));
         }
     }
-    public string ConnectionMethodText => TunEnabled ? "TUN 虚拟网卡" : "系统代理";
+
+    public bool SystemProxyEnabled
+    {
+        get => _systemProxyEnabled;
+        private set
+        {
+            if (!SetField(ref _systemProxyEnabled, value)) return;
+            OnPropertyChanged(nameof(IsSystemProxy));
+            OnPropertyChanged(nameof(SystemProxyDetailText));
+            OnPropertyChanged(nameof(ConnectionMethodText));
+        }
+    }
+
+    public string ConnectionMethodText => TunEnabled
+        ? "TUN 虚拟网卡"
+        : IsSystemProxy
+            ? "系统代理"
+            : "未接管系统流量";
     public ProxyMode Mode
     {
         get => _mode;
@@ -228,6 +250,7 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
             {
                 RefreshConfigurations();
                 Mode = _settings.Mode;
+                SystemProxyEnabled = _settings.SystemProxyEnabled;
                 TunEnabled = _settings.TunEnabled;
                 RefreshCoreStatus(coreVersion);
                 AllowLan = _settings.AllowLan;
@@ -256,28 +279,11 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
                 await Dispatcher.UIThread.InvokeAsync(ApplyDisconnectedState);
                 return;
             }
-            if (_profile is null || _profile.Nodes.Count == 0) throw new InvalidOperationException("请先配置并更新订阅");
-            _settings.Mode = Mode;
-            _settings.TunEnabled = TunEnabled;
-            var configPath = await _configurationService.WriteAsync(_profile, _settings).ConfigureAwait(false);
-            await _settingsStore.SaveAsync(_settings).ConfigureAwait(false);
-            await Dispatcher.UIThread.InvokeAsync(() => StatusMessage =
-                TunEnabled && _engine.RequiresAdministratorForTun
-                    ? "请在系统提示中允许管理员权限…"
-                    : "正在启动网络加速…");
-            await _engine.StartAsync(configPath, requireAdministrator: TunEnabled).ConfigureAwait(false);
-            await Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                _connectedAt = DateTimeOffset.Now;
-                IsConnected = true;
-                ConnectionStatusText = "已连接";
-                StatusMessage = TunEnabled ? "TUN 已接管系统网络流量" : "系统代理已启用";
-                StartDurationTimer();
-                StartRealtime();
-            });
-            _ = RefreshLatenciesAsync();
-            _ = RefreshExitIpAsync(throughProxy: true, force: true);
-            _ = RefreshServiceStatusAsync();
+            await StartCoreAsync().ConfigureAwait(false);
+        }
+        catch (TunAuthorizationException exception)
+        {
+            await RevertAfterTunAuthorizationAsync(exception.Message, restoreConnection: false).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -365,14 +371,148 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
         if (IsConnected) await RestartAsync().ConfigureAwait(false);
     }
 
-    public async Task SetTunEnabledAsync(bool enabled)
+    public Task SetSystemProxyEnabledAsync(bool enabled)
     {
-        TunEnabled = enabled;
-        _settings.TunEnabled = enabled;
-        if (enabled && _engine.RequiresAdministratorForTun)
-            StatusMessage = "TUN 将在开始加速时请求管理员权限";
+        var next = TakeoverMode.ApplySystemProxy(_settings.SystemProxyEnabled, _settings.TunEnabled, enabled);
+        return CommitTakeoverAsync(next.SystemProxyEnabled, next.TunEnabled);
+    }
+
+    public Task SetTunEnabledAsync(bool enabled)
+    {
+        var next = TakeoverMode.ApplyTun(_settings.SystemProxyEnabled, _settings.TunEnabled, enabled);
+        return CommitTakeoverAsync(next.SystemProxyEnabled, next.TunEnabled);
+    }
+
+    private async Task CommitTakeoverAsync(bool systemProxyEnabled, bool tunEnabled)
+    {
+        if (systemProxyEnabled == _settings.SystemProxyEnabled && tunEnabled == _settings.TunEnabled)
+        {
+            await ApplyTakeoverFlagsAsync(systemProxyEnabled, tunEnabled).ConfigureAwait(false);
+            return;
+        }
+
+        var previous = (_settings.SystemProxyEnabled, _settings.TunEnabled);
+        _pendingTunRevert = tunEnabled && !previous.Item2 ? previous : null;
+        await ApplyTakeoverFlagsAsync(systemProxyEnabled, tunEnabled).ConfigureAwait(false);
+        if (tunEnabled && _engine.RequiresAdministratorForTun)
+            await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = "TUN 将在开始加速时请求管理员权限");
+
+        var wasConnected = IsConnected || _engine.IsRunning;
+        if (!wasConnected)
+        {
+            await _settingsStore.SaveAsync(_settings).ConfigureAwait(false);
+            return;
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(() => IsBusy = true);
+        try
+        {
+            await _engine.StopAsync().ConfigureAwait(false);
+            await Dispatcher.UIThread.InvokeAsync(ApplyDisconnectedState);
+            await StartCoreAsync().ConfigureAwait(false);
+        }
+        catch (TunAuthorizationException exception)
+        {
+            await RevertAfterTunAuthorizationAsync(exception.Message, restoreConnection: true).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                ApplyDisconnectedState();
+                StatusMessage = $"连接失败：{exception.GetBaseException().Message}";
+                ConnectionFaultSignal++;
+            });
+        }
+        finally
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => IsBusy = false);
+        }
+    }
+
+    private async Task StartCoreAsync()
+    {
+        if (_profile is null || _profile.Nodes.Count == 0) throw new InvalidOperationException("请先配置并更新订阅");
+        _settings.Mode = Mode;
+        _settings.TunEnabled = TunEnabled;
+        _settings.SystemProxyEnabled = SystemProxyEnabled;
+        var configPath = await _configurationService.WriteAsync(_profile, _settings).ConfigureAwait(false);
         await _settingsStore.SaveAsync(_settings).ConfigureAwait(false);
-        if (IsConnected) await RestartAsync().ConfigureAwait(false);
+        await Dispatcher.UIThread.InvokeAsync(() => StatusMessage =
+            TunEnabled && _engine.RequiresAdministratorForTun
+                ? "请在系统提示中允许管理员权限…"
+                : "正在启动网络加速…");
+        await _engine.StartAsync(configPath, requireAdministrator: TunEnabled).ConfigureAwait(false);
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            _pendingTunRevert = null;
+            _connectedAt = DateTimeOffset.Now;
+            IsConnected = true;
+            ConnectionStatusText = "已连接";
+            StatusMessage = TunEnabled
+                ? "TUN 已接管系统网络流量"
+                : IsSystemProxy
+                    ? "系统代理已启用"
+                    : "加速已启动，未接管系统流量";
+            StartDurationTimer();
+            StartRealtime();
+        });
+        _ = RefreshLatenciesAsync();
+        _ = RefreshExitIpAsync(throughProxy: true, force: true);
+        _ = RefreshServiceStatusAsync();
+    }
+
+    private async Task RevertAfterTunAuthorizationAsync(string message, bool restoreConnection)
+    {
+        if (_pendingTunRevert is { } previous)
+        {
+            await ApplyTakeoverFlagsAsync(previous.SystemProxyEnabled, previous.TunEnabled).ConfigureAwait(false);
+            _pendingTunRevert = null;
+        }
+        else if (TunEnabled || _settings.TunEnabled)
+        {
+            await ApplyTakeoverFlagsAsync(_settings.SystemProxyEnabled, false).ConfigureAwait(false);
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(ApplyDisconnectedState);
+        if (restoreConnection && !TunEnabled && _profile is { Nodes.Count: > 0 })
+        {
+            try
+            {
+                await StartCoreAsync().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    ApplyDisconnectedState();
+                    StatusMessage = $"连接失败：{exception.GetBaseException().Message}";
+                    ConnectionFaultSignal++;
+                });
+                return;
+            }
+        }
+        else
+        {
+            await _settingsStore.SaveAsync(_settings).ConfigureAwait(false);
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            StatusMessage = message;
+            ConnectionFaultSignal++;
+        });
+    }
+
+    private async Task ApplyTakeoverFlagsAsync(bool systemProxyEnabled, bool tunEnabled)
+    {
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            _settings.SystemProxyEnabled = systemProxyEnabled;
+            _settings.TunEnabled = tunEnabled;
+            SystemProxyEnabled = systemProxyEnabled;
+            TunEnabled = tunEnabled;
+        });
     }
 
     public async Task SelectNodeAsync(NodeItemViewModel item)

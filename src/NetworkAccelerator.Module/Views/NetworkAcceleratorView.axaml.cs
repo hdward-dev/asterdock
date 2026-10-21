@@ -330,7 +330,7 @@ public partial class NetworkAcceleratorView : UserControl
     public NetworkAcceleratorView(IApplicationContext context, string moduleDirectory) : this()
     {
         _context = context;
-        _viewModel = new NetworkAcceleratorViewModel(context.DataDirectory, moduleDirectory);
+        _viewModel = new NetworkAcceleratorViewModel(context.DataDirectory, moduleDirectory, context.Loading);
         DataContext = _viewModel;
         AttachedToVisualTree += (_, _) =>
         {

@@ -43,7 +43,7 @@ AppBuilder.Configure<App>().UsePlatformDetect().WithInterFont().AfterSetup(build
                 new("fixture-ios", "iPhone", "mobile", 3, "DISCONNECTED", false, false, "4.41.0", false) });
             type.GetMethod("RenderDevices", flags)!.Invoke(view, null);
             var filter = (Avalonia.Controls.ComboBox)type.GetField("filter", flags)!.GetValue(view)!;
-            var rows = (Avalonia.Controls.Grid)type.GetField("deviceRows", flags)!.GetValue(view)!;
+            var rows = (URemote.Module.DeviceCardWrap)type.GetField("deviceRows", flags)!.GetValue(view)!;
             filter.SelectedIndex = 1;
             if (rows.Children.Count != 2) throw new Exception("Online filter failed.");
             filter.SelectedIndex = 0;

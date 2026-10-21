@@ -49,9 +49,11 @@ public partial class MainWindow : Window, IApplicationShell
     private ApplicationUpdate? _availableUpdate;
     private bool _discoveryLoaded;
     private readonly Dictionary<string, DateTimeOffset> _recentApplications = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HostUiSettings _uiSettings;
 
     public ILoadingService Loading => _loadingService;
     public IUserFeedbackService Feedback => _feedbackService;
+    internal UserFeedbackService FeedbackService => _feedbackService;
     public ObservableCollection<LoadedApplication> Applications { get; } = [];
     public ObservableCollection<DiscoverableApplication> DiscoverableApplications { get; } = [];
     public ObservableCollection<string> AppCategories { get; } = [];
@@ -69,16 +71,27 @@ public partial class MainWindow : Window, IApplicationShell
         _loadingService.Changed += OnLoadingServiceChanged;
         WindowLoadingOverlay.CancelRequested += (_, _) => _loadingService.Cancel();
         WindowFeedback.Service = _feedbackService;
-        var uiSettings = HostUiSettings.Load();
-        MotionPreferences.ReduceMotion = uiSettings.ReduceMotion;
-        ReduceMotionSwitch.IsChecked = uiSettings.ReduceMotion;
+        _uiSettings = HostUiSettings.Load();
+        MotionPreferences.ReduceMotion = _uiSettings.ReduceMotion;
+        ReduceMotionSwitch.IsChecked = _uiSettings.ReduceMotion;
         ReduceMotionSwitch.IsCheckedChanged += (_, _) =>
         {
             var enabled = ReduceMotionSwitch.IsChecked == true;
-            if (MotionPreferences.ReduceMotion == enabled) return;
+            if (_uiSettings.ReduceMotion == enabled) return;
+            _uiSettings.ReduceMotion = enabled;
             MotionPreferences.ReduceMotion = enabled;
-            new HostUiSettings { ReduceMotion = enabled }.Save();
+            _uiSettings.Save();
         };
+        AllowSystemNotificationsSwitch.IsChecked = _uiSettings.AllowSystemNotifications;
+        AllowSystemNotificationsSwitch.IsCheckedChanged += (_, _) =>
+        {
+            var enabled = AllowSystemNotificationsSwitch.IsChecked == true;
+            if (_uiSettings.AllowSystemNotifications == enabled) return;
+            _uiSettings.AllowSystemNotifications = enabled;
+            _uiSettings.Save();
+            _feedbackService.RefreshDelivery();
+        };
+        AttachSystemNotifications();
         DataContext = this;
         AddHandler(InputElement.KeyDownEvent, Window_KeyDown, RoutingStrategies.Tunnel);
         AddHandler(InputElement.KeyUpEvent, Window_KeyUp, RoutingStrategies.Tunnel);
@@ -95,6 +108,7 @@ public partial class MainWindow : Window, IApplicationShell
             _updateService.Dispose();
             _discoveryService.Dispose();
             _loadingService.Changed -= OnLoadingServiceChanged;
+            if (_feedbackService.SystemNotifications is IDisposable notifications) notifications.Dispose();
         };
         Deactivated += (_, _) => ResetShortcutState();
         CurrentVersionText.Text = $"v{GitHubUpdateService.CurrentVersion}";
@@ -170,6 +184,7 @@ public partial class MainWindow : Window, IApplicationShell
                 Title = $"星栈 · {application.Name}";
                 _recentApplications[application.Manifest.Id] = DateTimeOffset.Now;
                 StateChanged?.Invoke(this, EventArgs.Empty);
+                _feedbackService.RefreshDelivery();
             }
             catch (Exception exception)
             {
@@ -488,6 +503,7 @@ public partial class MainWindow : Window, IApplicationShell
         ShowSettingsSection(SettingsSection.Applications);
         WindowTitleText.Text = "星栈  ·  设置";
         Title = "星栈 · 设置";
+        _feedbackService.RefreshDelivery();
     }
 
     private void ApplicationsSettingsNav_Click(object? sender, RoutedEventArgs e)
@@ -839,6 +855,8 @@ public partial class MainWindow : Window, IApplicationShell
         base.PropertyChanged += (_, args) =>
         {
             if (args.Property == WindowStateProperty) UpdateMaximizeGlyph();
+            if (args.Property == WindowStateProperty || args.Property == IsVisibleProperty)
+                _feedbackService.RefreshDelivery();
         };
     }
 

@@ -48,10 +48,17 @@ public partial class MainWindow
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
             Content = FeedbackWindow.CreateHost(detachedView, _feedbackService)
         };
+        window.Activated += (_, _) => _feedbackService.RefreshDelivery();
+        window.PropertyChanged += (_, args) =>
+        {
+            if (args.Property == Window.WindowStateProperty || args.Property == Window.IsVisibleProperty)
+                _feedbackService.RefreshDelivery();
+        };
         window.Closed += (_, _) =>
         {
             _detachedApplications.Remove(application);
             if (!_closingDetachedApplications) application.SetWindowOwner(this);
+            _feedbackService.RefreshDelivery();
         };
         _detachedApplications.Add(application, window);
         application.SetWindowOwner(window);

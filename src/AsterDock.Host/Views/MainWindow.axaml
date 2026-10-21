@@ -437,7 +437,7 @@
                 <StackPanel Spacing="16" MaxWidth="980" HorizontalAlignment="Stretch">
                   <StackPanel Margin="2,0,0,4" Spacing="4">
                     <TextBlock Text="外观" FontSize="20" FontWeight="SemiBold"/>
-                    <TextBlock Text="调整星栈和轻应用共用的界面动态效果。"
+                    <TextBlock Text="调整星栈和轻应用共用的界面动态效果，以及窗口不在前台时的系统通知。"
                                Foreground="{DynamicResource AppMutedBrush}"/>
                   </StackPanel>
                   <Border Classes="settings-card" Padding="20">
@@ -448,6 +448,17 @@
                                    TextWrapping="Wrap" Foreground="{DynamicResource AppMutedBrush}"/>
                       </StackPanel>
                       <ToggleSwitch x:Name="ReduceMotionSwitch" Grid.Column="1" MinWidth="0"
+                                    OnContent="{x:Null}" OffContent="{x:Null}" VerticalAlignment="Center"/>
+                    </Grid>
+                  </Border>
+                  <Border Classes="settings-card" Padding="20">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <StackPanel Spacing="5" Margin="0,0,24,0">
+                        <TextBlock Text="允许系统通知" FontSize="16" FontWeight="SemiBold"/>
+                        <TextBlock Text="窗口被最小化、切到后台或轻应用页面没有打开时，把提示送到系统通知。关闭后这些提示会留到页面重新显示。"
+                                   TextWrapping="Wrap" Foreground="{DynamicResource AppMutedBrush}"/>
+                      </StackPanel>
+                      <ToggleSwitch x:Name="AllowSystemNotificationsSwitch" Grid.Column="1" MinWidth="0"
                                     OnContent="{x:Null}" OffContent="{x:Null}" VerticalAlignment="Center"/>
                     </Grid>
                   </Border>

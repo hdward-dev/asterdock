@@ -39,6 +39,7 @@ AppBuilder.Configure<GalleryApp>()
     .SetupWithoutStarting();
 RunOverlayChecks(Check);
 FeedbackChecks.Run(Check);
+SystemNotificationChecks.Run(Check);
 
 var exportIndex = Array.IndexOf(args, "--export");
 var feedbackExport = Array.IndexOf(args, "--export-feedback");

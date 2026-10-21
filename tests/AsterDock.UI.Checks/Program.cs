@@ -230,6 +230,10 @@ static void RunOverlayChecks(Action<bool, string> check)
     overlay.IsLoading = true;
     Dispatcher.UIThread.RunJobs();
     check(!overlay.IsPresented, "overlay waits out DelayMs");
+    var waitingIndicator = overlay.GetVisualDescendants().OfType<AdLoadingIndicator>().FirstOrDefault();
+    waitingIndicator?.NudgeClock();
+    LoadingClock.TickAll();
+    check(waitingIndicator?.IsClockActive == true, "indicator stays on the clock while the scrim is delayed");
     overlay.DelayMs = 0;
     Dispatcher.UIThread.RunJobs();
     check(overlay.IsPresented, "zero DelayMs presents on the next request update");

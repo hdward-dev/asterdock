@@ -41,7 +41,8 @@ internal static class LoadingClock
     {
         if (_timer is null)
         {
-            _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+            // Background priority is starved by software rendering and acrylic glass, which freezes the arc.
+            _timer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(16) };
             _timer.Tick += (_, _) => Dispatch(Now);
         }
 
@@ -56,7 +57,11 @@ internal static class LoadingClock
         {
             for (var i = Subscribers.Count - 1; i >= 0; i--)
             {
-                if (!Subscribers[i].OnClock(now)) Subscribers.RemoveAt(i);
+                if (i >= Subscribers.Count) continue;
+                var client = Subscribers[i];
+                if (client.OnClock(now)) continue;
+                var index = Subscribers.IndexOf(client);
+                if (index >= 0) Subscribers.RemoveAt(index);
             }
         }
         finally

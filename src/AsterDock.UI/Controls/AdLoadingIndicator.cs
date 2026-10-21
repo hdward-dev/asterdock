@@ -135,7 +135,7 @@ public class AdLoadingIndicator : TemplatedControl, ILoadingClockClient
 
     bool ILoadingClockClient.OnClock(TimeSpan now)
     {
-        if (VisualRoot is null || !IsEffectivelyVisible || !WantsFrames)
+        if (VisualRoot is null || !WantsFrames)
         {
             _subscribed = false;
             return false;
@@ -293,16 +293,24 @@ public class AdLoadingIndicator : TemplatedControl, ILoadingClockClient
 
     private bool IsDark => ActualThemeVariant == Avalonia.Styling.ThemeVariant.Dark;
 
+    internal bool IsClockActive => _subscribed;
+
+    internal void NudgeClock()
+    {
+        EnsureRunning();
+        _mark?.InvalidateVisual();
+    }
+
     private void EnsureRunning()
     {
-        if (_subscribed || !WantsFrames || VisualRoot is null || !IsEffectivelyVisible) return;
+        if (_subscribed || !WantsFrames || VisualRoot is null) return;
         _subscribed = true;
         LoadingClock.Subscribe(this);
     }
 
     private void UpdateClockSubscription()
     {
-        if (WantsFrames && VisualRoot is not null && IsEffectivelyVisible) EnsureRunning();
+        if (WantsFrames && VisualRoot is not null) EnsureRunning();
         else
         {
             LoadingClock.Unsubscribe(this);

@@ -198,6 +198,7 @@ public class AdLoadingOverlay : ContentControl, ILoadingClockClient
         {
             _scrim.IsVisible = true;
             ApplyBlur(true);
+            NudgeIndicatorClock();
             if (!animate || MotionPreferences.ReduceMotion)
             {
                 _fade = FadeKind.None;
@@ -301,6 +302,8 @@ public class AdLoadingOverlay : ContentControl, ILoadingClockClient
         _scale.ScaleX = value;
         _scale.ScaleY = value;
     }
+
+    private void NudgeIndicatorClock() => _indicator?.NudgeClock();
 
     private void StartClock()
     {

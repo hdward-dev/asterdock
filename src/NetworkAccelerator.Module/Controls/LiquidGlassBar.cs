@@ -6,28 +6,39 @@ using Avalonia.Animation;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
 using Avalonia.Media;
-using Avalonia.Styling;
 using Avalonia.Media.Imaging;
+using Avalonia.Rendering.SceneGraph;
+using Avalonia.Skia;
+using Avalonia.Styling;
 using Avalonia.Threading;
+using Fluid.Avalonia.Acrylic;
 
 namespace NetworkAccelerator.Module.Controls;
 
 /// <summary>
-/// Floating capsule drawn over the page. Avalonia 12 has no in-window backdrop
-/// blur of sibling content (experimental acrylic samples the window background),
-/// so this snapshots only the page region behind the bar and blurs that bitmap.
-/// The snapshot is refreshed on scroll, layout, and navigation, not every frame.
+/// Floating capsule drawn over the page. Prefers a Fluid <see cref="AcrylicSurface"/>
+/// (low blur, no refraction). Falls back to a page snapshot blurred with
+/// <see cref="BlurEffect"/> when software Skia or the frame budget is too slow,
+/// and stays on that path for the process until <see cref="ResetSessionChoice"/>.
 /// </summary>
 public class LiquidGlassBar : Decorator
 {
     public const double Corner = 24;
     public const double BackdropBlurRadius = 8;
     public const double SlowBackdropBlurRadius = 5;
+    public const double AcrylicBlurRadius = 4;
+    public const double AcrylicVibrancy = 1;
+    public const double AcrylicHighlightOpacity = 0.4;
     private const double Pad = 16;
-    private const double SlowSnapshotMs = 40;
     private const double HoverScale = 1.015;
     private const double PressScale = 1.02;
+
+    private static readonly List<WeakReference<LiquidGlassBar>> LiveBars = new();
+    private static NavGlassPath _session = NavGlassPath.Pending;
+    private static bool _softwareStaticKnown;
+    private static bool? _softwareStatic;
 
     private static readonly MethodInfo? RenderVisual = typeof(RenderTargetBitmap).Assembly
         .GetType("Avalonia.Rendering.ImmediateRenderer")
@@ -57,6 +68,51 @@ public class LiquidGlassBar : Decorator
     private int _captureGeneration;
     private double _radius = BackdropBlurRadius;
     private double _scaleCap = 1;
+    private Control? _payload;
+    private AcrylicSurface? _acrylic;
+    private NavGlassPath _path = NavGlassPath.Pending;
+    private bool _probeDone;
+    private bool _probeFailed;
+    private double _probeMs;
+    private bool _rendererKnown;
+    private bool? _software;
+    private bool _rendererGracePosted;
+    private bool _adoptPosted;
+    private bool _watching;
+    private int _watchSerial;
+    private int _slowStreak;
+    private int _watchedFrames;
+    private long _surfaceFailuresAtWatch;
+    private TimeSpan? _lastFrame;
+
+    /// <summary>Process-wide glass path. Approximate stays put until <see cref="ResetSessionChoice"/>.</summary>
+    public static NavGlassPath SessionPath => _session;
+
+    /// <summary>
+    /// When set, the next undecided bar uses this probe instead of measuring.
+    /// Ignored once the session has already chosen. Cleared by <see cref="ResetSessionChoice"/>.
+    /// </summary>
+    public static NavGlassProbe? ProbeOverride { get; set; }
+
+    public static void ResetSessionChoice()
+    {
+        _session = NavGlassPath.Pending;
+        ProbeOverride = null;
+        _softwareStaticKnown = false;
+        _softwareStatic = null;
+    }
+
+    public NavGlassPath ActivePath => _path;
+
+    public bool? SoftwareRenderer => _software;
+
+    public bool RendererKnown => _rendererKnown;
+
+    /// <summary>
+    /// Light frost over AppPageBrush (#F5F7FA) and the same slate the approximate veil uses in the dark theme.
+    /// </summary>
+    public static Color CreateAcrylicTint(bool dark) =>
+        dark ? Color.FromArgb(0x99, 0x2A, 0x3A, 0x52) : Color.FromArgb(0x73, 0xF5, 0xF7, 0xFA);
 
     public LiquidGlassBar()
     {
@@ -121,6 +177,10 @@ public class LiquidGlassBar : Decorator
 
     public override void Render(DrawingContext context)
     {
+        if (_attached && ProbeOverride is null && !_rendererKnown && _session == NavGlassPath.Pending)
+            context.Custom(new RendererProbe(this, Bounds.Size));
+        if (_path == NavGlassPath.Acrylic) return;
+
         var rect = new Rect(Bounds.Size);
         if (rect.Width < 1 || rect.Height < 1) return;
         var shape = new RoundedRect(rect, Corner);
@@ -165,18 +225,39 @@ public class LiquidGlassBar : Decorator
         _attached = true;
         DashboardMotion.Changed += OnMotionChanged;
         WatchChrome();
-        Schedule();
+        lock (LiveBars) LiveBars.Add(new WeakReference<LiquidGlassBar>(this));
+        if (_softwareStaticKnown)
+        {
+            _rendererKnown = true;
+            _software = _softwareStatic;
+        }
+
+        if (_session == NavGlassPath.Approximate)
+            EnterApproximate();
+        else if (_session == NavGlassPath.Acrylic)
+            PostAdoptAcrylic();
+        else if (ProbeOverride is { } probe)
+            ApplyProbe(probe);
+        else
+            Schedule();
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         _attached = false;
+        _watching = false;
+        _watchSerial++;
+        _adoptPosted = false;
         DashboardMotion.Changed -= OnMotionChanged;
         _hovered = false;
         _pressed = false;
         ReleaseChrome();
         _captureGeneration++;
         _queued = false;
+        lock (LiveBars)
+        {
+            LiveBars.RemoveAll(weak => !weak.TryGetTarget(out var bar) || ReferenceEquals(bar, this));
+        }
         Backdrop = null;
         _frame?.Dispose();
         _frame = null;
@@ -193,6 +274,7 @@ public class LiquidGlassBar : Decorator
 
     private void Schedule()
     {
+        if (_path == NavGlassPath.Acrylic || _session == NavGlassPath.Acrylic) return;
         if (!_attached || _queued) return;
         _queued = true;
         var generation = _captureGeneration;
@@ -215,6 +297,7 @@ public class LiquidGlassBar : Decorator
             BackdropBlurActive = false;
             SnapshotNote = "no in-window blur API";
             InvalidateVisual();
+            FinishProbe(0, failed: true);
             return;
         }
 
@@ -257,24 +340,26 @@ public class LiquidGlassBar : Decorator
             BackdropBlurActive = true;
             SnapshotMilliseconds = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             SnapshotNote = $"blur radius {_radius:0.#} scale {scale:0.00} in {SnapshotMilliseconds:0.0} ms";
-            if (SnapshotMilliseconds > SlowSnapshotMs && _radius > SlowBackdropBlurRadius)
+            if (SnapshotMilliseconds > NavGlassChoice.SlowMilliseconds && _radius > SlowBackdropBlurRadius)
             {
                 _radius = SlowBackdropBlurRadius;
                 SnapshotNote += " (next snapshot uses radius 5)";
             }
-            else if (SnapshotMilliseconds > SlowSnapshotMs && _scaleCap > 0.6)
+            else if (SnapshotMilliseconds > NavGlassChoice.SlowMilliseconds && _scaleCap > 0.6)
             {
                 _scaleCap = 0.6;
                 SnapshotNote += " (next snapshot scale capped)";
             }
 
             InvalidateVisual();
+            FinishProbe(SnapshotMilliseconds, failed: false);
         }
         catch (Exception ex)
         {
             BackdropBlurActive = false;
             SnapshotNote = ex.GetBaseException().Message;
             InvalidateVisual();
+            FinishProbe(SnapshotMilliseconds, failed: true);
         }
         finally
         {
@@ -356,6 +441,8 @@ public class LiquidGlassBar : Decorator
                 }
             ]);
         _outer = CreateOuterShadow(dark, _hovered, _pressed);
+        if (_acrylic is not null)
+            _acrylic.TintColor = CreateAcrylicTint(dark);
         InvalidateVisual();
     }
 
@@ -487,5 +574,392 @@ public class LiquidGlassBar : Decorator
     {
         var chrome = NavChrome();
         return chrome is not null && chrome.BoxShadow.Count > 0;
+    }
+
+    /// <summary>
+    /// Records one frame interval while acrylic is up. Three consecutive intervals over
+    /// <see cref="NavGlassChoice.SlowMilliseconds"/> retire acrylic for the session.
+    /// Gaps of 500ms or more reset the streak so a stalled frame does not count as glass cost.
+    /// </summary>
+    public bool ReportFrameMilliseconds(double milliseconds)
+    {
+        if (_session == NavGlassPath.Approximate || _path != NavGlassPath.Acrylic)
+            return false;
+        if (double.IsNaN(milliseconds) || milliseconds >= 500)
+        {
+            _slowStreak = 0;
+            return false;
+        }
+
+        _watchedFrames++;
+        if (milliseconds > NavGlassChoice.SlowMilliseconds)
+            _slowStreak++;
+        else
+            _slowStreak = 0;
+
+        if (NavGlassChoice.SustainedSlow(_slowStreak))
+        {
+            LockApproximate("sustained frame cost");
+            return true;
+        }
+
+        if (_watchedFrames >= NavGlassChoice.StableFramesBeforeLock)
+            _watching = false;
+        return false;
+    }
+
+    private void ApplyProbe(NavGlassProbe probe)
+    {
+        _software = probe.SoftwareRenderer;
+        _rendererKnown = true;
+        _probeDone = true;
+        _probeFailed = probe.Failed;
+        _probeMs = probe.SnapshotMilliseconds;
+        TryDecide();
+    }
+
+    private void FinishProbe(double milliseconds, bool failed)
+    {
+        if (_probeDone || _session != NavGlassPath.Pending || ProbeOverride is not null)
+            return;
+        _probeDone = true;
+        _probeFailed = failed;
+        _probeMs = milliseconds;
+        if (!_rendererKnown)
+            GraceRenderer();
+        else
+            TryDecide();
+    }
+
+    private void GraceRenderer()
+    {
+        if (_rendererKnown || _rendererGracePosted) return;
+        _rendererGracePosted = true;
+        InvalidateVisual();
+        var generation = _captureGeneration;
+        var weak = new WeakReference<LiquidGlassBar>(this);
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!weak.TryGetTarget(out var bar) || !bar._attached || bar._captureGeneration != generation)
+                return;
+            bar._rendererGracePosted = false;
+            if (SessionPath != NavGlassPath.Pending) return;
+            if (!bar._rendererKnown)
+            {
+                bar._rendererKnown = true;
+                bar._software = _softwareStaticKnown ? _softwareStatic : null;
+            }
+
+            bar.TryDecide();
+        }, DispatcherPriority.Background);
+    }
+
+    private void NoteRenderer(bool? software)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+            ApplyRenderer(software);
+        else
+        {
+            var weak = new WeakReference<LiquidGlassBar>(this);
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (weak.TryGetTarget(out var bar)) bar.ApplyRenderer(software);
+            });
+        }
+    }
+
+    private void ApplyRenderer(bool? software)
+    {
+        if (_rendererKnown && _software == software) return;
+        _rendererKnown = true;
+        _software = software;
+        _softwareStaticKnown = true;
+        _softwareStatic = software;
+        TryDecide();
+    }
+
+    private void TryDecide()
+    {
+        if (!_attached) return;
+        if (_session == NavGlassPath.Approximate)
+        {
+            if (_path != NavGlassPath.Approximate)
+                EnterApproximate();
+            return;
+        }
+
+        if (_session == NavGlassPath.Acrylic)
+        {
+            if (_path != NavGlassPath.Acrylic)
+                PostAdoptAcrylic();
+            return;
+        }
+
+        if (!_probeDone || !_rendererKnown) return;
+        var probe = new NavGlassProbe(_software, _probeMs, _probeFailed);
+        if (NavGlassChoice.UseApproximate(probe))
+            LockApproximate(probe.Failed ? "probe failed" : "slow capture");
+        else
+            PostAdoptAcrylic();
+    }
+
+    private void LockApproximate(string reason)
+    {
+        var already = _session == NavGlassPath.Approximate;
+        _session = NavGlassPath.Approximate;
+        SnapshotNote = reason;
+        if (!already)
+        {
+            LiquidGlassBar[] bars;
+            lock (LiveBars)
+            {
+                bars = LiveBars
+                    .Select(weak => weak.TryGetTarget(out var bar) ? bar : null)
+                    .OfType<LiquidGlassBar>()
+                    .ToArray();
+            }
+
+            foreach (var bar in bars)
+                bar.EnterApproximate();
+            return;
+        }
+
+        EnterApproximate();
+    }
+
+    private void EnterApproximate()
+    {
+        _watching = false;
+        _watchSerial++;
+        var fromAcrylic = _acrylic is not null;
+        _path = NavGlassPath.Approximate;
+        if (_acrylic is not null)
+        {
+            var payload = _payload ?? _acrylic.Content as Control;
+            _acrylic.Content = null;
+            if (ReferenceEquals(Child, _acrylic))
+                Child = payload;
+            _acrylic = null;
+            _radius = BackdropBlurRadius;
+            _scaleCap = 1;
+        }
+
+        if (fromAcrylic)
+            SnapshotNote = "approximate blur";
+        InvalidateVisual();
+        if (_attached)
+            Schedule();
+    }
+
+    private void PostAdoptAcrylic()
+    {
+        if (_path == NavGlassPath.Acrylic && _acrylic is not null)
+        {
+            if (!_watching && ProbeOverride is null && _watchedFrames < NavGlassChoice.StableFramesBeforeLock)
+                BeginWatch();
+            return;
+        }
+        if (_session == NavGlassPath.Approximate)
+        {
+            EnterApproximate();
+            return;
+        }
+
+        if (_adoptPosted) return;
+        _adoptPosted = true;
+        var generation = _captureGeneration;
+        var weak = new WeakReference<LiquidGlassBar>(this);
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!weak.TryGetTarget(out var bar)) return;
+            bar._adoptPosted = false;
+            if (!bar._attached || bar._captureGeneration != generation) return;
+            if (_session == NavGlassPath.Approximate)
+            {
+                bar.EnterApproximate();
+                return;
+            }
+
+            bar.EnterAcrylic();
+        });
+    }
+
+    private void EnterAcrylic()
+    {
+        if (_session == NavGlassPath.Approximate)
+        {
+            EnterApproximate();
+            return;
+        }
+
+        try
+        {
+            RememberPayload();
+            if (_acrylic is null)
+            {
+                var surface = CreateAcrylicSurface();
+                if (ReferenceEquals(Child, _payload))
+                    Child = null;
+                surface.Content = _payload;
+                _acrylic = surface;
+                Child = surface;
+            }
+
+            ExcludeAcrylicFromCapture();
+            ApplyAcrylicTint();
+            _path = NavGlassPath.Acrylic;
+            _session = NavGlassPath.Acrylic;
+            _captureGeneration++;
+            _queued = false;
+            _frame?.Dispose();
+            _frame = null;
+            BackdropBlurActive = false;
+            SnapshotNote = $"acrylic blur {AcrylicBlurRadius:0.#} vibrancy {AcrylicVibrancy:0.#}";
+            InvalidateVisual();
+            BeginWatch();
+        }
+        catch (Exception ex)
+        {
+            if (_acrylic is not null)
+            {
+                _acrylic.Content = null;
+                _acrylic = null;
+            }
+
+            if (Child is null)
+                Child = _payload;
+            LockApproximate(ex.GetBaseException().Message);
+        }
+    }
+
+    private void RememberPayload()
+    {
+        if (_payload is not null) return;
+        _payload = Child is AcrylicSurface ? null : Child;
+    }
+
+    private AcrylicSurface CreateAcrylicSurface()
+    {
+        var surface = new AcrylicSurface
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Stretch,
+            CornerRadius = new CornerRadius(Corner),
+            BlurRadius = AcrylicBlurRadius,
+            Vibrancy = AcrylicVibrancy,
+            RefractionHeight = 0,
+            RefractionAmount = 0,
+            ChromaticAberration = false,
+            RevealBorderEnabled = false,
+            ShadowEnabled = false,
+            ProgressiveBlurEnabled = false,
+            AdaptiveLuminanceEnabled = false,
+            DepthEffect = false,
+            HighlightEnabled = true,
+            HighlightOpacity = AcrylicHighlightOpacity,
+            HighlightWidth = 0.6
+        };
+        AcrylicBackdrop.SetIsExcludedFromCapture(surface, true);
+        return surface;
+    }
+
+    private void ExcludeAcrylicFromCapture()
+    {
+        if (_acrylic is not null)
+            AcrylicBackdrop.SetIsExcludedFromCapture(_acrylic, true);
+        AcrylicBackdrop.SetIsExcludedFromCapture(this, true);
+        var chrome = NavChrome();
+        if (chrome is not null)
+            AcrylicBackdrop.SetIsExcludedFromCapture(chrome, true);
+    }
+
+    private void ApplyAcrylicTint()
+    {
+        if (_acrylic is null) return;
+        var dark = ActualThemeVariant == ThemeVariant.Dark;
+        _acrylic.TintColor = CreateAcrylicTint(dark);
+    }
+
+    private void BeginWatch()
+    {
+        if (ProbeOverride is not null) return;
+        var top = TopLevel.GetTopLevel(this);
+        if (top is null) return;
+        _watching = true;
+        _watchSerial++;
+        _slowStreak = 0;
+        _watchedFrames = 0;
+        _lastFrame = null;
+        _surfaceFailuresAtWatch = AcrylicDiagnostics.Snapshot.FilterSurfaceFailures;
+        var serial = _watchSerial;
+        var weak = new WeakReference<LiquidGlassBar>(this);
+        top.RequestAnimationFrame(time =>
+        {
+            if (weak.TryGetTarget(out var bar))
+                bar.OnFrame(time, serial);
+        });
+    }
+
+    private void OnFrame(TimeSpan time, int serial)
+    {
+        if (!_watching || !_attached || serial != _watchSerial || _path != NavGlassPath.Acrylic)
+            return;
+        if (AcrylicDiagnostics.Snapshot.FilterSurfaceFailures > _surfaceFailuresAtWatch)
+        {
+            LockApproximate("acrylic frame failed");
+            return;
+        }
+
+        if (_lastFrame is { } previous && ReportFrameMilliseconds((time - previous).TotalMilliseconds))
+            return;
+        if (!_watching || _path != NavGlassPath.Acrylic) return;
+        _lastFrame = time;
+        var top = TopLevel.GetTopLevel(this);
+        if (top is null) return;
+        var weak = new WeakReference<LiquidGlassBar>(this);
+        top.RequestAnimationFrame(next =>
+        {
+            if (weak.TryGetTarget(out var bar))
+                bar.OnFrame(next, serial);
+        });
+    }
+
+    private sealed class RendererProbe : ICustomDrawOperation
+    {
+        private readonly WeakReference<LiquidGlassBar> _bar;
+
+        public RendererProbe(LiquidGlassBar bar, Size size)
+        {
+            _bar = new WeakReference<LiquidGlassBar>(bar);
+            Bounds = new Rect(size);
+        }
+
+        public Rect Bounds { get; }
+
+        public bool HitTest(Point point) => false;
+
+        public void Dispose()
+        {
+        }
+
+        public bool Equals(ICustomDrawOperation? other) => ReferenceEquals(this, other);
+
+        public void Render(ImmediateDrawingContext context)
+        {
+            if (!_bar.TryGetTarget(out var bar)) return;
+            try
+            {
+                var feature = context.TryGetFeature<ISkiaSharpApiLeaseFeature>();
+                if (feature is null) return;
+                using var lease = feature.Lease();
+                bar.NoteRenderer(lease.GrContext is null);
+            }
+            catch (Exception)
+            {
+                // A later render can still lease Skia. Unknown is decided by the grace callback.
+            }
+        }
     }
 }

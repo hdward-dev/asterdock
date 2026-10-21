@@ -47,9 +47,10 @@
     <ProjectReference Include="../URemote.Module/URemote.Module.csproj"
                       Condition="'$(BundleApplications)' == 'true'" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
-    <PackageReference Include="Avalonia" Version="12.1.0" />
-    <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.0" />
+    <PackageReference Include="Avalonia" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.2" />
+    <PackageReference Include="Fluid.Avalonia.Acrylic" Version="1.4.0" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="AsterDock.Host.Checks" />

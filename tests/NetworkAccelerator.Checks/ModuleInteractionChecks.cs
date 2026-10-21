@@ -13,6 +13,7 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using NetworkAccelerator.Core.Models;
+using Fluid.Avalonia.Acrylic;
 using NetworkAccelerator.Module.Controls;
 using NetworkAccelerator.Module.ViewModels;
 using NetworkAccelerator.Module.Views;
@@ -82,6 +83,7 @@ static class ModuleInteractionChecks
         {
             DashboardMotion.ReduceMotion = false;
             MotionClock.Manual = true;
+            CheckNavGlassChoice(check);
             CheckPageSurvivesDetach(check);
             CheckSwitchSurvivesDetach(check);
             CheckCustomHitTargets(check);
@@ -91,8 +93,159 @@ static class ModuleInteractionChecks
         }
         finally
         {
+            LiquidGlassBar.ResetSessionChoice();
             DashboardMotion.ReduceMotion = reduceMotion;
             MotionClock.Manual = manual;
+        }
+    }
+
+    private static void CheckNavGlassChoice(Action<bool, string> check)
+    {
+        check(NavGlassChoice.SlowMilliseconds == 40, "nav glass treats a capture over 40ms as slow");
+        check(NavGlassChoice.UseApproximate(new NavGlassProbe(true, 41, false)),
+            "software rendering with a slow snapshot uses the approximate nav");
+        check(!NavGlassChoice.UseApproximate(NavGlassProbe.FastSoftware),
+            "a fast software snapshot still tries acrylic");
+        check(!NavGlassChoice.UseApproximate(new NavGlassProbe(false, 80, false)),
+            "a gpu renderer keeps acrylic when only the cpu snapshot was slow");
+        check(NavGlassChoice.UseApproximate(new NavGlassProbe(null, 41, false)),
+            "an unknown renderer with a slow snapshot does not guess acrylic");
+        check(!NavGlassChoice.UseApproximate(new NavGlassProbe(null, 40, false)),
+            "a snapshot of 40ms is still inside the budget");
+        check(NavGlassChoice.UseApproximate(new NavGlassProbe(false, 1, true)),
+            "a failed probe uses the approximate nav");
+        check(!NavGlassChoice.SustainedSlow(2) && NavGlassChoice.SustainedSlow(3),
+            "acrylic retires after three slow frames, not two");
+        var light = LiquidGlassBar.CreateAcrylicTint(false);
+        var dark = LiquidGlassBar.CreateAcrylicTint(true);
+        check(light.R == 0xF5 && light.G == 0xF7 && light.B == 0xFA && light.A == 0x73,
+            "acrylic light tint follows the page frost");
+        check(dark.R == 0x2A && dark.G == 0x3A && dark.B == 0x52 && dark.A == 0x99,
+            "acrylic dark tint follows the approximate slate veil");
+
+        LiquidGlassBar.ResetSessionChoice();
+        LiquidGlassBar.ProbeOverride = NavGlassProbe.FastSoftware;
+        var previousTheme = Application.Current?.RequestedThemeVariant;
+        Window? window = null;
+        Window? follow = null;
+        try
+        {
+            if (Application.Current is not null)
+                Application.Current.RequestedThemeVariant = ThemeVariant.Light;
+            var view = new NetworkAcceleratorView { Width = 1100, Height = 820 };
+            window = new Window
+            {
+                Width = 1100,
+                Height = 820,
+                Content = view,
+                WindowDecorations = WindowDecorations.None
+            };
+            window.Show();
+            Settle(window);
+            var glass = view.FindControl<LiquidGlassBar>("NavGlass")!;
+            var surface = glass.GetVisualDescendants().OfType<AcrylicSurface>().Single();
+            check(glass.ActivePath == NavGlassPath.Acrylic && LiquidGlassBar.SessionPath == NavGlassPath.Acrylic,
+                "a fast probe installs acrylic for the session");
+            check(surface.BlurRadius == LiquidGlassBar.AcrylicBlurRadius
+                  && Math.Abs(surface.Vibrancy - LiquidGlassBar.AcrylicVibrancy) < 0.001,
+                "acrylic nav uses a short blur and modest vibrancy");
+            check(surface.RefractionHeight == 0 && surface.RefractionAmount == 0
+                  && !surface.ChromaticAberration && !surface.RevealBorderEnabled && !surface.ShadowEnabled,
+                "acrylic nav turns off refraction, chromatic aberration, reveal, and its own shadow");
+            check(Math.Abs(surface.HighlightOpacity - LiquidGlassBar.AcrylicHighlightOpacity) < 0.001,
+                "acrylic nav keeps a light edge highlight");
+            check(surface.CornerRadius == new CornerRadius(LiquidGlassBar.Corner), "acrylic nav keeps the 24 corner");
+            check(surface.TintColor == LiquidGlassBar.CreateAcrylicTint(false), "acrylic nav uses the light tint");
+            check(AcrylicBackdrop.GetIsExcludedFromCapture(surface)
+                  && AcrylicBackdrop.GetIsExcludedFromCapture(glass)
+                  && AcrylicBackdrop.GetIsExcludedFromCapture(view.FindControl<Border>("NavChrome")!),
+                "acrylic nav is excluded from its own backdrop capture");
+            var overview = NamedButton(view, "概览");
+            check(overview.Focusable && overview.GetVisualAncestors().OfType<AcrylicSurface>().Any(),
+                "section buttons stay focusable inside the acrylic surface");
+            check(Hits(window, overview, Center(overview)), "section button still hit-tests through acrylic");
+            overview.Focus();
+            Settle(window);
+            check(overview.IsFocused, "section button takes keyboard focus through acrylic");
+
+            if (Application.Current is not null)
+                Application.Current.RequestedThemeVariant = ThemeVariant.Dark;
+            Settle(window);
+            check(surface.TintColor == LiquidGlassBar.CreateAcrylicTint(true), "acrylic nav follows the dark tint");
+
+            check(!glass.ReportFrameMilliseconds(50), "one slow acrylic frame keeps the effect");
+            check(!glass.ReportFrameMilliseconds(10), "a fast frame clears the slow streak");
+            check(!glass.ReportFrameMilliseconds(50) && !glass.ReportFrameMilliseconds(50),
+                "two slow frames after a reset stay on acrylic");
+            check(glass.ReportFrameMilliseconds(50), "the third consecutive slow frame retires acrylic");
+            Settle(window);
+            check(glass.ActivePath == NavGlassPath.Approximate
+                  && LiquidGlassBar.SessionPath == NavGlassPath.Approximate
+                  && !glass.GetVisualDescendants().OfType<AcrylicSurface>().Any(),
+                "retired nav glass is the approximate capsule again");
+            check(Hits(window, overview, Center(overview)), "section button still hit-tests after the fallback");
+            window.Close();
+            window = null;
+
+            LiquidGlassBar.ProbeOverride = NavGlassProbe.FastSoftware;
+            var again = new NetworkAcceleratorView { Width = 1100, Height = 820 };
+            follow = new Window
+            {
+                Width = 1100,
+                Height = 820,
+                Content = again,
+                WindowDecorations = WindowDecorations.None
+            };
+            follow.Show();
+            Settle(follow);
+            var followGlass = again.FindControl<LiquidGlassBar>("NavGlass")!;
+            check(followGlass.ActivePath == NavGlassPath.Approximate
+                  && !followGlass.GetVisualDescendants().OfType<AcrylicSurface>().Any(),
+                "a later nav stays on the approximate glass for the session");
+            follow.Close();
+            follow = null;
+
+            LiquidGlassBar.ResetSessionChoice();
+            var probedView = new NetworkAcceleratorView { Width = 1100, Height = 820 };
+            window = new Window
+            {
+                Width = 1100,
+                Height = 820,
+                Content = probedView,
+                WindowDecorations = WindowDecorations.None
+            };
+            window.Show();
+            Settle(window);
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick(3);
+            Dispatcher.UIThread.RunJobs(DispatcherPriority.Background);
+            Settle(window);
+            var probed = probedView.FindControl<LiquidGlassBar>("NavGlass")!;
+            check(probed.RendererKnown && probed.ActivePath != NavGlassPath.Pending,
+                "nav glass reads the Skia lease and chooses acrylic or the approximate fallback");
+            if (probed.SoftwareRenderer == true && probed.SnapshotMilliseconds > NavGlassChoice.SlowMilliseconds)
+                check(probed.ActivePath == NavGlassPath.Approximate,
+                    "a slow software lease stays on the approximate nav");
+            if (probed.ActivePath == NavGlassPath.Acrylic)
+            {
+                var section = NamedButton(probedView, "代理");
+                window.Content = null;
+                Settle(window);
+                window.Content = probedView;
+                Settle(window);
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick(1);
+                check(probed.ActivePath == NavGlassPath.Acrylic
+                      && Hits(window, section, Center(section)),
+                    "acrylic nav keeps section buttons after detach and reattach");
+            }
+        }
+        finally
+        {
+            window?.Close();
+            follow?.Close();
+            LiquidGlassBar.ResetSessionChoice();
+            LiquidGlassBar.ProbeOverride = NavGlassProbe.SlowSoftware;
+            if (Application.Current is not null)
+                Application.Current.RequestedThemeVariant = previousTheme;
         }
     }
 

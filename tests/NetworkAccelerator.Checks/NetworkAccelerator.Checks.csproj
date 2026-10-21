@@ -7,8 +7,9 @@
     <ProjectReference Include="../../src/NetworkAccelerator.Core/NetworkAccelerator.Core.csproj" />
     <ProjectReference Include="../../src/NetworkAccelerator.Module/NetworkAccelerator.Module.csproj" />
     <ProjectReference Include="../../src/AsterDock.UI/AsterDock.UI.csproj" />
-    <PackageReference Include="Avalonia.Headless" Version="12.1.0" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.0" />
-    <PackageReference Include="Avalonia.Skia" Version="12.1.0" />
+    <PackageReference Include="Avalonia.Headless" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.2" />
+    <PackageReference Include="Fluid.Avalonia.Acrylic" Version="1.4.0" />
   </ItemGroup>
 </Project>

@@ -6,8 +6,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\AsterDock.Contracts\AsterDock.Contracts.csproj" />
-    <PackageReference Include="Avalonia" Version="12.1.0" />
-    <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
+    <PackageReference Include="Avalonia" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.2" />
   </ItemGroup>
   <ItemGroup>
     <None Update="app.json" CopyToOutputDirectory="PreserveNewest" />

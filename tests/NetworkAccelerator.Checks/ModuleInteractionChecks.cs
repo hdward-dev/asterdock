@@ -147,13 +147,19 @@ static class ModuleInteractionChecks
             check(glass.ActivePath == NavGlassPath.Acrylic && LiquidGlassBar.SessionPath == NavGlassPath.Acrylic,
                 "a fast probe installs acrylic for the session");
             check(surface.BlurRadius == LiquidGlassBar.AcrylicBlurRadius
-                  && Math.Abs(surface.Vibrancy - LiquidGlassBar.AcrylicVibrancy) < 0.001,
-                "acrylic nav uses a short blur and modest vibrancy");
-            check(surface.RefractionHeight == 0 && surface.RefractionAmount == 0
-                  && !surface.ChromaticAberration && !surface.RevealBorderEnabled && !surface.ShadowEnabled,
-                "acrylic nav turns off refraction, chromatic aberration, reveal, and its own shadow");
-            check(Math.Abs(surface.HighlightOpacity - LiquidGlassBar.AcrylicHighlightOpacity) < 0.001,
-                "acrylic nav keeps a light edge highlight");
+                  && Math.Abs(surface.Vibrancy - LiquidGlassBar.AcrylicVibrancy) < 0.001
+                  && Math.Abs(surface.Brightness - LiquidGlassBar.AcrylicBrightness) < 0.001,
+                "acrylic nav uses the Fluid demo frost");
+            check(surface.RefractionHeight == LiquidGlassBar.AcrylicRefractionHeight
+                  && surface.RefractionAmount == LiquidGlassBar.AcrylicRefractionAmount
+                  && !surface.ChromaticAberration && !surface.RevealBorderEnabled,
+                "acrylic nav keeps Fluid refraction and leaves chromatic aberration and reveal off");
+            check(surface.HighlightEnabled && surface.ShadowEnabled
+                  && Math.Abs(surface.HighlightOpacity - 0.5) < 0.001
+                  && Math.Abs(surface.HighlightWidth - 0.5) < 0.001,
+                "acrylic nav keeps Fluid highlight and drop shadow");
+            check(view.FindControl<Border>("NavChrome")!.BoxShadow.Count == 0,
+                "nav chrome does not stack a second shadow over Fluid's");
             check(surface.CornerRadius == new CornerRadius(LiquidGlassBar.Corner), "acrylic nav keeps the 24 corner");
             check(surface.TintColor == LiquidGlassBar.CreateAcrylicTint(false), "acrylic nav uses the light tint");
             check(AcrylicBackdrop.GetIsExcludedFromCapture(surface)
@@ -161,6 +167,13 @@ static class ModuleInteractionChecks
                   && AcrylicBackdrop.GetIsExcludedFromCapture(view.FindControl<Border>("NavChrome")!),
                 "acrylic nav is excluded from its own backdrop capture");
             var overview = NamedButton(view, "概览");
+            foreach (var button in view.FindControl<StackPanel>("SectionNavigation")!.Children.OfType<Button>())
+            {
+                var name = AutomationProperties.GetName(button);
+                check(!string.IsNullOrEmpty(name) && ToolTip.GetTip(button) is null,
+                    name + " keeps its accessible name and has no hover tip");
+            }
+
             check(overview.Focusable && overview.GetVisualAncestors().OfType<AcrylicSurface>().Any(),
                 "section buttons stay focusable inside the acrylic surface");
             check(Hits(window, overview, Center(overview)), "section button still hit-tests through acrylic");

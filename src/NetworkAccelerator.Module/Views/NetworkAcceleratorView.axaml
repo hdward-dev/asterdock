@@ -152,7 +152,6 @@
       <Setter Property="ClipToBounds" Value="False"/>
       <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
       <Setter Property="RenderTransform" Value="scale(1)"/>
-      <Setter Property="BoxShadow" Value="0 4 24 0 #1A000000"/>
       <Setter Property="Transitions">
         <Transitions>
           <BoxShadowsTransition Property="BoxShadow" Duration="0:0:0.16"/>
@@ -160,29 +159,14 @@
         </Transitions>
       </Setter>
     </Style>
-    <Style Selector="Border.nav-float:dark">
-      <Setter Property="BoxShadow" Value="0 4 24 0 #33000000"/>
-    </Style>
     <Style Selector="Border.nav-float:pointerover">
-      <Setter Property="BoxShadow" Value="0 4 24 0 #33000000"/>
       <Setter Property="RenderTransform" Value="scale(1.015)"/>
     </Style>
-    <Style Selector="Border.nav-float:dark:pointerover">
-      <Setter Property="BoxShadow" Value="0 4 24 0 #4D000000"/>
-    </Style>
     <Style Selector="Border.nav-float.down">
-      <Setter Property="BoxShadow" Value="0 4 24 0 #4D000000"/>
       <Setter Property="RenderTransform" Value="scale(1.02)"/>
     </Style>
     <Style Selector="Border.nav-float:pointerover.down">
-      <Setter Property="BoxShadow" Value="0 4 24 0 #4D000000"/>
       <Setter Property="RenderTransform" Value="scale(1.02)"/>
-    </Style>
-    <Style Selector="Border.nav-float:dark.down">
-      <Setter Property="BoxShadow" Value="0 4 24 0 #66000000"/>
-    </Style>
-    <Style Selector="Border.nav-float:dark:pointerover.down">
-      <Setter Property="BoxShadow" Value="0 4 24 0 #66000000"/>
     </Style>
     <Style Selector="UserControl.still Border.nav-float">
       <Setter Property="Transitions">
@@ -546,25 +530,25 @@
             </Border.RenderTransform>
           </Border>
           <StackPanel x:Name="SectionNavigation" Spacing="8">
-          <Button Classes="section-nav" Tag="Overview" Click="Navigate_Click" AutomationProperties.Name="概览" ToolTip.Tip="概览">
+          <Button Classes="section-nav" Tag="Overview" Click="Navigate_Click" AutomationProperties.Name="概览">
             <StackPanel Spacing="7"><Path Data="{StaticResource RiDashboard3Line}" Width="22" Height="22" Stretch="Uniform" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center"/><TextBlock Text="概览" FontSize="12" HorizontalAlignment="Center"/></StackPanel>
           </Button>
-          <Button Classes="section-nav" Tag="Proxies" Click="Navigate_Click" AutomationProperties.Name="代理" ToolTip.Tip="代理">
+          <Button Classes="section-nav" Tag="Proxies" Click="Navigate_Click" AutomationProperties.Name="代理">
             <StackPanel Spacing="7"><Path Data="{StaticResource RiFlashlightLine}" Width="22" Height="22" Stretch="Uniform" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center"/><TextBlock Text="代理" FontSize="12" HorizontalAlignment="Center"/></StackPanel>
           </Button>
-          <Button Classes="section-nav" Tag="Configuration" Click="Navigate_Click" AutomationProperties.Name="配置" ToolTip.Tip="配置">
+          <Button Classes="section-nav" Tag="Configuration" Click="Navigate_Click" AutomationProperties.Name="配置">
             <StackPanel Spacing="7"><Path Data="{StaticResource RiFileList3Line}" Width="22" Height="22" Stretch="Uniform" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center"/><TextBlock Text="配置" FontSize="12" HorizontalAlignment="Center"/></StackPanel>
           </Button>
-          <Button Classes="section-nav" Tag="Connections" Click="Navigate_Click" AutomationProperties.Name="连接" ToolTip.Tip="连接">
+          <Button Classes="section-nav" Tag="Connections" Click="Navigate_Click" AutomationProperties.Name="连接">
             <StackPanel Spacing="7"><Path Data="{StaticResource RiLink}" Width="22" Height="22" Stretch="Uniform" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center"/><TextBlock Text="连接" FontSize="12" HorizontalAlignment="Center"/></StackPanel>
           </Button>
-          <Button Classes="section-nav" Tag="Rules" Click="Navigate_Click" AutomationProperties.Name="规则" ToolTip.Tip="规则">
+          <Button Classes="section-nav" Tag="Rules" Click="Navigate_Click" AutomationProperties.Name="规则">
             <StackPanel Spacing="7"><Path Data="{StaticResource RiListCheck}" Width="22" Height="22" Stretch="Uniform" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center"/><TextBlock Text="规则" FontSize="12" HorizontalAlignment="Center"/></StackPanel>
           </Button>
-          <Button Classes="section-nav" Tag="Logs" Click="Navigate_Click" AutomationProperties.Name="日志" ToolTip.Tip="日志">
+          <Button Classes="section-nav" Tag="Logs" Click="Navigate_Click" AutomationProperties.Name="日志">
             <StackPanel Spacing="7"><Path Data="{StaticResource RiTerminalBoxLine}" Width="22" Height="22" Stretch="Uniform" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center"/><TextBlock Text="日志" FontSize="12" HorizontalAlignment="Center"/></StackPanel>
           </Button>
-          <Button Classes="section-nav" Tag="Settings" Click="Navigate_Click" AutomationProperties.Name="设置" ToolTip.Tip="设置">
+          <Button Classes="section-nav" Tag="Settings" Click="Navigate_Click" AutomationProperties.Name="设置">
             <StackPanel Spacing="7"><Path Data="{StaticResource RiEqualizerLine}" Width="22" Height="22" Stretch="Uniform" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center"/><TextBlock Text="设置" FontSize="12" HorizontalAlignment="Center"/></StackPanel>
           </Button>
           </StackPanel>

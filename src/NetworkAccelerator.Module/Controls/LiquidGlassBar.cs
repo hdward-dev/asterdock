@@ -19,18 +19,26 @@ namespace NetworkAccelerator.Module.Controls;
 
 /// <summary>
 /// Floating capsule drawn over the page. Prefers a Fluid <see cref="AcrylicSurface"/>
-/// (low blur, no refraction). Falls back to a page snapshot blurred with
-/// <see cref="BlurEffect"/> when software Skia or the frame budget is too slow,
-/// and stays on that path for the process until <see cref="ResetSessionChoice"/>.
+/// with the library refraction (height 12, amount 24) and the demo-card frost.
+/// Falls back to a page snapshot blurred with <see cref="BlurEffect"/> when software
+/// Skia or the frame budget is too slow, and stays there until <see cref="ResetSessionChoice"/>.
 /// </summary>
 public class LiquidGlassBar : Decorator
 {
     public const double Corner = 24;
     public const double BackdropBlurRadius = 8;
     public const double SlowBackdropBlurRadius = 5;
-    public const double AcrylicBlurRadius = 4;
-    public const double AcrylicVibrancy = 1;
-    public const double AcrylicHighlightOpacity = 0.4;
+
+    /// <summary>Fluid demo cards with a 24 corner: blur 14, vibrancy 1.4, brightness 0.06.</summary>
+    public const double AcrylicBlurRadius = 14;
+
+    public const double AcrylicVibrancy = 1.4;
+    public const double AcrylicBrightness = 0.06;
+
+    /// <summary>Library defaults. The lens sample is the one that zeros refraction; this nav does not.</summary>
+    public const double AcrylicRefractionHeight = 12;
+
+    public const double AcrylicRefractionAmount = 24;
     private const double Pad = 16;
     private const double HoverScale = 1.015;
     private const double PressScale = 1.02;
@@ -541,7 +549,14 @@ public class LiquidGlassBar : Decorator
         if (_chrome is null) return;
         HoldTransitionsForMotion();
         var dark = _chrome.ActualThemeVariant == ThemeVariant.Dark;
-        _chrome.BoxShadow = CreateOuterShadow(dark, _hovered, _pressed);
+        if (_path == NavGlassPath.Acrylic)
+        {
+            // Drop the local shadow without animating back to it. Fluid draws the only drop.
+            _chrome.Transitions = new Transitions();
+            _chrome.ClearValue(Border.BoxShadowProperty);
+        }
+        else
+            _chrome.BoxShadow = CreateOuterShadow(dark, _hovered, _pressed);
         var scale = _pressed ? PressScale : _hovered ? HoverScale : 1;
         _chrome.RenderTransform = new ScaleTransform(scale, scale);
     }
@@ -746,6 +761,7 @@ public class LiquidGlassBar : Decorator
 
         if (fromAcrylic)
             SnapshotNote = "approximate blur";
+        ApplyInteraction();
         InvalidateVisual();
         if (_attached)
             Schedule();
@@ -814,7 +830,8 @@ public class LiquidGlassBar : Decorator
             _frame?.Dispose();
             _frame = null;
             BackdropBlurActive = false;
-            SnapshotNote = $"acrylic blur {AcrylicBlurRadius:0.#} vibrancy {AcrylicVibrancy:0.#}";
+            SnapshotNote = $"acrylic blur {AcrylicBlurRadius:0.#} vibrancy {AcrylicVibrancy:0.#} refraction {AcrylicRefractionHeight:0.#}/{AcrylicRefractionAmount:0.#}";
+            ApplyInteraction();
             InvalidateVisual();
             BeginWatch();
         }
@@ -849,17 +866,11 @@ public class LiquidGlassBar : Decorator
             CornerRadius = new CornerRadius(Corner),
             BlurRadius = AcrylicBlurRadius,
             Vibrancy = AcrylicVibrancy,
-            RefractionHeight = 0,
-            RefractionAmount = 0,
-            ChromaticAberration = false,
-            RevealBorderEnabled = false,
-            ShadowEnabled = false,
-            ProgressiveBlurEnabled = false,
-            AdaptiveLuminanceEnabled = false,
-            DepthEffect = false,
+            Brightness = AcrylicBrightness,
+            RefractionHeight = AcrylicRefractionHeight,
+            RefractionAmount = AcrylicRefractionAmount,
             HighlightEnabled = true,
-            HighlightOpacity = AcrylicHighlightOpacity,
-            HighlightWidth = 0.6
+            ShadowEnabled = true
         };
         AcrylicBackdrop.SetIsExcludedFromCapture(surface, true);
         return surface;

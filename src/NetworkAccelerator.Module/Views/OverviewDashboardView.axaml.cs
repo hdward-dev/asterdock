@@ -10,22 +10,35 @@ namespace NetworkAccelerator.Module.Views;
 
 public partial class OverviewDashboardView : UserControl
 {
+    private int _motionGeneration;
+
     public OverviewDashboardView() => InitializeComponent();
 
     protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
+        _motionGeneration++;
         DashboardMotion.Changed += OnMotionChanged;
         SyncMotionClass();
     }
 
     protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
     {
+        _motionGeneration++;
         DashboardMotion.Changed -= OnMotionChanged;
         base.OnDetachedFromVisualTree(e);
     }
 
-    private void OnMotionChanged() => Dispatcher.UIThread.Post(SyncMotionClass);
+    private void OnMotionChanged()
+    {
+        var generation = _motionGeneration;
+        var weak = new WeakReference<OverviewDashboardView>(this);
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!weak.TryGetTarget(out var view) || view._motionGeneration != generation) return;
+            view.SyncMotionClass();
+        });
+    }
 
     private void SyncMotionClass() => Classes.Set("still", DashboardMotion.ReduceMotion);
 

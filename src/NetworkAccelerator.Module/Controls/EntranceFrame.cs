@@ -73,6 +73,16 @@ public class EntranceFrame : Decorator
         MotionClock.Subscribe(Tick);
     }
 
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        MotionClock.Unsubscribe(Tick);
+        _elapsed = double.NaN;
+        Opacity = 1;
+        OffsetY = 0;
+        Scale = 1;
+        base.OnDetachedFromVisualTree(e);
+    }
+
     private void Tick(TimeSpan elapsed)
     {
         _elapsed += elapsed.TotalMilliseconds;

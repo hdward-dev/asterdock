@@ -37,8 +37,10 @@ public class LiquidGlassBar : Decorator
     private IBrush _sheen = Brushes.Transparent;
     private IPen? _rim;
     private BoxShadows _inset;
+    private bool _attached;
     private bool _queued;
     private bool _capturing;
+    private int _captureGeneration;
     private double _radius = 5;
     private double _scaleCap = 1;
 
@@ -107,8 +109,18 @@ public class LiquidGlassBar : Decorator
         context.DrawRectangle(null, null, shape, _inset);
     }
 
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        _attached = true;
+        Schedule();
+    }
+
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
+        _attached = false;
+        _captureGeneration++;
+        _queued = false;
         Backdrop = null;
         _frame?.Dispose();
         _frame = null;
@@ -125,12 +137,16 @@ public class LiquidGlassBar : Decorator
 
     private void Schedule()
     {
-        if (_queued) return;
+        if (!_attached || _queued) return;
         _queued = true;
+        var generation = _captureGeneration;
+        var weak = new WeakReference<LiquidGlassBar>(this);
         Dispatcher.UIThread.Post(() =>
         {
-            _queued = false;
-            CaptureNow();
+            if (!weak.TryGetTarget(out var bar) || !bar._attached || bar._captureGeneration != generation)
+                return;
+            bar._queued = false;
+            bar.CaptureNow();
         }, DispatcherPriority.Background);
     }
 

@@ -49,6 +49,8 @@ public sealed class AcceleratorDashboard : INotifyPropertyChanged
     private long _downloadRateValue = -1;
     private long _nextConnectionFlush;
     private bool _connectionFlushQueued;
+    private bool _motionReleased;
+    private int _connectionGeneration;
     private IReadOnlyList<ConnectionRow> _liveRows = [];
     private IReadOnlyList<ConnectionRow> _recentRows = [];
     private IReadOnlyList<ConnectionRow> _dnsRows = [];
@@ -288,8 +290,17 @@ public sealed class AcceleratorDashboard : INotifyPropertyChanged
         GroupCountText = _live ? groups.Count.ToString() : "—";
     }
 
+    public void ReleaseMotion()
+    {
+        _motionReleased = true;
+        _connectionFlushQueued = false;
+        _connectionGeneration++;
+        foreach (var row in VisibleConnections) row.Release();
+    }
+
     private void RequestConnections()
     {
+        if (_motionReleased) return;
         if (DashboardMotion.ReduceMotion)
         {
             RefreshVisible();
@@ -307,11 +318,15 @@ public sealed class AcceleratorDashboard : INotifyPropertyChanged
         if (_connectionFlushQueued) return;
         _connectionFlushQueued = true;
         var wait = Math.Max(1, _nextConnectionFlush - now);
+        var generation = _connectionGeneration;
+        var weak = new WeakReference<AcceleratorDashboard>(this);
         DispatcherTimer.RunOnce(() =>
         {
-            _connectionFlushQueued = false;
-            _nextConnectionFlush = Environment.TickCount64 + (long)DashboardMotion.ConnectionThrottle.TotalMilliseconds;
-            RefreshVisible();
+            if (!weak.TryGetTarget(out var dash) || dash._connectionGeneration != generation || dash._motionReleased)
+                return;
+            dash._connectionFlushQueued = false;
+            dash._nextConnectionFlush = Environment.TickCount64 + (long)DashboardMotion.ConnectionThrottle.TotalMilliseconds;
+            dash.RefreshVisible();
         }, TimeSpan.FromMilliseconds(wait));
     }
 

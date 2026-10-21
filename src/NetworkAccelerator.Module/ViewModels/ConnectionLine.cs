@@ -61,6 +61,13 @@ public sealed class ConnectionLine : INotifyPropertyChanged
         Duration = other.Duration;
     }
 
+    public void Release()
+    {
+        _running = false;
+        _leaveCompleted = null;
+        MotionClock.Unsubscribe(Tick);
+    }
+
     public void BeginEnter()
     {
         if (DashboardMotion.ReduceMotion)

@@ -68,9 +68,17 @@ public class AccentSwitch : Control
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
-        ActualThemeVariantChanged += (_, _) => CacheBrushes();
+        ActualThemeVariantChanged += OnThemeChanged;
         CacheBrushes();
         SyncThumb(animate: false);
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        ActualThemeVariantChanged -= OnThemeChanged;
+        StopThumb();
+        ThumbPosition = IsChecked ? 1 : 0;
+        base.OnDetachedFromVisualTree(e);
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
@@ -121,7 +129,7 @@ public class AccentSwitch : Control
     private void SyncThumb(bool animate)
     {
         var target = IsChecked ? 1d : 0d;
-        if (!animate || DashboardMotion.ReduceMotion)
+        if (!animate || DashboardMotion.ReduceMotion || VisualRoot is null)
         {
             StopThumb();
             ThumbPosition = target;
@@ -135,6 +143,8 @@ public class AccentSwitch : Control
         _thumbMoving = true;
         MotionClock.Subscribe(MoveThumb);
     }
+
+    private void OnThemeChanged(object? sender, EventArgs e) => CacheBrushes();
 
     private void MoveThumb(TimeSpan elapsed)
     {

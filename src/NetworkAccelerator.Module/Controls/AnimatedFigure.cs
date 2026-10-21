@@ -70,9 +70,18 @@ public class AnimatedFigure : Panel
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
-        ActualThemeVariantChanged += (_, _) => ApplyTone();
+        ActualThemeVariantChanged += OnThemeChanged;
         ApplyTone();
     }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        ActualThemeVariantChanged -= OnThemeChanged;
+        Stop();
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    private void OnThemeChanged(object? sender, EventArgs e) => ApplyTone();
 
     private void ApplyTone()
     {
@@ -87,7 +96,7 @@ public class AnimatedFigure : Panel
     private void OnValueChanged()
     {
         var next = Value;
-        if (double.IsNaN(_displayed) || DashboardMotion.ReduceMotion || next < 0 || _displayed < 0)
+        if (double.IsNaN(_displayed) || DashboardMotion.ReduceMotion || next < 0 || _displayed < 0 || VisualRoot is null)
         {
             Stop();
             _displayed = next;

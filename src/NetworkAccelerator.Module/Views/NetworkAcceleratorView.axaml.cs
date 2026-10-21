@@ -46,12 +46,12 @@ public partial class NetworkAcceleratorView : UserControl
             page.RenderTransform = new TranslateTransform();
         NavPill.RenderTransform = _pillTransform;
         Classes.Set("still", DashboardMotion.ReduceMotion);
-        OverviewPage.ModeRequested += mode => _ = SetModeAsync(mode);
-        OverviewPage.SubscriptionUpdateRequested += (_, _) => UpdateSubscription_Click(this, new RoutedEventArgs());
+        OverviewPage.ModeRequested += OnOverviewMode;
+        OverviewPage.SubscriptionUpdateRequested += OnOverviewSubscription;
         OverviewPage.SectionRequested += SelectSection;
-        ModeSliderHost.SizeChanged += (_, _) => UpdateModeSlider();
-        SizeChanged += (_, _) => UpdateLayoutForWidth();
-        NavChrome.SizeChanged += (_, _) => UpdateLayoutForWidth();
+        ModeSliderHost.SizeChanged += OnModeSliderSize;
+        SizeChanged += OnViewSize;
+        NavChrome.SizeChanged += OnViewSize;
         NavGlass.Backdrop = PageScroll;
         SelectSection("Overview");
     }
@@ -68,14 +68,19 @@ public partial class NetworkAcceleratorView : UserControl
     protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
-        if (_motionHooked) return;
-        _motionHooked = true;
-        DashboardMotion.Changed += OnMotionChanged;
+        if (!_motionHooked)
+        {
+            _motionHooked = true;
+            DashboardMotion.Changed += OnMotionChanged;
+        }
+
         Classes.Set("still", DashboardMotion.ReduceMotion);
+        CompleteTransition();
     }
 
     protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
     {
+        CompleteTransition();
         if (_motionHooked)
         {
             _motionHooked = false;
@@ -126,7 +131,6 @@ public partial class NetworkAcceleratorView : UserControl
             && _pages.TryGetValue(_shown, out from);
         if (!animate || from is null)
         {
-            if (_outgoing is not null) ResetPage(_outgoing, false);
             ShowOnly(target);
             _shown = section;
             return;
@@ -165,6 +169,26 @@ public partial class NetworkAcceleratorView : UserControl
         else destination.Children.Add(ProxySettingsCard);
     }
 
+    private void CompleteTransition()
+    {
+        _pillTransform.Y = _pillTo;
+        _pillMs = PillDuration;
+        FinishPageSwap();
+    }
+
+    private void FinishPageSwap()
+    {
+        Control? target = _incoming;
+        if (target is null && _shown is not null)
+            _pages.TryGetValue(_shown, out target);
+        if (target is null && _selectedSection.Length > 0)
+            _pages.TryGetValue(_selectedSection, out target);
+        if (target is null) return;
+        if (_incoming is null && _outgoing is null && target.IsVisible && target.IsHitTestVisible && target.Opacity >= 1)
+            return;
+        ShowOnly(target);
+    }
+
     private void ShowOnly(Control target)
     {
         foreach (var page in _pages.Values)
@@ -173,6 +197,8 @@ public partial class NetworkAcceleratorView : UserControl
         _outgoing = null;
         _swapMs = SwapDuration;
         PageHost.MinHeight = 0;
+        target.IsVisible = true;
+        target.IsHitTestVisible = true;
         PageScroll.Offset = default;
         NavGlass.Refresh();
     }
@@ -225,16 +251,7 @@ public partial class NetworkAcceleratorView : UserControl
             SetShift(_incoming, DashboardMotion.PageSwapShift * (1 - t));
             SetShift(_outgoing, -DashboardMotion.PageSwapShift * t);
             if (t >= 1)
-            {
-                var done = _incoming;
-                ResetPage(_outgoing, false);
-                ResetPage(done, true);
-                _outgoing = null;
-                _incoming = null;
-                PageHost.MinHeight = 0;
-                PageScroll.Offset = default;
-                NavGlass.Refresh();
-            }
+                FinishPageSwap();
         }
 
         if (_pillMs >= PillDuration && _outgoing is null)
@@ -245,16 +262,17 @@ public partial class NetworkAcceleratorView : UserControl
     {
         if (!Dispatcher.UIThread.CheckAccess())
         {
-            Dispatcher.UIThread.Post(OnMotionChanged);
+            var weak = new WeakReference<NetworkAcceleratorView>(this);
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (weak.TryGetTarget(out var view)) view.OnMotionChanged();
+            });
             return;
         }
 
         Classes.Set("still", DashboardMotion.ReduceMotion);
         if (!DashboardMotion.ReduceMotion) return;
-        _pillTransform.Y = _pillTo;
-        _pillMs = PillDuration;
-        if (_incoming is not null) ShowOnly(_incoming);
-        else if (_shown is not null && _pages.TryGetValue(_shown, out var page)) ShowOnly(page);
+        CompleteTransition();
         ReleaseClock();
     }
 
@@ -344,8 +362,33 @@ public partial class NetworkAcceleratorView : UserControl
 
     public void DisposeResources()
     {
+        CompleteTransition();
+        if (_motionHooked)
+        {
+            _motionHooked = false;
+            DashboardMotion.Changed -= OnMotionChanged;
+        }
+
+        ReleaseClock();
+        OverviewPage.ModeRequested -= OnOverviewMode;
+        OverviewPage.SubscriptionUpdateRequested -= OnOverviewSubscription;
+        OverviewPage.SectionRequested -= SelectSection;
+        ModeSliderHost.SizeChanged -= OnModeSliderSize;
+        SizeChanged -= OnViewSize;
+        NavChrome.SizeChanged -= OnViewSize;
+        NavGlass.Backdrop = null;
+        DataContext = null;
         _viewModel?.Dispose();
     }
+
+    private void OnOverviewMode(ProxyMode mode) => _ = SetModeAsync(mode);
+
+    private void OnOverviewSubscription(object? sender, EventArgs e) =>
+        UpdateSubscription_Click(this, new RoutedEventArgs());
+
+    private void OnModeSliderSize(object? sender, SizeChangedEventArgs e) => UpdateModeSlider();
+
+    private void OnViewSize(object? sender, SizeChangedEventArgs e) => UpdateLayoutForWidth();
 
     private async Task InitializeAsync()
     {

@@ -414,6 +414,8 @@ finally
     Directory.Delete(authRoot, recursive: true);
 }
 
+ModuleInteractionChecks.RunMotionClockChecks(Check);
+ModuleInteractionChecks.RunInteractionChecks(Check);
 Console.WriteLine($"PASS network accelerator dashboard checks ({passed})");
 
 sealed class FakeCommands : ILinuxCommandResolver

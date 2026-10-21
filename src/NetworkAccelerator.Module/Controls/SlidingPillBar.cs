@@ -83,10 +83,20 @@ public class SlidingPillBar : Control
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
-        ActualThemeVariantChanged += (_, _) => CacheBrushes();
+        ActualThemeVariantChanged += OnThemeChanged;
         CacheBrushes();
         MovePill();
     }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        ActualThemeVariantChanged -= OnThemeChanged;
+        StopSlide();
+        if (!double.IsNaN(_placedTarget)) PillOffset = _placedTarget;
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    private void OnThemeChanged(object? sender, EventArgs e) => CacheBrushes();
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
@@ -124,7 +134,7 @@ public class SlidingPillBar : Control
         var first = _placedIndex < 0;
         var resized = _placedIndex == index;
         if (!first && resized && Math.Abs(_placedTarget - target) < 0.5) return;
-        var snap = first || resized || DashboardMotion.ReduceMotion;
+        var snap = first || resized || DashboardMotion.ReduceMotion || VisualRoot is null;
         _placedIndex = index;
         _placedTarget = target;
         if (snap)

@@ -639,6 +639,7 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
         if (_disposed) return;
         _disposed = true;
         StopRealtime();
+        _dash.ReleaseMotion();
         _durationTimer?.Dispose();
         _durationTimer = null;
         _engine.LogReceived -= Engine_LogReceived;

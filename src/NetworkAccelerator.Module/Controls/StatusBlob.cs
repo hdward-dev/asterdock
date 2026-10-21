@@ -1,33 +1,31 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 
 namespace NetworkAccelerator.Module.Controls;
 
 /// <summary>
-/// Scalloped cookie behind the status button. A 12-lobe radial curve,
-/// r(θ) = R(1 + 0.06·cos(12θ)), fitted to the reference mask and clipped
-/// by the card. The center sits in the upper right; the card keeps the
-/// bottom-right corner.
+/// Fixed 12-lobe cookie behind the start button. The mean circle is 176px
+/// across (lobes reach about 187px) and is never scaled with the card.
+/// The control sits in a canvas and is moved so its centre matches the button.
 /// </summary>
 public class StatusBlob : Control
 {
+    public const double MeanDiameter = 176;
+    public const double BoxSize = 190;
+
     public static readonly StyledProperty<IBrush?> FillBrushProperty =
         AvaloniaProperty.Register<StatusBlob, IBrush?>(nameof(FillBrush));
 
-    // Card fractions. Axes are a circle on the reference card (764×270).
     private const int Lobes = 12;
     private const int SamplesPerLobe = 8;
     private const double Amplitude = 0.06;
-    private const double CenterX = 0.8621;
-    private const double CenterY = 0.277;
-    private const double RadiusX = 0.2308;
-    private const double RadiusY = 0.6496;
     private const double Phase = 0.525;
 
-    private StreamGeometry? _shape;
-    private Size _builtFor;
+    private readonly StreamGeometry _shape = CreateShape();
     private IBrush _fill = Brushes.Transparent;
+    private bool _aligning;
 
     static StatusBlob()
     {
@@ -37,6 +35,8 @@ public class StatusBlob : Control
     public StatusBlob()
     {
         IsHitTestVisible = false;
+        Width = BoxSize;
+        Height = BoxSize;
     }
 
     public IBrush? FillBrush
@@ -49,20 +49,48 @@ public class StatusBlob : Control
     {
         base.OnAttachedToVisualTree(e);
         ActualThemeVariantChanged += (_, _) => CacheBrush();
+        LayoutUpdated += OnLayoutUpdated;
         CacheBrush();
+        AlignToButton();
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        LayoutUpdated -= OnLayoutUpdated;
+        base.OnDetachedFromVisualTree(e);
     }
 
     public override void Render(DrawingContext context)
     {
         var size = Bounds.Size;
         if (size.Width < 2 || size.Height < 2) return;
-        if (_shape is null || _builtFor != size)
-        {
-            _builtFor = size;
-            _shape = CreateShape(size.Width, size.Height);
-        }
+        var origin = new Point(size.Width / 2d, size.Height / 2d);
+        using (context.PushTransform(Matrix.CreateTranslation(origin.X, origin.Y)))
+            context.DrawGeometry(FillBrush ?? _fill, null, _shape);
+    }
 
-        context.DrawGeometry(FillBrush ?? _fill, null, _shape);
+    private void OnLayoutUpdated(object? sender, EventArgs e) => AlignToButton();
+
+    private void AlignToButton()
+    {
+        if (_aligning || Parent is not Canvas canvas || Bounds.Width < 1) return;
+        var button = canvas.GetVisualParent() is not Visual card
+            ? null
+            : card.GetVisualDescendants().OfType<PowerButton>().FirstOrDefault();
+        if (button is null || button.Bounds.Width < 1) return;
+        var center = button.TranslatePoint(new Point(button.Bounds.Width / 2d, button.Bounds.Height / 2d), canvas);
+        if (center is null) return;
+        var left = center.Value.X - Bounds.Width / 2d;
+        var top = center.Value.Y - Bounds.Height / 2d;
+        var currentLeft = Canvas.GetLeft(this);
+        var currentTop = Canvas.GetTop(this);
+        if (!double.IsNaN(currentLeft) && !double.IsNaN(currentTop)
+            && Math.Abs(currentLeft - left) < 0.5 && Math.Abs(currentTop - top) < 0.5)
+            return;
+        _aligning = true;
+        Canvas.SetLeft(this, left);
+        Canvas.SetTop(this, top);
+        _aligning = false;
     }
 
     private void CacheBrush()
@@ -72,17 +100,16 @@ public class StatusBlob : Control
         InvalidateVisual();
     }
 
-    private static StreamGeometry CreateShape(double width, double height)
+    private static StreamGeometry CreateShape()
     {
         var count = Lobes * SamplesPerLobe;
+        var radius = MeanDiameter / 2d;
         var points = new Point[count];
         for (var i = 0; i < count; i++)
         {
             var theta = -Math.PI + 2d * Math.PI * i / count;
             var rho = 1d + Amplitude * Math.Cos(Lobes * (theta + Phase));
-            points[i] = new Point(
-                (CenterX + RadiusX * rho * Math.Cos(theta)) * width,
-                (CenterY + RadiusY * rho * Math.Sin(theta)) * height);
+            points[i] = new Point(radius * rho * Math.Cos(theta), radius * rho * Math.Sin(theta));
         }
 
         var geometry = new StreamGeometry();

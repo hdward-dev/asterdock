@@ -10,13 +10,15 @@ internal sealed class ApplicationContext : IApplicationContext, IDisposable
         string applicationId,
         Avalonia.Controls.Window owner,
         IApplicationShell shell,
-        ISystemMetricsService systemMetrics)
+        ISystemMetricsService systemMetrics,
+        ILoadingService loading)
     {
         ApplicationId = applicationId;
         DataDirectory = ApplicationPaths.GetApplicationDataDirectory(applicationId);
         _windowService = new ApplicationWindowService(owner);
         Shell = shell;
         SystemMetrics = systemMetrics;
+        Loading = loading;
     }
 
     public string ApplicationId { get; }
@@ -24,6 +26,7 @@ internal sealed class ApplicationContext : IApplicationContext, IDisposable
     public IWindowService Windows => _windowService;
     public IApplicationShell Shell { get; }
     public ISystemMetricsService SystemMetrics { get; }
+    public ILoadingService Loading { get; }
     public void SetWindowOwner(Avalonia.Controls.Window owner) => _windowService.SetOwner(owner);
 
     public void Dispose() => _windowService.Dispose();

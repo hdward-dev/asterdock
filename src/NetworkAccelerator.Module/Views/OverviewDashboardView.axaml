@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:controls="using:NetworkAccelerator.Module.Controls"
+             xmlns:ui="using:AsterDock.UI.Controls"
              x:Class="NetworkAccelerator.Module.Views.OverviewDashboardView"
              x:CompileBindings="False"
              HorizontalAlignment="Stretch">
@@ -136,11 +137,14 @@
       <Setter Property="Transitions" Value="{x:Null}"/>
       <Setter Property="RenderTransform" Value="none"/>
     </Style>
-    <Style Selector="controls|RefreshSpin.accent-glyph">
+    <Style Selector="Path.accent-glyph">
       <Setter Property="Fill" Value="{DynamicResource AppAccentBrush}"/>
     </Style>
-    <Style Selector="Button:disabled controls|RefreshSpin.accent-glyph">
+    <Style Selector="Button:disabled Path.accent-glyph">
       <Setter Property="Fill" Value="{DynamicResource AppMutedBrush}"/>
+    </Style>
+    <Style Selector="Button:disabled ui|AdLoadingIndicator.accent-mark">
+      <Setter Property="ShapeBrush" Value="{DynamicResource AppMutedBrush}"/>
     </Style>
     <Style Selector="UserControl.still Button.ad-segment, UserControl.still Button.ad-segment:pointerover, UserControl.still Button.ad-segment:pressed">
       <Setter Property="Transitions" Value="{x:Null}"/>
@@ -233,17 +237,20 @@
   </UserControl.Styles>
 
   <StackPanel Spacing="12">
-    <StackPanel Spacing="6" IsVisible="{Binding ShowOverviewAlert}">
-      <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource AppWarningBrush}"/>
-      <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Height="3"/>
+    <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowOverviewAlert}">
+      <ui:AdLoadingIndicator Diameter="16" Variant="Bare" ShowContainer="False"
+                             IsVisible="{Binding IsBusy}" VerticalAlignment="Center"/>
+      <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" FontSize="12"
+                 Foreground="{DynamicResource AppWarningBrush}" VerticalAlignment="Center"/>
     </StackPanel>
 
     <controls:DashboardWrapPanel Gap="12">
       <controls:EntranceFrame Order="0" controls:DashboardWrapPanel.Row="0" controls:DashboardWrapPanel.Weight="2.4" controls:DashboardWrapPanel.MinItemWidth="460">
         <Border Classes="dash-card dash-hover hero" Padding="0" BorderThickness="0">
         <Grid>
-          <controls:StatusBlob HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                               FillBrush="{DynamicResource AppCookieBrush}"/>
+          <Canvas IsHitTestVisible="False">
+            <controls:StatusBlob Width="190" Height="190" FillBrush="{DynamicResource AppCookieBrush}"/>
+          </Canvas>
           <Grid Margin="16,12" ColumnDefinitions="*,Auto">
           <StackPanel Spacing="6">
             <Border Classes="ad-status-badge" Classes.connected="{Binding IsConnected}" HorizontalAlignment="Left">
@@ -465,9 +472,13 @@
               <TextBlock Grid.Column="1" Text="配置" Margin="8,0" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
               <Button Grid.Column="2" Classes="ad-icon" AutomationProperties.Name="更新订阅" ToolTip.Tip="更新订阅"
                       IsEnabled="{Binding !IsBusy}" Click="UpdateSubscription_Click">
-                <controls:RefreshSpin Classes="accent-glyph" Width="16" Height="16" Stretch="Uniform"
-                                      VerticalAlignment="Center" Data="{StaticResource RiRefreshLine}"
-                                      Spinning="{Binding IsUpdatingSubscription}"/>
+                <Grid Width="16" Height="16">
+                  <Path Classes="accent-glyph" Width="16" Height="16" Stretch="Uniform"
+                        Data="{StaticResource RiRefreshLine}"
+                        IsVisible="{Binding !IsUpdatingSubscription}"/>
+                  <ui:AdLoadingIndicator Classes="accent-mark" Width="16" Height="16" Diameter="16" Variant="Bare"
+                                         ShowContainer="False" IsVisible="{Binding IsUpdatingSubscription}"/>
+                </Grid>
               </Button>
               <Button Grid.Column="3" Classes="ad-icon" Tag="Configuration" Click="OpenSection_Click"
                       AutomationProperties.Name="打开配置" ToolTip.Tip="打开配置">

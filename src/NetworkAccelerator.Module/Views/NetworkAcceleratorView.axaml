@@ -3,6 +3,7 @@
              xmlns:models="using:NetworkAccelerator.Module.Models"
              xmlns:views="using:NetworkAccelerator.Module.Views"
              xmlns:controls="using:NetworkAccelerator.Module.Controls"
+             xmlns:ui="using:AsterDock.UI.Controls"
              x:Class="NetworkAccelerator.Module.Views.NetworkAcceleratorView"
              x:CompileBindings="False" Background="{DynamicResource AppPageBrush}">
   <UserControl.Resources>
@@ -104,19 +105,6 @@
     <Style Selector="PathIcon.core-state.ready">
       <Setter Property="Foreground" Value="{DynamicResource AppPositiveBrush}"/>
     </Style>
-    <Style Selector="Path.latency-spinner">
-      <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
-      <Style.Animations>
-        <Animation Duration="0:0:0.75" IterationCount="Infinite">
-          <KeyFrame Cue="0%">
-            <Setter Property="RotateTransform.Angle" Value="0"/>
-          </KeyFrame>
-          <KeyFrame Cue="100%">
-            <Setter Property="RotateTransform.Angle" Value="360"/>
-          </KeyFrame>
-        </Animation>
-      </Style.Animations>
-    </Style>
     <Style Selector="Button.section-nav">
       <Setter Property="Height" Value="68"/>
       <Setter Property="HorizontalAlignment" Value="Stretch"/>
@@ -149,11 +137,8 @@
     <Style Selector="UserControl.still Button.section-nav">
       <Setter Property="Transitions" Value="{x:Null}"/>
     </Style>
-    <Style Selector="controls|RefreshSpin.accent-glyph">
-      <Setter Property="Fill" Value="{DynamicResource AppAccentBrush}"/>
-    </Style>
-    <Style Selector="Button:disabled controls|RefreshSpin.accent-glyph">
-      <Setter Property="Fill" Value="{DynamicResource AppMutedBrush}"/>
+    <Style Selector="Button:disabled ui|AdLoadingIndicator.accent-mark">
+      <Setter Property="ShapeBrush" Value="{DynamicResource AppMutedBrush}"/>
     </Style>
     <Style Selector="TextBlock.page-title">
       <Setter Property="FontSize" Value="21"/>
@@ -174,9 +159,10 @@
           <TextBlock x:Name="SectionDescription" Classes="description" Text="连接状态与常用功能，一目了然"/>
         </StackPanel>
         <Border x:Name="PageStatus" Background="{DynamicResource AppSubtleBrush}" CornerRadius="10" Padding="14,10" IsVisible="False">
-          <StackPanel Spacing="8">
-            <TextBlock Text="{Binding StatusMessage}" Classes="description"/>
-            <ProgressBar IsVisible="{Binding IsBusy}" IsIndeterminate="True" Height="3"/>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <ui:AdLoadingIndicator Diameter="16" Variant="Bare" ShowContainer="False"
+                                   IsVisible="{Binding IsBusy}" VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding StatusMessage}" Classes="description" VerticalAlignment="Center"/>
           </StackPanel>
         </Border>
         <Grid x:Name="PageHost">
@@ -194,14 +180,17 @@
                     <TextBlock Text="{Binding ConnectionStatusText}" FontSize="24" FontWeight="SemiBold"/>
                     <Border Classes="connection-state" Classes.connected="{Binding IsConnected}" Width="8" Height="8" CornerRadius="4" VerticalAlignment="Center"/>
                   </StackPanel>
-                  <TextBlock Text="{Binding StatusMessage}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource AppMutedBrush}"/>
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ui:AdLoadingIndicator Diameter="16" Variant="Bare" ShowContainer="False"
+                                           IsVisible="{Binding IsBusy}" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding StatusMessage}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource AppMutedBrush}" VerticalAlignment="Center"/>
+                  </StackPanel>
                 </StackPanel>
               </Grid>
               <Button x:Name="ConnectionAction" Grid.Column="1" Classes="accent" Content="{Binding ConnectionButtonText}"
                       MinWidth="148" Height="48" Padding="24,0" CornerRadius="12" VerticalAlignment="Center"
                       IsEnabled="{Binding !IsBusy}" Click="ToggleConnection_Click"/>
             </Grid>
-            <ProgressBar IsVisible="{Binding IsBusy}" IsIndeterminate="True" Height="3"/>
             <Border Background="{DynamicResource AppSubtleBrush}" CornerRadius="12" Padding="18,14">
               <Grid x:Name="ConnectionMetrics" ColumnDefinitions="2*,*,*,*" RowDefinitions="Auto,Auto">
                 <StackPanel x:Name="NodeMetric" Spacing="6" Margin="0,0,16,0">
@@ -338,16 +327,9 @@
                                            Text="{Binding LatencyText}"
                                            VerticalAlignment="Center" HorizontalAlignment="Center"
                                            IsVisible="{Binding !IsMeasuringLatency}"/>
-                                <Path Classes="latency-spinner"
-                                      Data="M 8,1 A 7,7 0 1 1 1,8"
-                                      Width="16" Height="16" Fill="Transparent"
-                                      Stroke="{DynamicResource AppAccentBrush}" StrokeThickness="2"
-                                      VerticalAlignment="Center" HorizontalAlignment="Center"
-                                      IsVisible="{Binding IsMeasuringLatency}">
-                                  <Path.RenderTransform>
-                                    <RotateTransform/>
-                                  </Path.RenderTransform>
-                                </Path>
+                                <ui:AdLoadingIndicator Diameter="16" ShowContainer="False"
+                                                       VerticalAlignment="Center" HorizontalAlignment="Center"
+                                                       IsVisible="{Binding IsMeasuringLatency}"/>
                               </Grid>
                             </Border>
                             <Border Grid.Column="3" Width="18" Height="18" CornerRadius="9" BorderBrush="{DynamicResource AppControlBorderBrush}"
@@ -473,11 +455,18 @@
                         AutomationProperties.Name="更新订阅"
                         IsEnabled="{Binding !IsBusy}" Click="UpdateSubscription_Click">
                   <StackPanel Orientation="Horizontal" Spacing="6">
-                    <controls:RefreshSpin Width="16" Height="16" Stretch="Uniform" VerticalAlignment="Center"
-                                          Data="{StaticResource RiRefreshLine}"
-                                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ContentPresenter}}"
-                                          Spinning="{Binding IsUpdatingSubscription}"/>
-                    <TextBlock Text="更新订阅" VerticalAlignment="Center"/>
+                    <Grid Width="16" Height="16" VerticalAlignment="Center">
+                      <Path Width="16" Height="16" Stretch="Uniform"
+                            Data="{StaticResource RiRefreshLine}"
+                            Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ContentPresenter}}"
+                            IsVisible="{Binding !IsUpdatingSubscription}"/>
+                      <ui:AdLoadingIndicator Width="16" Height="16" Diameter="16" Variant="Bare" ShowContainer="False"
+                                             VerticalAlignment="Center" HorizontalAlignment="Center"
+                                             ShapeBrush="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ContentPresenter}}"
+                                             IsVisible="{Binding IsUpdatingSubscription}"/>
+                    </Grid>
+                    <TextBlock Text="更新订阅" VerticalAlignment="Center" IsVisible="{Binding !IsUpdatingSubscription}"/>
+                    <TextBlock Text="正在更新…" VerticalAlignment="Center" IsVisible="{Binding IsUpdatingSubscription}"/>
                   </StackPanel>
                 </Button>
               </StackPanel>

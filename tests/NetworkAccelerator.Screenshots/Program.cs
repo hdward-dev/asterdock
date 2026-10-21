@@ -1,4 +1,5 @@
 using System.Globalization;
+using AsterDock.UI.Controls;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -30,6 +31,7 @@ Capture("overview-light-populated", ThemeVariant.Light, Populated(allowLan: fals
 Capture("overview-dark-disconnected", ThemeVariant.Dark, Disconnected(), 1360, 1180, output);
 Capture("overview-dark-populated", ThemeVariant.Dark, Populated(allowLan: true), 1360, 1560, output);
 Capture("overview-narrow-populated", ThemeVariant.Light, Populated(allowLan: false), 760, 2200, output);
+CaptureCookieSizes(output);
 CaptureSubscriptionButtons(output);
 if (!args.Contains("--stills"))
 {
@@ -38,6 +40,87 @@ if (!args.Contains("--stills"))
     CaptureNavClip(Path.Combine(output, "nav-and-power"));
 }
 Console.WriteLine("PASS dashboard screenshots in " + output);
+
+static void CaptureCookieSizes(string output)
+{
+    // Widths that land the status card at three different sizes. 1360 happens to
+    // give the hero the same width as 760, so default is wider than that.
+    var sizes = new (string Name, double Width)[] { ("narrow", 760), ("default", 1680), ("wide", 2200) };
+    foreach (var theme in new[] { ThemeVariant.Light, ThemeVariant.Dark })
+    foreach (var size in sizes)
+    {
+        var themeName = theme == ThemeVariant.Light ? "light" : "dark";
+        DashboardMotion.ReduceMotion = true;
+        Application.Current!.RequestedThemeVariant = theme;
+        var directory = Path.Combine(Path.GetTempPath(), "na-cookie-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var viewModel = new NetworkAcceleratorViewModel(directory, directory);
+        Window? window = null;
+        try
+        {
+            viewModel.ShowDashboardPreview(Disconnected());
+            var view = new NetworkAcceleratorView
+            {
+                DataContext = viewModel,
+                Width = size.Width,
+                Height = 900,
+                FontFamily = new FontFamily("WenQuanYi Micro Hei, Droid Sans Fallback, Inter")
+            };
+            window = new Window
+            {
+                Width = size.Width,
+                Height = 900,
+                Content = view,
+                Background = Brushes.Transparent,
+                WindowDecorations = WindowDecorations.None,
+                FontFamily = view.FontFamily
+            };
+            window.Show();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick(2);
+            var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("cookie frame missing");
+            var path = Path.Combine(output, $"cookie-{size.Name}-{themeName}.png");
+            SaveHeroCard(window, frame, path, zoom: 1);
+            LogCookieAlignment(window, $"{size.Name}-{themeName}");
+        }
+        finally
+        {
+            window?.Close();
+            viewModel.Dispose();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+}
+
+static void LogCookieAlignment(Window window, string name)
+{
+    var button = window.GetVisualDescendants().OfType<PowerButton>().FirstOrDefault();
+    var blob = window.GetVisualDescendants().OfType<StatusBlob>().FirstOrDefault();
+    if (button is null || blob is null) throw new InvalidOperationException("cookie or button missing");
+    var buttonCenter = button.TranslatePoint(new Point(button.Bounds.Width / 2, button.Bounds.Height / 2), window);
+    var blobCenter = blob.TranslatePoint(new Point(blob.Bounds.Width / 2, blob.Bounds.Height / 2), window);
+    if (buttonCenter is null || blobCenter is null) throw new InvalidOperationException("cookie alignment missing");
+    var dx = blobCenter.Value.X - buttonCenter.Value.X;
+    var dy = blobCenter.Value.Y - buttonCenter.Value.Y;
+    var card = HeroCard(window);
+    Console.WriteLine(
+        $"cookie {name} window={window.Bounds.Width:0} card={card?.Bounds.Width:0}x{card?.Bounds.Height:0} " +
+        $"blob={blob.Bounds.Width:0}x{blob.Bounds.Height:0} dx={dx:0.00} dy={dy:0.00}");
+    if (Math.Abs(blob.Bounds.Width - StatusBlob.BoxSize) > 0.5 || Math.Abs(blob.Bounds.Height - StatusBlob.BoxSize) > 0.5
+        || Math.Abs(dx) > 1 || Math.Abs(dy) > 1)
+        throw new InvalidOperationException($"cookie {name} is not a fixed shape centred on the button");
+}
+
+static Border? HeroCard(Window window)
+{
+    Visual? node = window.GetVisualDescendants().OfType<StatusBlob>().FirstOrDefault();
+    while (node is not null)
+    {
+        if (node is Border border && border.Classes.Contains("hero")) return border;
+        node = node.GetVisualParent();
+    }
+
+    return null;
+}
 
 static void CaptureSubscriptionButtons(string output)
 {
@@ -56,44 +139,49 @@ static void CaptureSubscriptionButtons(string output)
             var view = new NetworkAcceleratorView
             {
                 DataContext = viewModel,
-                Width = 980,
-                Height = 760,
+                Width = 1100,
+                Height = 1400,
                 FontFamily = new FontFamily("WenQuanYi Micro Hei, Droid Sans Fallback, Inter")
             };
-            view.PreviewNavigate("Configuration");
             window = new Window
             {
-                Width = 980,
-                Height = 760,
+                Width = 1100,
+                Height = 1400,
                 Content = view,
                 Background = Brushes.Transparent,
                 WindowDecorations = WindowDecorations.None,
                 FontFamily = view.FontFamily
             };
             window.Show();
+            window.UpdateLayout();
             AvaloniaHeadlessPlatform.ForceRenderTimerTick(2);
-            SaveSubscriptionButton(window, Path.Combine(output, $"subscription-update-{name}-idle.png"));
-
-            MotionClock.Manual = true;
-            DashboardMotion.ReduceMotion = false;
+            BringUpdateButton(window, icon: true);
+            SaveSubscriptionButton(window, Path.Combine(output, $"subscription-icon-{name}-idle.png"), icon: true);
             viewModel.PreviewSubscriptionUpdate(true);
-            MotionClock.Advance(TimeSpan.FromMilliseconds(280));
+            window.UpdateLayout();
             AvaloniaHeadlessPlatform.ForceRenderTimerTick(2);
+            LogSubscription(window, $"{name} icon busy");
+            SaveSubscriptionButton(window, Path.Combine(output, $"subscription-icon-{name}-busy.png"), icon: true);
 
-            foreach (var spin in window.GetVisualDescendants().OfType<RefreshSpin>())
-            {
-                var angle = spin.RenderTransform is RotateTransform rotate ? rotate.Angle : double.NaN;
-                Console.WriteLine($"subscription {name} angle={angle:0.0} spinning={spin.Spinning} width={spin.Bounds.Width:0}");
-            }
-
-            SaveSubscriptionButton(window, Path.Combine(output, $"subscription-update-{name}-busy.png"));
             viewModel.PreviewSubscriptionUpdate(false);
-            MotionClock.Advance(TimeSpan.FromMilliseconds(16));
-            var reset = window.GetVisualDescendants().OfType<RefreshSpin>()
-                .Where(spin => spin.Bounds.Width > 10)
-                .Select(spin => spin.RenderTransform is RotateTransform rotate ? rotate.Angle : double.NaN)
-                .FirstOrDefault();
-            Console.WriteLine($"subscription {name} reset angle={reset:0.0}");
+            view.PreviewNavigate("Configuration");
+            window.UpdateLayout();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick(2);
+            BringUpdateButton(window, icon: false);
+            SaveSubscriptionButton(window, Path.Combine(output, $"subscription-update-{name}-idle.png"), icon: false);
+            viewModel.PreviewSubscriptionUpdate(true);
+            window.UpdateLayout();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick(2);
+            LogSubscription(window, $"{name} text busy");
+            SaveSubscriptionButton(window, Path.Combine(output, $"subscription-update-{name}-busy.png"), icon: false);
+            viewModel.PreviewSubscriptionUpdate(false);
+            window.UpdateLayout();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick(1);
+            var restored = window.GetVisualDescendants().OfType<TextBlock>().Any(block => block.Text == "更新订阅" && block.IsVisible);
+            var hidden = window.GetVisualDescendants().OfType<AdLoadingIndicator>()
+                .Where(mark => mark.Bounds.Width > 10)
+                .All(mark => !mark.IsVisible);
+            Console.WriteLine($"subscription {name} restored label={restored} marks hidden={hidden}");
         }
         finally
         {
@@ -101,16 +189,40 @@ static void CaptureSubscriptionButtons(string output)
             viewModel.Dispose();
             Directory.Delete(directory, recursive: true);
             DashboardMotion.ReduceMotion = true;
-            MotionClock.Manual = false;
         }
     }
 }
 
-static void SaveSubscriptionButton(Window window, string path)
+static void BringUpdateButton(Window window, bool icon)
+{
+    var button = RequireUpdateButton(window, icon);
+    button.BringIntoView();
+    AvaloniaHeadlessPlatform.ForceRenderTimerTick(2);
+}
+
+static void LogSubscription(Window window, string name)
+{
+    var button = RequireUpdateButton(window, name.Contains("icon", StringComparison.Ordinal));
+    var mark = button.GetVisualDescendants().OfType<AdLoadingIndicator>().FirstOrDefault();
+    var label = button.GetVisualDescendants().OfType<TextBlock>().FirstOrDefault(block => block.IsVisible);
+    Console.WriteLine(
+        $"subscription {name} enabled={button.IsEnabled} mark={(mark is null ? "missing" : mark.IsVisible.ToString())} " +
+        $"bounds={mark?.Bounds.Width:0}x{mark?.Bounds.Height:0} variant={mark?.Variant} diameter={mark?.Diameter:0} label={label?.Text}");
+}
+
+static Button RequireUpdateButton(Window window, bool icon)
 {
     var button = window.GetVisualDescendants().OfType<Button>()
-        .FirstOrDefault(candidate => AutomationProperties.GetName(candidate) == "更新订阅" && candidate.Bounds.Width > 80);
-    if (button is null) throw new InvalidOperationException("更新订阅 button was not visible");
+        .FirstOrDefault(candidate =>
+            AutomationProperties.GetName(candidate) == "更新订阅" &&
+            candidate.Bounds.Width > 20 &&
+            (icon ? candidate.Bounds.Width < 80 : candidate.Bounds.Width > 80));
+    return button ?? throw new InvalidOperationException(icon ? "更新订阅 icon button was not visible" : "更新订阅 text button was not visible");
+}
+
+static void SaveSubscriptionButton(Window window, string path, bool icon)
+{
+    var button = RequireUpdateButton(window, icon);
     var origin = button.TranslatePoint(new Point(0, 0), window) ?? throw new InvalidOperationException("更新订阅 button has no origin");
     var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("subscription frame missing");
     var scale = frame.PixelSize.Width / window.Bounds.Width;
@@ -374,10 +486,10 @@ static void CaptureNavClip(string directory)
     }
 }
 
-static void SaveHeroCard(Window window, Bitmap frame, string path)
+static void SaveHeroCard(Window window, Bitmap frame, string path, int zoom = 2)
 {
-    var blob = window.GetVisualDescendants().OfType<StatusBlob>().FirstOrDefault();
-    if (blob?.Parent?.Parent is not Visual card) return;
+    var card = HeroCard(window);
+    if (card is null) return;
     var origin = card.TranslatePoint(new Point(0, 0), window);
     if (origin is null) return;
     var scale = frame.PixelSize.Width / window.Bounds.Width;
@@ -386,10 +498,10 @@ static void SaveHeroCard(Window window, Bitmap frame, string path)
     var y = (int)Math.Max(0, Math.Floor((origin.Value.Y - pad) * scale));
     var w = (int)Math.Min(frame.PixelSize.Width - x, Math.Ceiling((card.Bounds.Width + pad * 2) * scale));
     var h = (int)Math.Min(frame.PixelSize.Height - y, Math.Ceiling((card.Bounds.Height + pad * 2) * scale));
-    var zoom = new RenderTargetBitmap(new PixelSize(w * 2, h * 2), new Vector(96, 96));
-    using (var context = zoom.CreateDrawingContext())
-        context.DrawImage(frame, new Rect(x, y, w, h), new Rect(0, 0, w * 2, h * 2));
-    zoom.Save(path, new PngBitmapEncoderOptions());
+    var bitmap = new RenderTargetBitmap(new PixelSize(w * zoom, h * zoom), new Vector(96, 96));
+    using (var context = bitmap.CreateDrawingContext())
+        context.DrawImage(frame, new Rect(x, y, w, h), new Rect(0, 0, w * zoom, h * zoom));
+    bitmap.Save(path, new PngBitmapEncoderOptions());
     Console.WriteLine(path);
 }
 

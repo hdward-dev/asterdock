@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:modules="using:AsterDock.Host.Modules"
+        xmlns:ui="using:AsterDock.UI.Controls"
         x:Class="AsterDock.Host.Views.MainWindow"
         x:CompileBindings="False"
         Title="星栈" Width="1440" Height="900" MinWidth="1100" MinHeight="700"
@@ -259,6 +260,13 @@
                     <TextBlock Text="快捷键" VerticalAlignment="Center"/>
                   </StackPanel>
                 </Button>
+                <Button x:Name="AppearanceSettingsNavButton" Classes="settings-nav"
+                        Click="AppearanceSettingsNav_Click">
+                  <StackPanel Orientation="Horizontal" Spacing="11">
+                    <PathIcon Data="M4,6 H20 V18 H4 Z M7,6 V4 H11 V6 M7,10 H17 M7,14 H13" Width="18" Height="18"/>
+                    <TextBlock Text="外观" VerticalAlignment="Center"/>
+                  </StackPanel>
+                </Button>
                 <Button x:Name="UpdateSettingsNavButton" Classes="settings-nav"
                         Click="UpdateSettingsNav_Click">
                   <StackPanel Orientation="Horizontal" Spacing="11">
@@ -420,6 +428,27 @@
                               HorizontalAlignment="Right" VerticalAlignment="Center">
                         <TextBlock Text="已启用" Foreground="{DynamicResource AppPositiveBrush}"/>
                       </Border>
+                    </Grid>
+                  </Border>
+                </StackPanel>
+              </ScrollViewer>
+
+              <ScrollViewer x:Name="SettingsAppearanceSection" Grid.Row="1" IsVisible="False">
+                <StackPanel Spacing="16" MaxWidth="980" HorizontalAlignment="Stretch">
+                  <StackPanel Margin="2,0,0,4" Spacing="4">
+                    <TextBlock Text="外观" FontSize="20" FontWeight="SemiBold"/>
+                    <TextBlock Text="调整星栈和轻应用共用的界面动态效果。"
+                               Foreground="{DynamicResource AppMutedBrush}"/>
+                  </StackPanel>
+                  <Border Classes="settings-card" Padding="20">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <StackPanel Spacing="5" Margin="0,0,24,0">
+                        <TextBlock Text="减少动态效果" FontSize="16" FontWeight="SemiBold"/>
+                        <TextBlock Text="加载图形保持静止并轻微呼吸，骨架屏不再扫光，遮罩不再缩放。"
+                                   TextWrapping="Wrap" Foreground="{DynamicResource AppMutedBrush}"/>
+                      </StackPanel>
+                      <ToggleSwitch x:Name="ReduceMotionSwitch" Grid.Column="1" MinWidth="0"
+                                    OnContent="{x:Null}" OffContent="{x:Null}" VerticalAlignment="Center"/>
                     </Grid>
                   </Border>
                 </StackPanel>
@@ -645,5 +674,9 @@
         </Grid>
       </Border>
     </Grid>
+
+    <ui:AdLoadingOverlay x:Name="WindowLoadingOverlay" Grid.RowSpan="2" ZIndex="240"
+                         IsHitTestVisible="False" FollowContentCornerRadius="False"
+                         IndicatorSize="Large" UseBlur="False"/>
   </Grid>
 </Window>

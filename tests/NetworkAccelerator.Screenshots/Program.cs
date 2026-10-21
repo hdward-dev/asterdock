@@ -40,6 +40,8 @@ Capture("overview-dark-disconnected", ThemeVariant.Dark, Disconnected(), 1360, 1
 Capture("overview-dark-populated", ThemeVariant.Dark, Populated(allowLan: true), 1360, 1560, output);
 Capture("overview-narrow-populated", ThemeVariant.Light, Populated(allowLan: false), 760, 2200, output);
 CaptureCookieSizes(output);
+CaptureCookiePoses(output);
+CaptureCookieClip(Path.Combine(output, "cookie-start-stop.mp4"));
 CaptureSubscriptionButtons(output);
 if (!args.Contains("--stills"))
 {
@@ -103,6 +105,141 @@ static void CaptureCookieSizes(string output)
     }
 }
 
+static void CaptureCookiePoses(string output)
+{
+    const double width = 1360;
+    foreach (var theme in new[] { ThemeVariant.Light, ThemeVariant.Dark })
+    foreach (var running in new[] { false, true })
+    {
+        var themeName = theme == ThemeVariant.Light ? "light" : "dark";
+        var poseName = running ? "running" : "stopped";
+        DashboardMotion.ReduceMotion = true;
+        Application.Current!.RequestedThemeVariant = theme;
+        var directory = Path.Combine(Path.GetTempPath(), "na-cookie-pose-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var viewModel = new NetworkAcceleratorViewModel(directory, directory);
+        Window? window = null;
+        try
+        {
+            viewModel.ShowDashboardPreview(running ? Populated(allowLan: false) : Disconnected());
+            var view = new NetworkAcceleratorView
+            {
+                DataContext = viewModel,
+                Width = width,
+                Height = 900,
+                FontFamily = new FontFamily("WenQuanYi Micro Hei, Droid Sans Fallback, Inter")
+            };
+            window = new Window
+            {
+                Width = width,
+                Height = 900,
+                Content = view,
+                Background = Brushes.Transparent,
+                WindowDecorations = WindowDecorations.None,
+                FontFamily = view.FontFamily
+            };
+            window.Show();
+            Settle(window);
+            var blob = window.GetVisualDescendants().OfType<StatusBlob>().First();
+            if (Math.Abs(blob.Pose - (running ? 1 : 0)) > 0.01)
+                throw new InvalidOperationException($"cookie {poseName} pose is {blob.Pose:0.00}");
+            var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("cookie pose frame missing");
+            var centres = CookieCentres(window);
+            SaveHeroCard(window, frame, Path.Combine(output, $"cookie-{poseName}-{themeName}.png"), zoom: 1);
+            LogCookieAlignment(window, $"{poseName}-{themeName}", centres);
+        }
+        finally
+        {
+            window?.Close();
+            viewModel.Dispose();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+}
+
+static void CaptureCookieClip(string output)
+{
+    DashboardMotion.ReduceMotion = false;
+    MotionClock.Manual = true;
+    var directory = Path.Combine(Path.GetTempPath(), "na-cookie-clip-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(directory);
+    var temp = Path.Combine(Path.GetTempPath(), "na-cookie-clip-vm-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(temp);
+    Application.Current!.RequestedThemeVariant = ThemeVariant.Light;
+    var viewModel = new NetworkAcceleratorViewModel(temp, temp);
+    Window? window = null;
+    try
+    {
+        viewModel.ShowDashboardPreview(Disconnected());
+        var view = new NetworkAcceleratorView
+        {
+            DataContext = viewModel,
+            Width = 1360,
+            Height = 900,
+            FontFamily = new FontFamily("WenQuanYi Micro Hei, Droid Sans Fallback, Inter")
+        };
+        window = new Window
+        {
+            Width = 1360,
+            Height = 900,
+            Content = view,
+            Background = Brushes.Transparent,
+            WindowDecorations = WindowDecorations.None,
+            FontFamily = view.FontFamily
+        };
+        window.Show();
+        Settle(window);
+        var frame = 0;
+        void Shot(int count)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                MotionClock.Advance(TimeSpan.FromMilliseconds(40));
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick(2);
+                var bitmap = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("cookie clip frame missing");
+                SaveHeroCard(window, bitmap, Path.Combine(directory, $"frame_{frame:0000}.png"), zoom: 1);
+                frame++;
+            }
+        }
+
+        var blob = window.GetVisualDescendants().OfType<StatusBlob>().First();
+        Shot(4);
+        viewModel.PreviewSetConnection(connected: false, busy: true);
+        Shot(6);
+        if (Math.Abs(blob.Pose) > 0.02)
+            throw new InvalidOperationException($"starting cookie moved to {blob.Pose:0.00}");
+        viewModel.PreviewSetConnection(connected: true, busy: false);
+        Shot(16);
+        if (Math.Abs(blob.Pose - 1) > 0.02)
+            throw new InvalidOperationException($"running cookie pose is {blob.Pose:0.00}");
+        Shot(6);
+        viewModel.PreviewSetConnection(connected: true, busy: true);
+        Shot(4);
+        if (Math.Abs(blob.Pose - 1) > 0.02)
+            throw new InvalidOperationException($"stopping cookie left the running pose at {blob.Pose:0.00}");
+        viewModel.PreviewSetConnection(connected: false, busy: false);
+        Shot(16);
+        if (Math.Abs(blob.Pose) > 0.02)
+            throw new InvalidOperationException($"stopped cookie pose is {blob.Pose:0.00}");
+        Shot(4);
+        Console.WriteLine("cookie clip frames " + frame);
+        EncodeGlass(directory, output);
+        var ease = DashboardMotion.CookieEase(0.5);
+        if (ease < 1.05 || Math.Abs(DashboardMotion.CookieEase(0)) > 0.0001 || Math.Abs(DashboardMotion.CookieEase(1) - 1) > 0.0001)
+            throw new InvalidOperationException($"cookie ease is {ease:0.000}");
+        Console.WriteLine($"cookie ease(0.5)={ease:0.000} duration={DashboardMotion.CookiePose.TotalMilliseconds:0}ms");
+    }
+    finally
+    {
+        window?.Close();
+        viewModel.Dispose();
+        Directory.Delete(temp, recursive: true);
+        Directory.Delete(directory, recursive: true);
+        DashboardMotion.ReduceMotion = true;
+        MotionClock.Manual = false;
+    }
+}
+
 static (Point Button, Point Cookie) CookieCentres(Window window)
 {
     var button = window.GetVisualDescendants().OfType<PowerButton>().FirstOrDefault()
@@ -155,15 +292,19 @@ static void LogCookieAlignment(Window window, string name, (Point Button, Point 
     var card = HeroCard(window);
     var geometry = StatusBlob.GeometryBounds;
     var geometryCentre = new Point(geometry.X + geometry.Width / 2d, geometry.Y + geometry.Height / 2d);
+    var clearance = double.NaN;
+    if (card is not null && card.TranslatePoint(new Point(0, 0), window) is { } cardOrigin)
+        clearance = cardOrigin.Y + card.Bounds.Height - (measured.Cookie.Y + StatusBlob.OuterDiameter / 2d);
     Console.WriteLine(
         $"cookie {name} window={window.Bounds.Width:0} card={card?.Bounds.Width:0.##}x{card?.Bounds.Height:0.##} " +
         $"button=({measured.Button.X:0.00},{measured.Button.Y:0.00}) cookie=({measured.Cookie.X:0.00},{measured.Cookie.Y:0.00}) " +
-        $"dx={dx:0.00} dy={dy:0.00} outer={StatusBlob.OuterDiameter:0.00} mean={StatusBlob.MeanDiameter:0.00} " +
+        $"dx={dx:0.00} dy={dy:0.00} rise={StatusBlob.CenterRise:0.00} pose={blob.Pose:0.00} " +
+        $"bottomClearance={clearance:0.00} outer={StatusBlob.OuterDiameter:0.00} " +
         $"box={blob.Bounds.Width:0.00} geometryCentre=({geometryCentre.X:0.00},{geometryCentre.Y:0.00})");
     if (Math.Abs(blob.Bounds.Width - StatusBlob.BoxSize) > 0.05 || Math.Abs(blob.Bounds.Height - StatusBlob.BoxSize) > 0.05
-        || Math.Abs(dx) > 0.05 || Math.Abs(dy) > 0.05
+        || Math.Abs(dx) > 0.05 || Math.Abs(dy + StatusBlob.CenterRise) > 0.05
         || Math.Abs(geometryCentre.X) > 0.05 || Math.Abs(geometryCentre.Y) > 0.05)
-        throw new InvalidOperationException($"cookie {name} is not a fixed shape centred on the button");
+        throw new InvalidOperationException($"cookie {name} is not anchored above the button");
 }
 
 static Border? HeroCard(Window window)

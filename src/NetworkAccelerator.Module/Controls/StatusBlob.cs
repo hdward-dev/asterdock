@@ -6,11 +6,11 @@ using Avalonia.VisualTree;
 namespace NetworkAccelerator.Module.Controls;
 
 /// <summary>
-/// Fixed 12-lobe cookie behind the start button. The lobe tips span the same
-/// multiple of the button as FlClash's idle cookie on the standard desktop
-/// card (decoration box 290, button 104). The control sits in a canvas and is
-/// placed so the curve's centre, which is the control's centre, is the button's
-/// layout centre. A press scale drawn inside the button does not move it.
+/// Fixed 12-lobe cookie behind the start button. Tip diameter matches FlClash's
+/// standard-desktop decoration (290 on a 104px button). The curve's centre stays
+/// on the button's horizontal centre and sits 46×88/104 px above it. While the
+/// service is running the curve turns one sector and grows to 1.12 about that
+/// centre. The button's press scale does not move it.
 /// </summary>
 public class StatusBlob : Control
 {
@@ -19,10 +19,18 @@ public class StatusBlob : Control
 
     public const double OuterDiameter = DashboardMotion.PowerDiameter * OuterToButton;
     public const double MeanDiameter = OuterDiameter / (1d + Amplitude);
-    public const double BoxSize = 250;
+
+    /// <summary>How far the cookie centre sits above the button centre. 46px on FlClash's 104px button.</summary>
+    public const double CenterRise = 46d * DashboardMotion.PowerDiameter / 104d;
+
+    /// <summary>Paint slot. Large enough for the ease-out-back overshoot past scale 1.12.</summary>
+    public const double BoxSize = 284;
 
     public static readonly StyledProperty<IBrush?> FillBrushProperty =
         AvaloniaProperty.Register<StatusBlob, IBrush?>(nameof(FillBrush));
+
+    public static readonly StyledProperty<bool> IsRunningProperty =
+        AvaloniaProperty.Register<StatusBlob, bool>(nameof(IsRunning));
 
     private const int Lobes = 12;
     private const int SamplesPerLobe = 8;
@@ -32,6 +40,13 @@ public class StatusBlob : Control
     private static readonly StreamGeometry Shape = CreateShape();
     private IBrush _fill = Brushes.Transparent;
     private bool _aligning;
+    private bool _attached;
+    private bool _clocked;
+    private bool _animating;
+    private double _progress;
+    private double _from;
+    private double _to;
+    private double _elapsed;
 
     static StatusBlob()
     {
@@ -41,10 +56,14 @@ public class StatusBlob : Control
     public StatusBlob()
     {
         IsHitTestVisible = false;
+        ClipToBounds = false;
         UseLayoutRounding = false;
         Width = BoxSize;
         Height = BoxSize;
     }
+
+    /// <summary>0 stopped, 1 running. Ease-out-back may step slightly outside that range.</summary>
+    public double Pose => _progress;
 
     /// <summary>Bounds of the curve around the origin. Empty until the geometry is realized.</summary>
     public static Rect GeometryBounds => Shape.Bounds;
@@ -55,18 +74,40 @@ public class StatusBlob : Control
         set => SetValue(FillBrushProperty, value);
     }
 
+    /// <summary>True once the service is up. Starting and stopping follow this flag, not the busy spinner.</summary>
+    public bool IsRunning
+    {
+        get => GetValue(IsRunningProperty);
+        set => SetValue(IsRunningProperty, value);
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == IsRunningProperty)
+            GoTo(IsRunning ? 1 : 0, animate: _attached);
+    }
+
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
+        _attached = true;
+        _progress = IsRunning ? 1 : 0;
+        _animating = false;
         ActualThemeVariantChanged += (_, _) => CacheBrush();
         LayoutUpdated += OnLayoutUpdated;
+        DashboardMotion.Changed += OnMotionSetting;
         CacheBrush();
         AlignToButton();
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
+        _attached = false;
+        _animating = false;
         LayoutUpdated -= OnLayoutUpdated;
+        DashboardMotion.Changed -= OnMotionSetting;
+        ReleaseClock();
         base.OnDetachedFromVisualTree(e);
     }
 
@@ -75,7 +116,11 @@ public class StatusBlob : Control
         var size = Bounds.Size;
         if (size.Width < 2 || size.Height < 2) return;
         var origin = new Point(size.Width / 2d, size.Height / 2d);
-        using (context.PushTransform(Matrix.CreateTranslation(origin.X, origin.Y)))
+        var scale = 1 + DashboardMotion.CookieGrowth * _progress;
+        var matrix = Matrix.CreateScale(scale, scale)
+            * Matrix.CreateRotation(DashboardMotion.CookieTurn * _progress)
+            * Matrix.CreateTranslation(origin.X, origin.Y);
+        using (context.PushTransform(matrix))
             context.DrawGeometry(FillBrush ?? _fill, null, Shape);
     }
 
@@ -92,6 +137,7 @@ public class StatusBlob : Control
         // Layout slots only. The button's press scale and shake are render
         // transforms (or drawn inside the face) and must not drag the cookie.
         var center = LayoutPoint(button, new Point(button.Bounds.Width / 2d, button.Bounds.Height / 2d), canvas);
+        center = new Point(center.X, center.Y - CenterRise);
         var left = center.X - Bounds.Width / 2d;
         var top = center.Y - Bounds.Height / 2d;
         var currentLeft = Canvas.GetLeft(this);
@@ -150,6 +196,69 @@ public class StatusBlob : Control
         for (var node = from; node != ancestor; node = node.GetVisualParent() ?? ancestor)
             point = new Point(point.X + node.Bounds.X, point.Y + node.Bounds.Y);
         return point;
+    }
+
+    private void OnMotionSetting()
+    {
+        if (!DashboardMotion.ReduceMotion) return;
+        _animating = false;
+        _progress = IsRunning ? 1 : 0;
+        InvalidateVisual();
+        ReleaseClock();
+    }
+
+    private void GoTo(double target, bool animate)
+    {
+        if (!animate || DashboardMotion.ReduceMotion || Math.Abs(_progress - target) < 0.0005)
+        {
+            _progress = target;
+            _animating = false;
+            InvalidateVisual();
+            ReleaseClock();
+            return;
+        }
+
+        _from = _progress;
+        _to = target;
+        _elapsed = 0;
+        _animating = true;
+        EnsureClock();
+        InvalidateVisual();
+    }
+
+    private void Tick(TimeSpan elapsed)
+    {
+        if (!_animating)
+        {
+            ReleaseClock();
+            return;
+        }
+
+        _elapsed += elapsed.TotalMilliseconds;
+        var t = Math.Clamp(_elapsed / DashboardMotion.CookiePose.TotalMilliseconds, 0, 1);
+        _progress = _from + (_to - _from) * DashboardMotion.CookieEase(t);
+        if (t >= 1)
+        {
+            _progress = _to;
+            _animating = false;
+            ReleaseClock();
+        }
+
+        InvalidateVisual();
+    }
+
+    private void EnsureClock()
+    {
+        if (!_attached || !_animating || _clocked) return;
+        _clocked = true;
+        MotionClock.Subscribe(Tick);
+    }
+
+    private void ReleaseClock()
+    {
+        if (!_clocked) return;
+        _clocked = false;
+        MotionClock.Unsubscribe(Tick);
     }
 
     private void CacheBrush()

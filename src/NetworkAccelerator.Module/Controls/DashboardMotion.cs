@@ -34,6 +34,47 @@ public static class DashboardMotion
     public const double PowerPressScale = 0.94;
     public const double PowerDiameter = 88;
 
+    /// <summary>
+    /// FlClash's status decoration: TweenAnimationBuilder, 450ms,
+    /// Curves.easeOutBack = Cubic(0.175, 0.885, 0.32, 1.275), both directions.
+    /// Reduce-motion uses a zero duration there, which we snap.
+    /// </summary>
+    public static readonly TimeSpan CookiePose = TimeSpan.FromMilliseconds(450);
+
+    public const double CookieGrowth = 0.12;
+
+    /// <summary>One sector of the 12-lobe cookie, in radians.</summary>
+    public static readonly double CookieTurn = Math.PI / 6d;
+
+    /// <summary>Flutter cubic-bezier ease-out-back. Input is 0..1; the result overshoots past 1.</summary>
+    public static double CookieEase(double t)
+    {
+        if (t <= 0) return 0;
+        if (t >= 1) return 1;
+        var u = t;
+        for (var i = 0; i < 8; i++)
+        {
+            var x = Cubic(u, 0.175, 0.32);
+            var dx = CubicDerivative(u, 0.175, 0.32);
+            if (Math.Abs(dx) < 1e-6) break;
+            u = Math.Clamp(u - (x - t) / dx, 0, 1);
+        }
+
+        return Cubic(u, 0.885, 1.275);
+    }
+
+    private static double Cubic(double t, double c1, double c2)
+    {
+        var u = 1 - t;
+        return 3 * u * u * t * c1 + 3 * u * t * t * c2 + t * t * t;
+    }
+
+    private static double CubicDerivative(double t, double c1, double c2)
+    {
+        var u = 1 - t;
+        return 3 * u * u * c1 + 6 * u * t * (c2 - c1) + 3 * t * t * (1 - c2);
+    }
+
     public static event Action? Changed;
 
     private static bool _reduceMotion;

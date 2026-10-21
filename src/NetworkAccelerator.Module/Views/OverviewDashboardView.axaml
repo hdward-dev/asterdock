@@ -248,8 +248,8 @@
       <controls:EntranceFrame Order="0" controls:DashboardWrapPanel.Row="0" controls:DashboardWrapPanel.Weight="2.4" controls:DashboardWrapPanel.MinItemWidth="460">
         <Border Classes="dash-card dash-hover hero" Padding="0" BorderThickness="0">
         <Grid>
-          <Canvas IsHitTestVisible="False">
-            <controls:StatusBlob FillBrush="{DynamicResource AppCookieBrush}"/>
+          <Canvas IsHitTestVisible="False" ClipToBounds="False">
+            <controls:StatusBlob FillBrush="{DynamicResource AppCookieBrush}" IsRunning="{Binding IsConnected}"/>
           </Canvas>
           <Grid Margin="16,12" ColumnDefinitions="*,Auto">
           <StackPanel Spacing="6">

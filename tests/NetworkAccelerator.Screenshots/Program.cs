@@ -3,6 +3,7 @@ using AsterDock.UI.Controls;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Media;
@@ -254,7 +255,10 @@ static void Settle(Window window)
 static void CaptureGlass(string output)
 {
     foreach (var theme in new[] { ThemeVariant.Light, ThemeVariant.Dark })
-    foreach (var size in new (string Name, double Width)[] { ("default", 1360), ("narrow", 760) })
+    foreach (var size in new (string Name, double Width, bool Save)[]
+    {
+        ("default", 1360, true), ("narrow", 760, true), ("wide", 2200, false)
+    })
     {
         var themeName = theme == ThemeVariant.Light ? "light" : "dark";
         DashboardMotion.ReduceMotion = true;
@@ -284,6 +288,22 @@ static void CaptureGlass(string output)
             };
             window.Show();
             Settle(window);
+            var scroll = window.GetVisualDescendants().OfType<ScrollViewer>().First(item => item.Name == "PageScroll");
+            RequireClearOfBar(window, $"{themeName} {size.Name} top");
+            scroll.Offset = new Vector(0, 720);
+            Settle(window);
+            RequireClearOfBar(window, $"{themeName} {size.Name} scrolled");
+            view.PreviewNavigate("Logs");
+            Settle(window);
+            RequireClearOfBar(window, $"{themeName} {size.Name} logs");
+            view.PreviewNavigate("Connections");
+            Settle(window);
+            RequireClearOfBar(window, $"{themeName} {size.Name} connections");
+            view.PreviewNavigate("Overview");
+            scroll.Offset = default;
+            Settle(window);
+            RequireClearOfBar(window, $"{themeName} {size.Name} overview");
+            if (!size.Save) continue;
             var glass = window.GetVisualDescendants().OfType<LiquidGlassBar>().First();
             Console.WriteLine(
                 $"glass {themeName} {size.Name} {glass.Bounds.Width:0}x{glass.Bounds.Height:0} " +
@@ -303,6 +323,37 @@ static void CaptureGlass(string output)
     }
 
     CaptureGlassSwitch(output);
+}
+
+static void RequireClearOfBar(Window window, string label)
+{
+    var chrome = window.GetVisualDescendants().OfType<Border>().First(item => item.Classes.Contains("nav-float"));
+    var barLeft = chrome.TranslatePoint(default, window)?.X
+        ?? throw new InvalidOperationException(label + " bar has no position");
+    var scroll = window.GetVisualDescendants().OfType<ScrollViewer>().First(item => item.Name == "PageScroll");
+    var scrollRight = scroll.TranslatePoint(new Point(scroll.Bounds.Width, 0), window)?.X
+        ?? throw new InvalidOperationException(label + " page has no position");
+    var gap = barLeft - scrollRight;
+    Console.WriteLine($"{label} scrollRight={scrollRight:0.0} barLeft={barLeft:0.0} bar={chrome.Bounds.Width:0} gap={gap:0.0}");
+    if (gap < 11)
+        throw new InvalidOperationException($"{label} content column is {gap:0.0}px from the bar");
+    foreach (var scroller in scroll.GetVisualDescendants().OfType<ScrollBar>())
+    {
+        if (!scroller.IsEffectivelyVisible || scroller.Bounds.Width < 2) continue;
+        var right = scroller.TranslatePoint(new Point(scroller.Bounds.Width, 0), window)?.X ?? 0;
+        if (right > barLeft + 0.5)
+            throw new InvalidOperationException($"{label} scrollbar ends at {right:0} under the bar");
+    }
+
+    foreach (var card in window.GetVisualDescendants().OfType<Border>())
+    {
+        if (!card.IsEffectivelyVisible || card.Bounds.Width < 1) continue;
+        var marked = card.Classes.Contains("dash-card") || card.Classes.Contains("ad-pill-card") || card.Classes.Contains("card");
+        if (!marked) continue;
+        var right = card.TranslatePoint(new Point(card.Bounds.Width, 0), window)?.X;
+        if (right is null || right.Value <= barLeft + 0.5) continue;
+        throw new InvalidOperationException($"{label} card ends at {right.Value:0.0} under the bar at {barLeft:0.0}");
+    }
 }
 
 static void SaveGlassCrop(Window window, Bitmap frame, string path)

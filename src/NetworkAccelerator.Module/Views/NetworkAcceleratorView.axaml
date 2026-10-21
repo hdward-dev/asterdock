@@ -168,9 +168,10 @@
     </Style>
   </UserControl.Styles>
 
-  <Grid>
-    <ScrollViewer x:Name="PageScroll" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
-      <StackPanel Margin="24,24,28,24" Spacing="20">
+  <Grid ColumnDefinitions="*,Auto">
+    <ScrollViewer x:Name="PageScroll" Grid.Column="0" HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto" AllowAutoHide="False" HorizontalContentAlignment="Stretch">
+      <StackPanel Margin="24" Spacing="20">
         <StackPanel Spacing="5">
           <TextBlock x:Name="SectionTitle" Classes="page-title" Text="概览"/>
           <TextBlock x:Name="SectionDescription" Classes="description" Text="连接状态与常用功能，一目了然"/>
@@ -491,8 +492,9 @@
         </Grid>
       </StackPanel>
     </ScrollViewer>
-    <Border Classes="nav-float" HorizontalAlignment="Right" VerticalAlignment="Center"
-            Margin="0,12,12,12" CornerRadius="24" Background="Transparent" ClipToBounds="False">
+    <Border x:Name="NavChrome" Grid.Column="1" Classes="nav-float"
+            HorizontalAlignment="Right" VerticalAlignment="Center"
+            Margin="12" CornerRadius="24" Background="Transparent" ClipToBounds="False">
       <Border CornerRadius="24" ClipToBounds="True" Background="Transparent">
         <controls:LiquidGlassBar x:Name="NavGlass">
         <Grid Margin="8,10">

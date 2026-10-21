@@ -5,7 +5,6 @@ using Avalonia.Interactivity;
 using Avalonia.Input.Platform;
 using Avalonia.Media;
 using Avalonia.Threading;
-using Avalonia.VisualTree;
 using NetworkAccelerator.Core.Models;
 using NetworkAccelerator.Module.Controls;
 using NetworkAccelerator.Module.Models;
@@ -52,6 +51,7 @@ public partial class NetworkAcceleratorView : UserControl
         OverviewPage.SectionRequested += SelectSection;
         ModeSliderHost.SizeChanged += (_, _) => UpdateModeSlider();
         SizeChanged += (_, _) => UpdateLayoutForWidth();
+        NavChrome.SizeChanged += (_, _) => UpdateLayoutForWidth();
         NavGlass.Backdrop = PageScroll;
         SelectSection("Overview");
     }
@@ -295,24 +295,13 @@ public partial class NetworkAcceleratorView : UserControl
 
     private void ClearLogs_Click(object? sender, RoutedEventArgs e) => _viewModel?.ClearLogs();
 
-    private void KeepPowerButtonClear()
-    {
-        var button = OverviewPage.GetVisualDescendants().OfType<PowerButton>().FirstOrDefault();
-        if (button is null || NavGlass.Bounds.Width < 1) return;
-        var glassLeft = NavGlass.TranslatePoint(default, this);
-        var buttonRight = button.TranslatePoint(new Point(button.Bounds.Width, 0), this);
-        if (glassLeft is null || buttonRight is null) return;
-        var delta = buttonRight.Value.X - (glassLeft.Value.X - 8);
-        var next = Math.Max(14, button.Margin.Right + delta);
-        if (Math.Abs(next - button.Margin.Right) < 1) return;
-        button.Margin = new Thickness(18, 0, next, 0);
-    }
-
     private void UpdateLayoutForWidth()
     {
-        // The page is full width under the floating bar. 24 + 28 are the page margins.
-        var contentWidth = Math.Max(0, Bounds.Width - 52);
-        KeepPowerButtonClear();
+        // The nav column is the bar's measured width plus its horizontal margin
+        // (12px gap on the left, 12px window inset on the right).
+        var reserved = NavChrome.Bounds.Width + NavChrome.Margin.Left + NavChrome.Margin.Right;
+        var viewport = PageScroll.Bounds.Width > 1 ? PageScroll.Bounds.Width : Math.Max(0, Bounds.Width - reserved);
+        var contentWidth = Math.Max(0, viewport - 48);
         var stackedProxies = _selectedSection == "Proxies" && contentWidth < 900;
         var splitProxies = _selectedSection == "Proxies" && !stackedProxies;
         ProxiesPage.ColumnDefinitions = new ColumnDefinitions(splitProxies ? "*,20,300" : "*");

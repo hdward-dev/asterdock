@@ -237,7 +237,7 @@ public class AdLoadingIndicator : TemplatedControl, ILoadingClockClient
             context.DrawEllipse(container, null, center, disc, disc);
         }
 
-        var thickness = Math.Clamp(diameter * 0.105, 2, 3.6);
+        var thickness = Math.Clamp(diameter * 0.12, 2.15, 4);
         var inset = IsContained ? diameter * 0.2 : (thickness / 2) + 1;
         var radius = ((diameter / 2) - inset) * (IsDeterminate ? 1 : pose.RingScale);
         if (radius <= 1) return;
@@ -253,13 +253,24 @@ public class AdLoadingIndicator : TemplatedControl, ILoadingClockClient
 
         using (context.PushOpacity(pose.Opacity))
         {
-            if (pose.EchoSweep > 0.02)
+            if (!reduce && diameter >= 28 && pose.EchoSweep > 0.02)
             {
-                using (context.PushOpacity(0.4))
+                using (context.PushOpacity(0.7))
                     DrawArc(context, center, radius, pose.EchoStart, pose.EchoSweep, _progressPen);
             }
 
-            if (!reduce && _glowPen is not null)
+            if (!reduce && pose.Sweep < 0.34 * Math.Tau)
+            {
+                var room = Math.Tau - pose.Sweep - (diameter >= 28 ? pose.EchoSweep : 0);
+                var trail = Math.Min(0.1 * Math.Tau, room * 0.22);
+                if (trail > 0.04 * Math.Tau)
+                {
+                    using (context.PushOpacity(0.36))
+                        DrawArc(context, center, radius, pose.Start - trail - (0.02 * Math.Tau), trail, _progressPen);
+                }
+            }
+
+            if (!reduce && diameter >= 32 && _glowPen is not null)
                 DrawArc(context, center, radius, pose.Start, pose.Sweep, _glowPen);
             DrawArc(context, center, radius, pose.Start, pose.Sweep, _progressPen);
         }
@@ -335,10 +346,10 @@ public class AdLoadingIndicator : TemplatedControl, ILoadingClockClient
         _penColor = color;
         _penThickness = thickness;
         var track = new SolidColorBrush(Color.FromArgb(56, color.R, color.G, color.B));
-        var glow = new SolidColorBrush(Color.FromArgb(36, color.R, color.G, color.B));
+        var glow = new SolidColorBrush(Color.FromArgb(44, color.R, color.G, color.B));
         _trackPen = new Pen(track, thickness, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
         _progressPen = new Pen(accent, thickness, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
-        _glowPen = new Pen(glow, thickness * 1.45, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
+        _glowPen = new Pen(glow, thickness * 1.55, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
     }
 
     private void DrawProgressArc(DrawingContext context, Point center, double radius, double progress)

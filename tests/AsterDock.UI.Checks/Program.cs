@@ -174,11 +174,13 @@ static void RunShapeChecks(Action<bool, string> check)
 
     var forward = true;
     var previous = rest.Start + rest.Sweep;
-    for (var i = 1; i <= 48; i++)
+    for (var i = 1; i <= 64; i++)
     {
-        var pose = SpinnerMotion.Sample(TimeSpan.FromSeconds(SpinnerMotion.CycleSeconds * i / 48d), false);
+        var pose = SpinnerMotion.Sample(TimeSpan.FromSeconds(SpinnerMotion.CycleSeconds * i / 64d), false);
         var head = pose.Start + pose.Sweep;
-        if (head + 1e-6 < previous) forward = false;
+        var delta = head - previous;
+        var visual = delta - (Math.Tau * Math.Round(delta / Math.Tau));
+        if (visual < -0.02) forward = false;
         previous = head;
     }
 

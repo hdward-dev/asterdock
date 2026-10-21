@@ -11,12 +11,12 @@ internal readonly record struct SpinnerPose(
 
 internal static class SpinnerMotion
 {
-    public const double CycleSeconds = 0.7;
+    public const double CycleSeconds = 0.54;
 
-    /// <summary>Extra turns per cycle, on top of the arc chasing its own tail.</summary>
-    public const double SpinTurns = 0.85;
+    /// <summary>Extra turns per cycle on top of the head rushing ahead of the tail.</summary>
+    public const double SpinTurns = 1.1;
 
-    public static readonly TimeSpan PeakAt = TimeSpan.FromSeconds(CycleSeconds * 0.24);
+    public static readonly TimeSpan PeakAt = TimeSpan.FromSeconds(CycleSeconds * 0.45);
 
     public static SpinnerPose Sample(TimeSpan elapsed, bool reduceMotion)
     {
@@ -27,25 +27,23 @@ internal static class SpinnerMotion
 
         var turns = elapsed.TotalSeconds / CycleSeconds;
         var u = turns - Math.Floor(turns);
-        const double min = 0.07;
-        const double headWindow = 0.8;
-        const double delay = 0.24;
-        var head = min + Rush(u / headWindow);
-        var tail = Rush((u - delay) / headWindow);
-        var sweepTurns = head - tail;
+        const double min = 0.055;
+        const double travel = 0.68;
+        var head = EaseOut(u / 0.55);
+        var tail = EaseIn((u - 0.28) / 0.62);
+        var sweepTurns = min + (travel * (head - tail));
         var start = -Math.PI / 2 + ((tail + (turns * SpinTurns)) * Math.Tau);
         var sweep = sweepTurns * Math.Tau;
+        var dash = 0.11 * Math.Tau;
         var gap = Math.Tau - sweep;
-        var echo = Math.Min(0.1 * Math.Tau, gap * 0.34);
-        if (echo < 0.045 * Math.Tau) echo = 0;
         var fullness = Math.Clamp((sweepTurns - min) / 0.66, 0, 1);
         return new SpinnerPose(
             start,
             sweep,
-            start - echo - (0.015 * Math.Tau),
-            echo,
-            0.94 + (0.06 * fullness),
-            0.965 + (0.035 * fullness),
+            start + sweep + ((gap - dash) * 0.5),
+            dash,
+            0.9 + (0.1 * fullness),
+            0.92 + (0.08 * fullness),
             1);
     }
 
@@ -55,11 +53,18 @@ internal static class SpinnerMotion
         return 0.45 + (0.55 * wave);
     }
 
-    private static double Rush(double t)
+    private static double EaseOut(double t)
     {
         if (t <= 0) return 0;
         if (t >= 1) return 1;
         var inv = 1 - t;
         return 1 - (inv * inv * inv);
+    }
+
+    private static double EaseIn(double t)
+    {
+        if (t <= 0) return 0;
+        if (t >= 1) return 1;
+        return t * t * t;
     }
 }

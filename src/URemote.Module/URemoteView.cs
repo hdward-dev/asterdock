@@ -1,4 +1,6 @@
 using System.Text.Json;
+using AsterDock.Contracts;
+using AsterDock.UI.Controls;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
@@ -36,6 +38,7 @@ public sealed partial class URemoteView : UserControl, IDisposable
     private bool hostEnabled = true;
     private readonly System.Runtime.InteropServices.PosixSignalRegistration? termination;
     private readonly Task initialize;
+    private IApplicationContext? appContext;
     private sealed record Settings(string Identity, string Encoder, bool AllowAssistance = true, bool HostEnabled = true);
 
     public URemoteView()
@@ -45,8 +48,9 @@ public sealed partial class URemoteView : UserControl, IDisposable
         initialize = Task.CompletedTask;
     }
 
-    public URemoteView(string dataDirectory) : this()
+    public URemoteView(string dataDirectory, IApplicationContext? context = null) : this()
     {
+        appContext = context;
         if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS()) termination = System.Runtime.InteropServices.PosixSignalRegistration.Create(
             System.Runtime.InteropServices.PosixSignal.SIGTERM, context =>
             {
@@ -141,7 +145,7 @@ public sealed partial class URemoteView : UserControl, IDisposable
         catch (Exception e)
         {
             Console.WriteLine("host-display-discovery-failed;type=" + e.GetType().Name);
-            if (!disposed) { SetHostSwitch(false); status.Text = "无法访问显示器"; detail.Text = "请确认显示器已连接，并在本机桌面中重新开启被控。"; }
+            if (!disposed) { SetHostSwitch(false); status.Text = "无法访问显示器"; detail.Text = "请确认显示器已连接，并在本机桌面中重新开启被控。"; ReportFailure(detail.Text, "无法访问显示器"); }
         }
         finally { starting = false; if (!disposed) hostSwitch.IsEnabled = true; }
     }
@@ -221,9 +225,14 @@ public sealed partial class URemoteView : UserControl, IDisposable
         catch (Exception e)
         {
             Console.WriteLine("login-failed;stage=" + (login?.Operation ?? "local-profile") + ";type=" + e.GetType().Name + ";inner=" + e.InnerException?.GetType().Name);
-            if (!disposed) detail.Text = e is OperationCanceledException or HttpRequestException
-                ? "连接登录服务失败或超时，请检查网络和 DNS；不会自动重新发送验证码。"
-                : "登录操作未完成，请检查手机号、验证码和网络；重新发送至少间隔 60 秒。";
+            if (!disposed)
+            {
+                detail.Text = e is OperationCanceledException or HttpRequestException
+                    ? "连接登录服务失败或超时，请检查网络和 DNS；不会自动重新发送验证码。"
+                    : "登录操作未完成，请检查手机号、验证码和网络；重新发送至少间隔 60 秒。";
+                if (e is OperationCanceledException) ReportFailure(detail.Text, "登录失败");
+                else appContext?.Feedback.Report("登录失败", e);
+            }
         }
         finally { loginBusy = false; sendingCode = false; if (!disposed) { UpdateSendCodeState(); completeLogin.IsEnabled = true; hostSwitch.IsEnabled = true; } }
     }
@@ -291,11 +300,11 @@ public sealed partial class URemoteView : UserControl, IDisposable
             case "assistance-code-rotated": UpdateAssistanceState(); break;
             case "file-transfer-received": transferState.Text = "文件已接收，已保存到接收目录。"; break;
             case "file-transfer-sent": transferState.Text = "文件已发送，对方已确认收到。"; break;
-            case "file-transfer-send-failed": transferState.Text = "发送未完成，请在官方客户端重新尝试。"; break;
+            case "file-transfer-send-failed": transferState.Text = "发送未完成，请在官方客户端重新尝试。"; ReportFailure(transferState.Text, "文件发送"); break;
             case "device-profile-refreshed": _ = RefreshDevicesAsync(); break;
             case "audio-streaming": metrics.Text = "系统声音正在传输"; break;
-            case "audio-unavailable": detail.Text = "音频未能启动，视频与键鼠仍可使用。"; break;
-            case "clipboard-unavailable": detail.Text = "剪贴板不可用，请检查 wl-clipboard。"; break;
+            case "audio-unavailable": detail.Text = "音频未能启动，视频与键鼠仍可使用。"; ReportFailure(detail.Text, "音频"); break;
+            case "clipboard-unavailable": detail.Text = "剪贴板不可用，请检查 wl-clipboard。"; ReportFailure(detail.Text, "剪贴板"); break;
             case "clipboard-received": metrics.Text = "已接收文本剪贴板"; break;
             case "clipboard-sent": metrics.Text = "已发送文本剪贴板"; break;
             case "waiting-for-display": status.Text = "等待显示器恢复"; detail.Text = "被控保持开启，显示器恢复后会自动重连。"; break;
@@ -308,7 +317,7 @@ public sealed partial class URemoteView : UserControl, IDisposable
             case "viewer-released": status.Text = "等待连接"; detail.Text = ""; break;
             case "stopping": status.Text = "正在停止"; break;
             case "stopped": hostBadge.Text = "○  被控已关闭"; ApplyTheme(hostBadge, TextBlock.ForegroundProperty, "AppMutedBrush"); if (!restoreFailed) { status.Text = "被控已关闭"; detail.Text = "远程连接已断开，键鼠与终端会话已释放。"; } break;
-            case "restore-failed": restoreFailed = true; status.Text = "连接已断开，服务器开关恢复失败"; break;
+            case "restore-failed": restoreFailed = true; status.Text = "连接已断开，服务器开关恢复失败"; ReportFailure(status.Text, "被控恢复"); break;
             default: if (value.StartsWith("file-transfer-progress;", StringComparison.Ordinal)) {
                     var fields = value.Split(';'); transferState.Text = "正在传输 · " + string.Join(" / ", fields.Skip(1).Select(x => x.Split('=').Last())) + " 字节";
                 }
@@ -334,6 +343,16 @@ public sealed partial class URemoteView : UserControl, IDisposable
         detail.Text = "";
         UpdateHostBadge();
     }
+    internal void ShowManaged(Window window)
+    {
+        FeedbackWindow.Attach(window, appContext?.Feedback);
+        if (appContext?.Windows is { } windows) windows.Show(window);
+        else window.Show();
+    }
+
+    internal void ReportFailure(string message, string? title = null) =>
+        appContext?.Feedback.Notify(FeedbackKind.Error, message, title);
+
     public void Dispose()
     {
         if (disposed) return;

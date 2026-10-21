@@ -1,3 +1,4 @@
+using AsterDock.Contracts;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -13,6 +14,7 @@ public partial class SerialDebuggerView : UserControl
 {
     private double _workspaceHeight = 600;
     private readonly SerialDebuggerViewModel _viewModel;
+    private readonly IUserFeedbackService? _feedback;
     private bool _disposed;
     private SerialPortSessionViewModel? _resizingSession;
     private double _resizeStartX;
@@ -23,10 +25,11 @@ public partial class SerialDebuggerView : UserControl
     {
     }
 
-    public SerialDebuggerView(string dataDirectory)
+    public SerialDebuggerView(string dataDirectory, IUserFeedbackService? feedback = null)
     {
         InitializeComponent();
-        _viewModel = new SerialDebuggerViewModel(dataDirectory);
+        _feedback = feedback;
+        _viewModel = new SerialDebuggerViewModel(dataDirectory, feedback);
         DataContext = _viewModel;
         _viewModel.Sessions.CollectionChanged += Sessions_CollectionChanged;
         foreach (var session in _viewModel.Sessions) AttachSession(session);
@@ -218,7 +221,10 @@ public partial class SerialDebuggerView : UserControl
 
     private async void RemoveQuickCommand_Click(object? sender, RoutedEventArgs e)
     {
-        if (GetSession(sender) is { } session && session.RemoveQuickCommand()) await _viewModel.SaveAsync();
+        if (GetSession(sender) is not { } session || session.SelectedQuickCommand is not { } command) return;
+        if (_feedback is not null && !await _feedback.ConfirmAsync("删除快捷指令", $"删除「{command.Name}」后无法恢复。", "删除", "取消", danger: true))
+            return;
+        if (session.RemoveQuickCommand()) await _viewModel.SaveAsync();
     }
 
     private async void QuickCommand_Click(object? sender, RoutedEventArgs e)

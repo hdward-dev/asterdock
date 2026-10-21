@@ -34,6 +34,7 @@ public partial class MainWindow : Window, IApplicationShell
 
     private readonly ModuleCatalog _catalog = new();
     private readonly LoadingService _loadingService = new();
+    private readonly UserFeedbackService _feedbackService = new();
     private readonly SharedSystemMetricsService _systemMetrics = new();
     private readonly GitHubUpdateService _updateService = new();
     private readonly GitHubApplicationDiscoveryService _discoveryService = new();
@@ -50,6 +51,7 @@ public partial class MainWindow : Window, IApplicationShell
     private readonly Dictionary<string, DateTimeOffset> _recentApplications = new(StringComparer.OrdinalIgnoreCase);
 
     public ILoadingService Loading => _loadingService;
+    public IUserFeedbackService Feedback => _feedbackService;
     public ObservableCollection<LoadedApplication> Applications { get; } = [];
     public ObservableCollection<DiscoverableApplication> DiscoverableApplications { get; } = [];
     public ObservableCollection<string> AppCategories { get; } = [];
@@ -66,6 +68,7 @@ public partial class MainWindow : Window, IApplicationShell
         ConfigureWindowChrome();
         _loadingService.Changed += OnLoadingServiceChanged;
         WindowLoadingOverlay.CancelRequested += (_, _) => _loadingService.Cancel();
+        WindowFeedback.Service = _feedbackService;
         var uiSettings = HostUiSettings.Load();
         MotionPreferences.ReduceMotion = uiSettings.ReduceMotion;
         ReduceMotionSwitch.IsChecked = uiSettings.ReduceMotion;
@@ -99,7 +102,7 @@ public partial class MainWindow : Window, IApplicationShell
 
     private async void MainWindow_Opened(object? sender, EventArgs e)
     {
-        LoadApplications();
+        if (!_applicationsLoaded) LoadApplications();
         await CheckForUpdatesAsync(silent: true);
     }
 
@@ -131,7 +134,9 @@ public partial class MainWindow : Window, IApplicationShell
         {
             EmptyMessage.Text = result.Failures.Count == 0
                 ? $"请把应用目录或 .appbundle 放入 {UserAppsDirectory} 后重新启动"
-                : result.Failures[0].Message;
+                : "有轻应用未能加载";
+            if (result.Failures.Count > 0)
+                _ = _feedbackService.ShowErrorAsync("轻应用加载失败", result.Failures[0].Message);
             return;
         }
 
@@ -175,7 +180,8 @@ public partial class MainWindow : Window, IApplicationShell
                 DetachApplicationNavigation();
                 _currentApplication = null;
                 UpdateCapsuleState();
-                EmptyMessage.Text = $"{application.Name} 加载失败：{exception.GetBaseException().Message}";
+                EmptyMessage.Text = $"{application.Name} 未能打开";
+                _ = _feedbackService.ShowErrorAsync("打开失败", $"{application.Name} 加载失败：{exception.GetBaseException().Message}", exception);
             }
         }
     }
@@ -347,7 +353,16 @@ public partial class MainWindow : Window, IApplicationShell
     {
         e.Handled = true;
         if (sender is not Button { Tag: LoadedApplication application }) return;
-        PostAfterInput(() => StopRunningApplication(application));
+        PostAfterInput(() => _feedbackService.Run(async () =>
+        {
+            if (!application.IsRunning || application.Manifest.Id == "home") return;
+            var confirmed = await _feedbackService.ConfirmAsync(
+                "结束运行",
+                $"结束「{application.Name}」后，需要重新打开才能继续使用。",
+                "结束运行",
+                danger: true);
+            if (confirmed) StopRunningApplication(application);
+        }, "结束运行失败"));
     }
 
     private void StopRunningApplication(LoadedApplication application)
@@ -375,8 +390,9 @@ public partial class MainWindow : Window, IApplicationShell
         }
         catch (Exception exception)
         {
-            AppInfoStopError.Text = $"{application.Name} 停止失败：{exception.GetBaseException().Message}";
+            AppInfoStopError.Text = $"{application.Name} 停止失败";
             AppInfoStopError.IsVisible = true;
+            _ = _feedbackService.ShowErrorAsync("停止失败", $"{application.Name} 停止失败：{exception.GetBaseException().Message}", exception);
             // Keep the error visible even when stopping the foreground app returned to Home.
             ++_appInfoAnimationVersion;
             AppInfoOverlay.IsVisible = true;
@@ -544,7 +560,8 @@ public partial class MainWindow : Window, IApplicationShell
         }
         catch (Exception exception)
         {
-            DiscoveryStatusText.Text = $"获取轻应用失败：{exception.GetBaseException().Message}";
+            DiscoveryStatusText.Text = "获取轻应用失败";
+            _ = _feedbackService.ShowErrorAsync("获取轻应用失败", exception.GetBaseException().Message, exception);
         }
         finally
         {
@@ -575,7 +592,8 @@ public partial class MainWindow : Window, IApplicationShell
         }
         catch (Exception exception)
         {
-            DiscoveryStatusText.Text = $"安装失败：{exception.GetBaseException().Message}";
+            DiscoveryStatusText.Text = "安装失败";
+            _ = _feedbackService.ShowErrorAsync("安装失败", exception.GetBaseException().Message, exception);
         }
         finally
         {
@@ -624,7 +642,11 @@ public partial class MainWindow : Window, IApplicationShell
         }
         catch (Exception exception)
         {
-            if (!silent) UpdateStatusText.Text = $"检查更新失败：{exception.GetBaseException().Message}";
+            if (!silent)
+            {
+                UpdateStatusText.Text = "检查更新失败";
+                _ = _feedbackService.ShowErrorAsync("检查更新失败", exception.GetBaseException().Message, exception);
+            }
         }
         finally
         {
@@ -652,7 +674,8 @@ public partial class MainWindow : Window, IApplicationShell
         }
         catch (Exception exception)
         {
-            UpdateStatusText.Text = $"下载更新失败：{exception.GetBaseException().Message}";
+            UpdateStatusText.Text = "下载更新失败";
+            _ = _feedbackService.ShowErrorAsync("下载更新失败", exception.GetBaseException().Message, exception);
             DownloadUpdateButton.IsEnabled = true;
         }
         finally
@@ -794,7 +817,8 @@ public partial class MainWindow : Window, IApplicationShell
         }
         catch (Exception exception)
         {
-            status = $"加载失败：{exception.GetBaseException().Message}";
+            status = "加载失败";
+            _ = _feedbackService.ShowErrorAsync("加载失败", exception.GetBaseException().Message, exception);
         }
         finally
         {

@@ -15,7 +15,4 @@ public partial class VmDetailsView : StackPanel
     private async void Shutdown_Click(object? sender, RoutedEventArgs e) { if (Model is { } model) await model.Shutdown(); }
     private async void Resume_Click(object? sender, RoutedEventArgs e) { if (Model is { } model) await model.Resume(); }
     private async void Force_Click(object? sender, RoutedEventArgs e) { if (Model is { } model) await model.Force(); }
-    private async void ConfirmShutdown_Click(object? sender, RoutedEventArgs e) { if (Model is { } model) await model.ConfirmShutdown(); }
-    private async void ConfirmForce_Click(object? sender, RoutedEventArgs e) { if (Model is { } model) await model.ConfirmForce(); }
-    private async void Cancel_Click(object? sender, RoutedEventArgs e) { if (Model is { } model) await model.CancelConfirm(); }
 }

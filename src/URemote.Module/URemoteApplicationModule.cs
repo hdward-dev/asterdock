@@ -6,6 +6,10 @@ public sealed class URemoteApplicationModule : IApplicationModule, IApplicationC
     private IApplicationContext? context;
     private URemoteView? view;
     public void Initialize(IApplicationContext value) => context = value;
-    public Control CreateView() => view ??= new URemoteView((context ?? throw new InvalidOperationException()).DataDirectory);
+    public Control CreateView()
+    {
+        var current = context ?? throw new InvalidOperationException();
+        return view ??= new URemoteView(current.DataDirectory, current);
+    }
     public void Dispose() { view?.Dispose(); view = null; context = null; }
 }

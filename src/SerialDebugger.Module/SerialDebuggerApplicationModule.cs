@@ -14,7 +14,7 @@ public sealed class SerialDebuggerApplicationModule : IApplicationModule, IAppli
     public Control CreateView()
     {
         var context = _context ?? throw new InvalidOperationException("串口调试助手尚未完成容器初始化");
-        return _view ??= new SerialDebuggerView(context.DataDirectory);
+        return _view ??= new SerialDebuggerView(context.DataDirectory, context.Feedback);
     }
 
     public void Dispose()

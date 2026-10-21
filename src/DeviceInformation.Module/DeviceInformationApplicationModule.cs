@@ -15,7 +15,7 @@ public sealed class DeviceInformationApplicationModule :
 
     public void Initialize(IApplicationContext context) => _context = context;
 
-    public Control CreateView() => _view ??= new DeviceInformationView(GetSystemMetrics(), ShowWidget);
+    public Control CreateView() => _view ??= new DeviceInformationView(GetSystemMetrics(), ShowWidget, _context?.Feedback);
 
     public IReadOnlyList<ApplicationQuickAction> GetQuickActions() =>
     [
@@ -42,7 +42,7 @@ public sealed class DeviceInformationApplicationModule :
             return;
         }
 
-        var window = new DeviceStatusWidgetWindow(GetSystemMetrics());
+        var window = new DeviceStatusWidgetWindow(GetSystemMetrics(), _context?.Feedback);
         window.Closed += (_, _) =>
         {
             if (ReferenceEquals(_widgetWindow, window)) _widgetWindow = null;

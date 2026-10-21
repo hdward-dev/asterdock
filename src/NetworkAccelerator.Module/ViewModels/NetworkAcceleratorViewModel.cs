@@ -1,3 +1,4 @@
+using AsterDock.Contracts;
 using Avalonia.Threading;
 using NetworkAccelerator.Core.Models;
 using NetworkAccelerator.Core.Services;
@@ -18,6 +19,7 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
     private readonly SingBoxConfigurationService _configurationService;
     private readonly SingBoxEngineService _engine;
     private readonly SingBoxInstallerService _installer;
+    private readonly IUserFeedbackService? _feedback;
     private NetworkAcceleratorSettings _settings = new();
     private SubscriptionProfile? _profile;
     private PeriodicTimer? _durationTimer;
@@ -46,8 +48,9 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
     private string? _coreVersion;
     private SubscriptionConfiguration? _activeConfiguration;
 
-    public NetworkAcceleratorViewModel(string dataDirectory, string moduleDirectory)
+    public NetworkAcceleratorViewModel(string dataDirectory, string moduleDirectory, IUserFeedbackService? feedback = null)
     {
+        _feedback = feedback;
         _settingsStore = new SettingsStore(dataDirectory);
         _subscriptionService = new SubscriptionService(dataDirectory);
         _configurationService = new SingBoxConfigurationService(dataDirectory);
@@ -181,7 +184,7 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
         }
         catch (Exception exception)
         {
-            await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = $"初始化失败：{exception.GetBaseException().Message}");
+            await Dispatcher.UIThread.InvokeAsync(() => Fail("初始化失败", exception));
         }
     }
 
@@ -222,7 +225,7 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
                 ApplyDisconnectedState();
-                StatusMessage = $"连接失败：{exception.GetBaseException().Message}";
+                Fail("连接失败", exception);
             });
         }
         finally
@@ -243,12 +246,12 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
                 RefreshCoreStatus(coreVersion);
-                StatusMessage = $"sing-box {SingBoxInstallerService.StableVersion} 安装成功";
+                Succeed($"sing-box {SingBoxInstallerService.StableVersion} 安装成功");
             });
         }
         catch (Exception exception)
         {
-            await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = $"核心安装失败：{exception.GetBaseException().Message}");
+            await Dispatcher.UIThread.InvokeAsync(() => Fail("核心安装失败", exception));
         }
         finally
         {
@@ -273,13 +276,13 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
                 ApplyProfile();
-                StatusMessage = $"订阅更新成功，共 {_profile.Nodes.Count} 个节点";
+                Succeed($"订阅更新成功，共 {_profile.Nodes.Count} 个节点");
             });
             _ = RefreshLatenciesAsync();
         }
         catch (Exception exception)
         {
-            await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = $"订阅更新失败：{exception.GetBaseException().Message}");
+            await Dispatcher.UIThread.InvokeAsync(() => Fail("订阅更新失败", exception));
         }
         finally
         {
@@ -324,7 +327,7 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
         }
         catch (Exception exception)
         {
-            await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = $"节点切换失败：{exception.GetBaseException().Message}");
+            await Dispatcher.UIThread.InvokeAsync(() => Fail("节点切换失败", exception));
         }
     }
 
@@ -474,14 +477,13 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
             {
                 RefreshConfigurations();
                 ApplyProfile();
-                StatusMessage = $"{successPrefix ?? "已切换到配置"}：{selected.Name}";
+                Succeed($"{successPrefix ?? "已切换到配置"}：{selected.Name}");
             });
         }
         catch (Exception exception)
         {
             reconnect = false;
-            await Dispatcher.UIThread.InvokeAsync(() =>
-                StatusMessage = $"配置切换失败：{exception.GetBaseException().Message}");
+            await Dispatcher.UIThread.InvokeAsync(() => Fail("配置切换失败", exception));
         }
         finally
         {
@@ -630,6 +632,18 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
             await Dispatcher.UIThread.InvokeAsync(() => ConnectionDurationText =
                 $"{(int)duration.TotalHours:00}:{duration.Minutes:00}:{duration.Seconds:00}");
         }
+    }
+
+    private void Fail(string title, Exception exception)
+    {
+        StatusMessage = $"{title}：{exception.GetBaseException().Message}";
+        _feedback.Report(title, exception);
+    }
+
+    private void Succeed(string message)
+    {
+        StatusMessage = message;
+        _feedback.Notify(FeedbackKind.Success, message);
     }
 
     private void ApplyDisconnectedState()

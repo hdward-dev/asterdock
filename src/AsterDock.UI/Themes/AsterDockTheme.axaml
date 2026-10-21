@@ -1,6 +1,7 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:controls="using:AsterDock.UI.Controls">
+        xmlns:controls="using:AsterDock.UI.Controls"
+        xmlns:u="https://irihi.tech/ursa">
   <Styles.Resources>
     <ResourceDictionary>
       <ResourceDictionary.ThemeDictionaries>
@@ -26,7 +27,10 @@
           <SolidColorBrush x:Key="AppPositiveBrush" Color="#16883F"/>
           <SolidColorBrush x:Key="AppPositiveSurfaceBrush" Color="#E8F5EC"/>
           <SolidColorBrush x:Key="AppWarningBrush" Color="#B54708"/>
+          <SolidColorBrush x:Key="AppWarningSurfaceBrush" Color="#FFF4E8"/>
           <SolidColorBrush x:Key="AppDangerBrush" Color="#C42B1C"/>
+          <SolidColorBrush x:Key="AppDangerSurfaceBrush" Color="#FDECEC"/>
+          <SolidColorBrush x:Key="AppOnDangerBrush" Color="#FFFFFF"/>
           <SolidColorBrush x:Key="AppControlBorderBrush" Color="#98A2B3"/>
           <SolidColorBrush x:Key="AppCaptionHoverBrush" Color="#E7EBF1"/>
           <SolidColorBrush x:Key="AppScrimBrush" Color="#CC1B2430"/>
@@ -58,7 +62,10 @@
           <SolidColorBrush x:Key="AppPositiveBrush" Color="#63D38A"/>
           <SolidColorBrush x:Key="AppPositiveSurfaceBrush" Color="#193B28"/>
           <SolidColorBrush x:Key="AppWarningBrush" Color="#F2B45F"/>
+          <SolidColorBrush x:Key="AppWarningSurfaceBrush" Color="#3A2C16"/>
           <SolidColorBrush x:Key="AppDangerBrush" Color="#FF7B72"/>
+          <SolidColorBrush x:Key="AppDangerSurfaceBrush" Color="#3A2220"/>
+          <SolidColorBrush x:Key="AppOnDangerBrush" Color="#1B1F26"/>
           <SolidColorBrush x:Key="AppControlBorderBrush" Color="#7E8998"/>
           <SolidColorBrush x:Key="AppCaptionHoverBrush" Color="#2A3038"/>
           <SolidColorBrush x:Key="AppScrimBrush" Color="#E610141C"/>
@@ -519,5 +526,100 @@
     <Setter Property="MinWidth" Value="0"/>
     <Setter Property="MinHeight" Value="0"/>
     <Setter Property="HorizontalAlignment" Value="Left"/>
+  </Style>
+
+  <!-- Dialogs sit on Ursa's overlay host. Keep the chrome flat: no scale, no blur. -->
+  <Style Selector="u|CustomDialogControl">
+    <Setter Property="Transitions" Value="{x:Null}"/>
+    <Setter Property="RenderTransform" Value="none"/>
+    <Setter Property="MinWidth" Value="0"/>
+    <Setter Property="MinHeight" Value="0"/>
+    <Setter Property="Focusable" Value="False"/>
+  </Style>
+  <Style Selector="u|CustomDialogControl /template/ Border#PART_Border">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
+    <Setter Property="Padding" Value="0"/>
+  </Style>
+  <Style Selector="u|CustomDialogControl /template/ Button#PART_CloseButton">
+    <Setter Property="IsVisible" Value="False"/>
+    <Setter Property="Width" Value="0"/>
+    <Setter Property="Height" Value="0"/>
+    <Setter Property="IsHitTestVisible" Value="False"/>
+  </Style>
+  <Style Selector="u|OverlayDialogHost">
+    <Setter Property="OverlayMaskBrush" Value="{DynamicResource AppScrimBrush}"/>
+  </Style>
+
+  <Style Selector="Button.ad-dialog-primary">
+    <Setter Property="MinWidth" Value="88"/>
+    <Setter Property="MinHeight" Value="36"/>
+    <Setter Property="Padding" Value="16,0"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Background" Value="{DynamicResource AppAccentBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.ad-dialog-primary /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AppAccentBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
+  </Style>
+  <Style Selector="Button.ad-dialog-primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AppAccentHoverBrush}"/>
+  </Style>
+  <Style Selector="Button.ad-dialog-danger">
+    <Setter Property="MinWidth" Value="88"/>
+    <Setter Property="MinHeight" Value="36"/>
+    <Setter Property="Padding" Value="16,0"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Background" Value="{DynamicResource AppDangerBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppOnDangerBrush}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.ad-dialog-danger /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AppDangerBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppOnDangerBrush}"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
+  </Style>
+  <Style Selector="Button.ad-dialog-secondary">
+    <Setter Property="MinWidth" Value="88"/>
+    <Setter Property="MinHeight" Value="36"/>
+    <Setter Property="Padding" Value="16,0"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Background" Value="{DynamicResource AppSubtleBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppStrongTextBrush}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+  </Style>
+  <Style Selector="Button.ad-dialog-secondary /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AppSubtleBrush}"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppStrongTextBrush}"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
+  </Style>
+  <Style Selector="Button.ad-dialog-quiet">
+    <Setter Property="MinHeight" Value="32"/>
+    <Setter Property="Padding" Value="10,0"/>
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppAccentBrush}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="CornerRadius" Value="8"/>
+  </Style>
+  <Style Selector="Button.ad-dialog-quiet /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Foreground" Value="{DynamicResource AppAccentBrush}"/>
+    <Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
+    <Setter Property="CornerRadius" Value="8"/>
+  </Style>
+  <Style Selector="Button.ad-dialog-quiet:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AppCaptionHoverBrush}"/>
   </Style>
 </Styles>

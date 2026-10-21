@@ -1,5 +1,7 @@
+using AsterDock.Contracts;
 using AsterDock.UI.Controls;
 using AsterDock.UI.Motion;
+using AsterDock.UI.Services;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -7,6 +9,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 namespace AsterDock.UI.Checks;
 
@@ -22,6 +25,88 @@ internal static class GalleryExport
             Save(WindowOverlay(), Path.Combine(directory, $"loading_window_overlay_{suffix}.png"), 1080, 640, dark, TimeSpan.FromMilliseconds(40));
             Save(Skeletons(), Path.Combine(directory, $"loading_skeleton_{suffix}.png"), 880, 460, dark, TimeSpan.FromMilliseconds(630));
         }
+    }
+
+    public static void ExportFeedback(string directory)
+    {
+        var snap = FeedbackMotion.Snap;
+        FeedbackMotion.Snap = true;
+        try
+        {
+            foreach (var dark in new[] { false, true })
+            {
+                var suffix = dark ? "dark" : "light";
+                foreach (var sample in Samples())
+                {
+                    var card = new AdDialogCard(sample.Dialog);
+                    var window = Show(Frame(card), 760, 520, dark);
+                    window.UpdateLayout();
+                    if (sample.Dialog.Tone == DialogTone.Error)
+                        card.GetVisualDescendants().OfType<Button>().Single(item => item.Name == "DialogDetailsToggle")
+                            .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                    window.UpdateLayout();
+                    SaveBitmap(window, Path.Combine(directory, $"dialog_{sample.Name}_{suffix}.png"), 760, 520);
+                    window.Close();
+                }
+
+                var service = new UserFeedbackService(static action => action());
+                service.Toast(FeedbackKind.Info, "正在同步设备列表", "信息");
+                service.Toast(FeedbackKind.Success, "配置已保存", "成功");
+                service.Toast(FeedbackKind.Warning, "订阅将在 3 天后到期", "警告");
+                service.Toast(FeedbackKind.Error, "连接失败，请检查网络后重试", "错误");
+                var host = new AdToastHost { Margin = new Thickness(0, 16, 16, 0) };
+                host.Show(service);
+                var toastWindow = Show(host, 520, 460, dark);
+                toastWindow.UpdateLayout();
+                SaveBitmap(toastWindow, Path.Combine(directory, $"toast_stack_{suffix}.png"), 520, 460);
+                toastWindow.Close();
+            }
+        }
+        finally
+        {
+            FeedbackMotion.Snap = snap;
+        }
+    }
+
+    private static IEnumerable<(string Name, FeedbackDialog Dialog)> Samples()
+    {
+        yield return ("info", Dialog("信息", "设备列表已更新", "可以继续选择一台设备进行连接。"));
+        yield return ("success", Dialog("成功", "安装完成", "投屏核心已校验并可以使用。", DialogTone.Success));
+        yield return ("warning", Dialog("警告", "订阅即将到期", "到期后节点列表将无法更新。", DialogTone.Warning));
+        yield return ("error", new FeedbackDialog
+        {
+            Tone = DialogTone.Error,
+            Title = "连接失败",
+            Message = "无法建立画面通道。",
+            Details = "System.IO.IOException: 手机端投屏服务启动失败。\n   at AndroidScreen.Module.Services.EmbeddedScreenSession.Start()",
+            PrimaryText = "确定"
+        });
+        yield return ("confirm", new FeedbackDialog
+        {
+            Tone = DialogTone.Confirm,
+            Title = "结束运行",
+            Message = "结束后需要重新打开才能继续使用。",
+            PrimaryText = "结束运行",
+            SecondaryText = "取消",
+            Danger = true
+        });
+    }
+
+    private static FeedbackDialog Dialog(string title, string message, string body, DialogTone tone = DialogTone.Info) => new()
+    {
+        Tone = tone,
+        Title = title,
+        Message = message + "\n" + body,
+        PrimaryText = "确定"
+    };
+
+    private static Control Frame(Control card)
+    {
+        var grid = new Grid();
+        grid.Children.Add(card);
+        card.HorizontalAlignment = HorizontalAlignment.Center;
+        card.VerticalAlignment = VerticalAlignment.Center;
+        return grid;
     }
 
     public static void ExportVideo(string directory)

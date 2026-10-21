@@ -11,7 +11,7 @@ public sealed class InvoicePrinterApplicationModule : IApplicationModule, IAppli
 
     public void Initialize(IApplicationContext context) => _context = context;
 
-    public Control CreateView() => _view ??= new InvoicePrinterView(_context?.Windows);
+    public Control CreateView() => _view ??= new InvoicePrinterView(_context?.Windows, _context?.Feedback);
 
     public void Dispose()
     {

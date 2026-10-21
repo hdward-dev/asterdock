@@ -444,7 +444,7 @@
                     <Grid ColumnDefinitions="*,Auto">
                       <StackPanel Spacing="5" Margin="0,0,24,0">
                         <TextBlock Text="减少动态效果" FontSize="16" FontWeight="SemiBold"/>
-                        <TextBlock Text="加载图形保持静止并轻微呼吸，骨架屏不再扫光，遮罩不再缩放。"
+                        <TextBlock Text="加载图形保持静止并轻微呼吸，骨架屏不再扫光，对话框和通知直接出现，遮罩不再淡入。"
                                    TextWrapping="Wrap" Foreground="{DynamicResource AppMutedBrush}"/>
                       </StackPanel>
                       <ToggleSwitch x:Name="ReduceMotionSwitch" Grid.Column="1" MinWidth="0"
@@ -678,5 +678,6 @@
     <ui:AdLoadingOverlay x:Name="WindowLoadingOverlay" Grid.RowSpan="2" ZIndex="240"
                          IsHitTestVisible="False" FollowContentCornerRadius="False"
                          IndicatorSize="Large" UseBlur="False"/>
+    <ui:AdFeedbackLayer x:Name="WindowFeedback" Grid.RowSpan="2" ZIndex="280"/>
   </Grid>
 </Window>

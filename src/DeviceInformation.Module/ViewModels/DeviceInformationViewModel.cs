@@ -10,6 +10,7 @@ public sealed class DeviceInformationViewModel : INotifyPropertyChanged, IDispos
 {
     private const int HistoryLength = 48;
     private readonly ISystemMetricsService _service;
+    private readonly IUserFeedbackService? _feedback;
     private readonly CancellationTokenSource _cancellation = new();
     private readonly Queue<double> _cpuHistory = new();
     private readonly Queue<double> _gpuHistory = new();
@@ -42,7 +43,11 @@ public sealed class DeviceInformationViewModel : INotifyPropertyChanged, IDispos
     private IReadOnlyList<double> _cpuHistoryValues = Array.Empty<double>();
     private IReadOnlyList<double> _gpuHistoryValues = Array.Empty<double>();
 
-    public DeviceInformationViewModel(ISystemMetricsService service) => _service = service;
+    public DeviceInformationViewModel(ISystemMetricsService service, IUserFeedbackService? feedback = null)
+    {
+        _service = service;
+        _feedback = feedback;
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -90,7 +95,11 @@ public sealed class DeviceInformationViewModel : INotifyPropertyChanged, IDispos
         }
         catch (Exception exception)
         {
-            await Dispatcher.UIThread.InvokeAsync(() => StatusText = $"读取失败：{exception.GetBaseException().Message}");
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                StatusText = $"读取失败：{exception.GetBaseException().Message}";
+                _feedback.Report("读取失败", exception);
+            });
         }
     }
 
@@ -116,7 +125,10 @@ public sealed class DeviceInformationViewModel : INotifyPropertyChanged, IDispos
     private void ReceiveError(Exception exception)
     {
         Dispatcher.UIThread.Post(() =>
-            StatusText = $"监控已暂停：{exception.GetBaseException().Message}");
+        {
+            StatusText = $"监控已暂停：{exception.GetBaseException().Message}";
+            _feedback.Report("监控已暂停", exception);
+        });
     }
 
     private void ApplyDetails(SystemDeviceDetails details)

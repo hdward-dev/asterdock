@@ -78,6 +78,7 @@ static class ModuleInteractionChecks
             MotionClock.Manual = true;
             CheckPageSurvivesDetach(check);
             CheckSwitchSurvivesDetach(check);
+            CheckCustomHitTargets(check);
             CheckClosedViewCanBeCollected(check);
         }
         finally
@@ -106,12 +107,12 @@ static class ModuleInteractionChecks
         view.PreviewNavigate("Settings");
         var settings = view.GetVisualDescendants().OfType<ToggleSwitch>()
             .Single(control => AutomationProperties.GetName(control) == "TUN 模式");
-        check(!CanHit(settings), "mid-transition settings switch is not hit-testable yet");
+        check(!Hits(window, settings, Center(settings)), "mid-transition settings switch is not hit-testable yet");
         window.Content = null;
         Settle(window);
         window.Content = view;
         Settle(window);
-        check(CanHit(settings), "returning mid-transition leaves the selected page clickable");
+        check(Hits(window, settings, Center(settings)), "returning mid-transition leaves the selected page clickable");
         view.PreviewNavigate("Overview");
         window.Content = null;
         Settle(window);
@@ -119,8 +120,31 @@ static class ModuleInteractionChecks
         Settle(window);
         var proxy = view.GetVisualDescendants().OfType<AccentSwitch>()
             .Single(control => AutomationProperties.GetName(control) == "系统代理");
+        var tun = view.GetVisualDescendants().OfType<AccentSwitch>()
+            .Single(control => AutomationProperties.GetName(control) == "虚拟网卡");
+        var lan = view.GetVisualDescendants().OfType<AccentSwitch>()
+            .Single(control => AutomationProperties.GetName(control) == "局域网代理");
         var power = view.GetVisualDescendants().OfType<PowerButton>().Single();
-        check(CanHit(proxy) && CanHit(power), "returning to the overview leaves the switch and start button clickable");
+        check(power.Focusable && AutomationProperties.GetName(power) == "开始或停止加速", "start button is focusable and named");
+        check(Hits(window, power, Center(power)), "overview start button centre resolves to the button");
+        var outsideCircle = new Point(1, 1);
+        check(OutsideCircle(power, outsideCircle), "start button corner sample is outside the face");
+        check(!Hits(window, power, outsideCircle), "overview start button corner does not hit the button");
+        var starts = 0;
+        power.Click += (_, _) => starts++;
+        Click(window, power);
+        check(starts == 1, "overview start button click raises Click");
+        Click(window, power, outsideCircle);
+        check(starts == 1, "overview start button ignores a point outside the circle");
+        foreach (var toggle in new[] { proxy, tun, lan })
+        {
+            var name = AutomationProperties.GetName(toggle);
+            check(toggle.Focusable, name + " switch is focusable");
+            check(Hits(window, toggle, Center(toggle)), name + " switch centre is hit-testable");
+            var outsideTrack = new Point(0.5, 0.5);
+            check(!Hits(window, toggle, outsideTrack), name + " switch corner outside the track is not hit-testable");
+        }
+
         var before = proxy.IsChecked == true;
         Click(window, proxy);
         check(proxy.IsChecked == true != before, "overview system proxy toggles after the interrupted transition");
@@ -151,6 +175,53 @@ static class ModuleInteractionChecks
         check(toggle.IsChecked == false, "accent switch toggles after detach and reattach");
         MotionClock.Advance(TimeSpan.FromMilliseconds(400));
         check(Math.Abs(toggle.ThumbPosition) < 0.001, "reattached switch thumb finishes at the off end");
+        window.Close();
+    }
+
+    private static void CheckCustomHitTargets(Action<bool, string> check)
+    {
+        var button = new PowerButton();
+        var toggle = new AccentSwitch { IsChecked = false };
+        var root = new StackPanel { Spacing = 12, Margin = new Thickness(24) };
+        root.Children.Add(button);
+        root.Children.Add(toggle);
+        var window = new Window
+        {
+            Width = 240,
+            Height = 200,
+            Content = root,
+            WindowDecorations = WindowDecorations.None
+        };
+        window.Show();
+        Settle(window);
+        var outsideCircle = new Point(1, 1);
+        check(button.Focusable && button.IsTabStop, "standalone start button accepts keyboard focus");
+        check(AutomationProperties.GetName(button) == "开始或停止加速", "standalone start button has an accessible name");
+        check(Hits(window, button, Center(button)), "standalone start button centre is hit-testable");
+        check(OutsideCircle(button, outsideCircle) && !Hits(window, button, outsideCircle), "standalone start button corner is outside the hit circle");
+        var clicks = 0;
+        button.Click += (_, _) => clicks++;
+        Click(window, button);
+        check(clicks == 1, "mouse down and up on the start circle raises Click");
+        Click(window, button, outsideCircle);
+        check(clicks == 1, "mouse down and up outside the start circle does not raise Click");
+        check(button.Focus(), "start button takes focus");
+        window.KeyPress(Key.Space, RawInputModifiers.None, PhysicalKey.None, null!);
+        window.KeyRelease(Key.Space, RawInputModifiers.None, PhysicalKey.None, null!);
+        check(clicks == 2, "space activates the focused start button");
+        window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null!);
+        window.KeyRelease(Key.Enter, RawInputModifiers.None, PhysicalKey.None, null!);
+        check(clicks == 3, "enter activates the focused start button");
+
+        check(Hits(window, toggle, Center(toggle)), "accent switch centre is hit-testable");
+        check(!Hits(window, toggle, new Point(0.5, 0.5)), "accent switch corner outside the track is not hit-testable");
+        Click(window, toggle);
+        check(toggle.IsChecked == true, "accent switch centre click toggles");
+        Click(window, toggle, new Point(0.5, 0.5));
+        check(toggle.IsChecked == true, "accent switch corner does not toggle");
+        check(toggle.Focus(), "accent switch takes focus");
+        window.KeyPress(Key.Space, RawInputModifiers.None, PhysicalKey.None, null!);
+        check(toggle.IsChecked == false, "space toggles the focused accent switch");
         window.Close();
     }
 
@@ -195,23 +266,33 @@ static class ModuleInteractionChecks
         return new WeakReference(view);
     }
 
-    private static void Click(Window window, Control control)
+    private static Point Center(Control control) => new(control.Bounds.Width / 2, control.Bounds.Height / 2);
+
+    private static bool OutsideCircle(Control control, Point local)
     {
-        var center = new Point(control.Bounds.Width / 2, control.Bounds.Height / 2);
-        var point = control.TranslatePoint(center, window) ?? center;
+        var radius = Math.Min(control.Bounds.Width, control.Bounds.Height) / 2;
+        var dx = local.X - control.Bounds.Width / 2;
+        var dy = local.Y - control.Bounds.Height / 2;
+        return new Rect(control.Bounds.Size).Contains(local) && dx * dx + dy * dy > radius * radius;
+    }
+
+    private static void Click(Window window, Control control) => Click(window, control, Center(control));
+
+    private static void Click(Window window, Control control, Point local)
+    {
+        var point = control.TranslatePoint(local, window) ?? local;
         window.MouseDown(point, MouseButton.Left);
         window.MouseUp(point, MouseButton.Left);
     }
 
-    private static bool CanHit(Visual visual)
+    private static bool Hits(Window window, Control control, Point local)
     {
-        for (var node = visual; node is not null; node = node.GetVisualParent())
-        {
-            if (!node.IsVisible) return false;
-            if (node is InputElement input && !input.IsHitTestVisible) return false;
-        }
-
-        return true;
+        var point = control.TranslatePoint(local, window);
+        if (point is null) return false;
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick(1);
+        Dispatcher.UIThread.RunJobs(DispatcherPriority.Render);
+        var hit = window.InputHitTest(point.Value);
+        return hit is Visual found && (ReferenceEquals(found, control) || control.IsVisualAncestorOf(found));
     }
 
     private static void Settle(Window window)

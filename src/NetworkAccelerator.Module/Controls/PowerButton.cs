@@ -1,8 +1,10 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Rendering;
 
 namespace NetworkAccelerator.Module.Controls;
 
@@ -10,7 +12,7 @@ namespace NetworkAccelerator.Module.Controls;
 /// 88px accent circle that plays, connects, and stops. Motion is drawn inside a fixed slot
 /// so scale, glow, and shake never move surrounding cards.
 /// </summary>
-public class PowerButton : Panel
+public class PowerButton : Panel, ICustomHitTest
 {
     public static readonly StyledProperty<bool> IsRunningProperty =
         AvaloniaProperty.Register<PowerButton, bool>(nameof(IsRunning));
@@ -83,6 +85,7 @@ public class PowerButton : Panel
     static PowerButton()
     {
         FocusableProperty.OverrideDefaultValue<PowerButton>(true);
+        IsTabStopProperty.OverrideDefaultValue<PowerButton>(true);
         AffectsRender<PowerButton>(IsRunningProperty, IsConnectingProperty, AccentBrushProperty, IconBrushProperty);
         IsRunningProperty.Changed.AddClassHandler<PowerButton>((button, _) => button.OnRunningChanged());
         FaultSignalProperty.Changed.AddClassHandler<PowerButton>((button, _) => button.OnFaultChanged());
@@ -93,7 +96,9 @@ public class PowerButton : Panel
         Width = Diameter;
         Height = Diameter;
         ClipToBounds = false;
+        Background = Brushes.Transparent;
         Cursor = new Cursor(StandardCursorType.Hand);
+        AutomationProperties.SetName(this, "开始或停止加速");
         RenderTransform = _shake;
         _shadowHost = new Border
         {
@@ -143,6 +148,18 @@ public class PowerButton : Panel
     {
         add => AddHandler(ClickEvent, value);
         remove => RemoveHandler(ClickEvent, value);
+    }
+
+    /// <summary>
+    /// The shadow and the square corners sit outside the face. Only the circle takes the pointer.
+    /// </summary>
+    public bool HitTest(Point point)
+    {
+        var radius = Math.Min(Bounds.Width, Bounds.Height) / 2;
+        if (radius <= 0) return false;
+        var dx = point.X - Bounds.Width / 2;
+        var dy = point.Y - Bounds.Height / 2;
+        return dx * dx + dy * dy <= radius * radius;
     }
 
     /// <summary>Drives the pointer hover scale. Used by the screenshot harness.</summary>
@@ -243,7 +260,7 @@ public class PowerButton : Panel
     {
         base.OnPointerReleased(e);
         if (!_pressed) return;
-        var inside = new Rect(Bounds.Size).Contains(e.GetPosition(this));
+        var inside = HitTest(e.GetPosition(this));
         PreviewPress(false);
         e.Pointer.Capture(null);
         if (inside && !IsConnecting)

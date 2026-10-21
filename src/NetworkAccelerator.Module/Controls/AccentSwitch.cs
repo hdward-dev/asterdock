@@ -3,13 +3,14 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Rendering;
 
 namespace NetworkAccelerator.Module.Controls;
 
 /// <summary>
 /// 52 by 32 switch with a 24px thumb. The thumb eases across the track in 200ms.
 /// </summary>
-public class AccentSwitch : Control
+public class AccentSwitch : Control, ICustomHitTest
 {
     public const double TrackWidth = 52;
     public const double TrackHeight = 32;
@@ -36,6 +37,7 @@ public class AccentSwitch : Control
     static AccentSwitch()
     {
         FocusableProperty.OverrideDefaultValue<AccentSwitch>(true);
+        IsTabStopProperty.OverrideDefaultValue<AccentSwitch>(true);
         AffectsRender<AccentSwitch>(IsCheckedProperty, ThumbPositionProperty);
         IsCheckedProperty.Changed.AddClassHandler<AccentSwitch>((control, _) => control.SyncThumb(animate: true));
     }
@@ -63,6 +65,19 @@ public class AccentSwitch : Control
     {
         add => AddHandler(ClickEvent, value);
         remove => RemoveHandler(ClickEvent, value);
+    }
+
+    /// <summary>The track is a capsule. Square corners of the bounds are outside it.</summary>
+    public bool HitTest(Point point)
+    {
+        var width = Bounds.Width;
+        var height = Bounds.Height;
+        if (width <= 0 || height <= 0) return false;
+        var radius = height / 2;
+        var centerX = Math.Clamp(point.X, radius, Math.Max(radius, width - radius));
+        var dx = point.X - centerX;
+        var dy = point.Y - radius;
+        return dx * dx + dy * dy <= radius * radius;
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)

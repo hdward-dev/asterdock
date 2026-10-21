@@ -19,6 +19,7 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
     private readonly SingBoxConfigurationService _configurationService;
     private readonly SingBoxEngineService _engine;
     private readonly SingBoxInstallerService _installer;
+    private readonly IUserFeedbackService? _feedback;
     private NetworkAcceleratorSettings _settings = new();
     private SubscriptionProfile? _profile;
     private PeriodicTimer? _durationTimer;
@@ -51,8 +52,13 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
     private string? _coreVersion;
     private SubscriptionConfiguration? _activeConfiguration;
 
-    public NetworkAcceleratorViewModel(string dataDirectory, string moduleDirectory, ILoadingService? loading = null)
+    public NetworkAcceleratorViewModel(
+        string dataDirectory,
+        string moduleDirectory,
+        ILoadingService? loading = null,
+        IUserFeedbackService? feedback = null)
     {
+        _feedback = feedback;
         _settingsStore = new SettingsStore(dataDirectory);
         _subscriptionService = new SubscriptionService(dataDirectory);
         _configurationService = new SingBoxConfigurationService(dataDirectory);
@@ -234,7 +240,11 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
     public int ProxyPort => SingBoxConfigurationService.MixedProxyPort;
     public string RulesText => Mode == ProxyMode.Rule ? "规则集 2 个" : Mode == ProxyMode.Global ? "全局代理" : "全部直连";
 
-    public void ShowStatusMessage(string message) => StatusMessage = message;
+    public void ShowStatusMessage(string message, FeedbackKind? toast = null)
+    {
+        StatusMessage = message;
+        if (toast is { } kind) _feedback.Notify(kind, message);
+    }
 
     public async Task InitializeAsync()
     {
@@ -262,7 +272,7 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
         }
         catch (Exception exception)
         {
-            await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = $"初始化失败：{exception.GetBaseException().Message}");
+            await Dispatcher.UIThread.InvokeAsync(() => Fail("初始化失败", exception));
         }
     }
 
@@ -283,16 +293,12 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
         }
         catch (TunAuthorizationException exception)
         {
-            await RevertAfterTunAuthorizationAsync(exception.Message, restoreConnection: false).ConfigureAwait(false);
+            await RevertAfterTunAuthorizationAsync(exception, restoreConnection: false).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
             await Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                ApplyDisconnectedState();
-                StatusMessage = $"连接失败：{exception.GetBaseException().Message}";
-                if (!stopping) ConnectionFaultSignal++;
-            });
+                Fail(stopping ? "停止失败" : "连接失败", exception, fault: !stopping));
         }
         finally
         {
@@ -312,12 +318,12 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
                 RefreshCoreStatus(coreVersion);
-                StatusMessage = $"sing-box {SingBoxInstallerService.StableVersion} 安装成功";
+                Succeed($"sing-box {SingBoxInstallerService.StableVersion} 安装成功");
             });
         }
         catch (Exception exception)
         {
-            await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = $"核心安装失败：{exception.GetBaseException().Message}");
+            await Dispatcher.UIThread.InvokeAsync(() => Fail("核心安装失败", exception));
         }
         finally
         {
@@ -343,13 +349,13 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
                 ApplyProfile();
-                StatusMessage = $"订阅更新成功，共 {_profile.Nodes.Count} 个节点";
+                Succeed($"订阅更新成功，共 {_profile.Nodes.Count} 个节点");
             });
             _ = RefreshLatenciesAsync();
         }
         catch (Exception exception)
         {
-            await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = $"订阅更新失败：{exception.GetBaseException().Message}");
+            await Dispatcher.UIThread.InvokeAsync(() => Fail("订阅更新失败", exception));
         }
         finally
         {
@@ -367,7 +373,16 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
         Mode = mode;
         _settings.Mode = mode;
         OnPropertyChanged(nameof(RulesText));
-        await _settingsStore.SaveAsync(_settings).ConfigureAwait(false);
+        try
+        {
+            await _settingsStore.SaveAsync(_settings).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => Fail("保存设置失败", exception));
+            return;
+        }
+
         if (IsConnected) await RestartAsync().ConfigureAwait(false);
     }
 
@@ -400,7 +415,15 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
         var wasConnected = IsConnected || _engine.IsRunning;
         if (!wasConnected)
         {
-            await _settingsStore.SaveAsync(_settings).ConfigureAwait(false);
+            try
+            {
+                await _settingsStore.SaveAsync(_settings).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                await Dispatcher.UIThread.InvokeAsync(() => Fail("保存设置失败", exception));
+            }
+
             return;
         }
 
@@ -413,15 +436,14 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
         }
         catch (TunAuthorizationException exception)
         {
-            await RevertAfterTunAuthorizationAsync(exception.Message, restoreConnection: true).ConfigureAwait(false);
+            await RevertAfterTunAuthorizationAsync(exception, restoreConnection: true).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
                 ApplyDisconnectedState();
-                StatusMessage = $"连接失败：{exception.GetBaseException().Message}";
-                ConnectionFaultSignal++;
+                Fail("连接失败", exception, fault: true);
             });
         }
         finally
@@ -462,7 +484,7 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
         _ = RefreshServiceStatusAsync();
     }
 
-    private async Task RevertAfterTunAuthorizationAsync(string message, bool restoreConnection)
+    private async Task RevertAfterTunAuthorizationAsync(TunAuthorizationException exception, bool restoreConnection)
     {
         if (_pendingTunRevert is { } previous)
         {
@@ -474,6 +496,7 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
             await ApplyTakeoverFlagsAsync(_settings.SystemProxyEnabled, false).ConfigureAwait(false);
         }
 
+        await Dispatcher.UIThread.InvokeAsync(() => PresentAuthorization(_feedback, exception));
         await Dispatcher.UIThread.InvokeAsync(ApplyDisconnectedState);
         if (restoreConnection && !TunEnabled && _profile is { Nodes.Count: > 0 })
         {
@@ -481,13 +504,12 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
             {
                 await StartCoreAsync().ConfigureAwait(false);
             }
-            catch (Exception exception)
+            catch (Exception restoreFailure)
             {
                 await Dispatcher.UIThread.InvokeAsync(() =>
                 {
                     ApplyDisconnectedState();
-                    StatusMessage = $"连接失败：{exception.GetBaseException().Message}";
-                    ConnectionFaultSignal++;
+                    Fail("连接失败", restoreFailure, fault: true);
                 });
                 return;
             }
@@ -499,9 +521,27 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
 
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            StatusMessage = message;
+            StatusMessage = exception.Message;
             ConnectionFaultSignal++;
         });
+    }
+
+    public static void PresentAuthorization(IUserFeedbackService? feedback, TunAuthorizationException exception)
+    {
+        if (feedback is null) return;
+        if (exception.Cancelled)
+        {
+            feedback.Notify(FeedbackKind.Warning, TunAuthorizationException.CancelledMessage);
+            return;
+        }
+
+        if (exception.SetuidWrapperMissing)
+        {
+            _ = feedback.ShowErrorAsync("无法授予 TUN 权限", TunAuthorizationException.SetuidWrapperMessage, exception);
+            return;
+        }
+
+        feedback.Report("授予 TUN 权限失败", exception);
     }
 
     private async Task ApplyTakeoverFlagsAsync(bool systemProxyEnabled, bool tunEnabled)
@@ -537,7 +577,7 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
         }
         catch (Exception exception)
         {
-            await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = $"节点切换失败：{exception.GetBaseException().Message}");
+            await Dispatcher.UIThread.InvokeAsync(() => Fail("节点切换失败", exception));
         }
     }
 
@@ -597,6 +637,9 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
                 foreach (var item in items) item.IsMeasuringLatency = false;
                 IsRefreshingLatencies = false;
                 UpdateCurrentLatency();
+                var measurable = items.Where(item => !item.IsAutomatic).ToArray();
+                if (measurable.Length > 0 && measurable.All(item => item.Latency is null))
+                    _feedback.Notify(FeedbackKind.Warning, "节点延迟测试失败");
             });
         }
     }
@@ -689,14 +732,13 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
             {
                 RefreshConfigurations();
                 ApplyProfile();
-                StatusMessage = $"{successPrefix ?? "已切换到配置"}：{selected.Name}";
+                Succeed($"{successPrefix ?? "已切换到配置"}：{selected.Name}");
             });
         }
         catch (Exception exception)
         {
             reconnect = false;
-            await Dispatcher.UIThread.InvokeAsync(() =>
-                StatusMessage = $"配置切换失败：{exception.GetBaseException().Message}");
+            await Dispatcher.UIThread.InvokeAsync(() => Fail("配置切换失败", exception));
         }
         finally
         {
@@ -847,6 +889,45 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
             await Dispatcher.UIThread.InvokeAsync(() => ConnectionDurationText =
                 $"{(int)duration.TotalHours:00}:{duration.Minutes:00}:{duration.Seconds:00}");
         }
+    }
+
+    private void Fail(string title, Exception exception, bool fault = false)
+    {
+        StatusMessage = $"{title}：{exception.GetBaseException().Message}";
+        if (fault) ConnectionFaultSignal++;
+        _feedback.Report(title, exception);
+    }
+
+    public void Run(Func<Task> action, string? errorTitle = null)
+    {
+        if (_feedback is not null)
+        {
+            _feedback.Run(action, errorTitle);
+            return;
+        }
+
+        _ = Observe(action, errorTitle);
+    }
+
+    private async Task Observe(Func<Task> action, string? errorTitle)
+    {
+        try
+        {
+            await action().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => Fail(string.IsNullOrWhiteSpace(errorTitle) ? "操作未完成" : errorTitle, exception));
+        }
+    }
+
+    private void Succeed(string message)
+    {
+        StatusMessage = message;
+        _feedback.Notify(FeedbackKind.Success, message);
     }
 
     private void ApplyDisconnectedState()

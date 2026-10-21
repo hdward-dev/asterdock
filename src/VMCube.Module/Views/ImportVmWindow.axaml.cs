@@ -1,3 +1,5 @@
+using AsterDock.Contracts;
+using AsterDock.UI.Controls;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
@@ -11,6 +13,7 @@ public sealed partial class ImportVmWindow : Window
     private static readonly string[] VideoModels = ["std", "qxl", "virtio"];
     private LocalVmService _local = null!;
     private CancellationToken _token;
+    private IUserFeedbackService? _feedback;
 
     public ImportVmWindow()
     {
@@ -23,10 +26,12 @@ public sealed partial class ImportVmWindow : Window
         importVideo.SelectedIndex = 0;
     }
 
-    public ImportVmWindow(LocalVmService local, CancellationToken token) : this()
+    public ImportVmWindow(LocalVmService local, CancellationToken token, IUserFeedbackService? feedback = null) : this()
     {
         _local = local;
         _token = token;
+        _feedback = feedback;
+        if (feedback is not null) FeedbackWindow.Attach(this, feedback);
     }
 
     private async void LoadProfile_Click(object? sender, RoutedEventArgs e)
@@ -45,7 +50,7 @@ public sealed partial class ImportVmWindow : Window
             importMac.Text = profile.MacAddress; importGuestAgent.Text = profile.GuestAgentSocket;
             importSummary.Text = profile.Summary; importError.Text = "";
         }
-        catch (Exception ex) { importError.Text = ex.Message; }
+        catch (Exception ex) { Note(ex); }
     }
 
     private async void ChooseDisk_Click(object? sender, RoutedEventArgs e) => await PickFileAsync(importDisk, "现有虚拟磁盘", "*.qcow2");
@@ -61,7 +66,7 @@ public sealed partial class ImportVmWindow : Window
             var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = "选择原有 TPM 状态目录", AllowMultiple = false });
             if (folders.FirstOrDefault()?.TryGetLocalPath() is { } path) importTpm.Text = path;
         }
-        catch (Exception ex) { importError.Text = ex.Message; }
+        catch (Exception ex) { Note(ex); }
     }
 
     private async void Import_Click(object? sender, RoutedEventArgs e)
@@ -75,7 +80,7 @@ public sealed partial class ImportVmWindow : Window
             var vm = await _local.ImportAsync(profile, importProtocol.SelectedIndex == 0 ? ConsoleProtocol.Spice : ConsoleProtocol.Vnc, _token);
             Close(vm);
         }
-        catch (Exception ex) { importError.Text = ex.Message; }
+        catch (Exception ex) { Note(ex); }
         finally { ImportSubmit.IsEnabled = true; importLoad.IsEnabled = true; }
     }
 
@@ -87,7 +92,13 @@ public sealed partial class ImportVmWindow : Window
                 FileTypeFilter = [new FilePickerFileType(title) { Patterns = [pattern] }] });
             if (files.FirstOrDefault()?.TryGetLocalPath() is { } path) target.Text = path;
         }
-        catch (Exception ex) { importError.Text = ex.Message; }
+        catch (Exception ex) { Note(ex); }
+    }
+
+    private void Note(Exception ex)
+    {
+        importError.Text = ex.Message;
+        _feedback.Notify(FeedbackKind.Error, ex.Message, "导入失败");
     }
 
     private static string? Optional(TextBox box) => string.IsNullOrWhiteSpace(box.Text) ? null : box.Text.Trim();

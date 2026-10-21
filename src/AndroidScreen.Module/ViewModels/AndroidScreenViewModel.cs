@@ -1,3 +1,4 @@
+using AsterDock.Contracts;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
@@ -11,6 +12,7 @@ namespace AndroidScreen.Module.ViewModels;
 public sealed class AndroidScreenViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly string _moduleDirectory;
+    private readonly IUserFeedbackService? _feedback;
     private readonly ScrcpyInstallerService _installer;
     private readonly CancellationTokenSource _lifetime = new();
     private CancellationTokenSource? _operation;
@@ -36,8 +38,8 @@ public sealed class AndroidScreenViewModel : INotifyPropertyChanged, IDisposable
     private bool _hasError;
     private string _errorDetails = "";
 
-    public AndroidScreenViewModel(string dataDirectory, string moduleDirectory)
-    { _moduleDirectory = moduleDirectory; _installer = new(dataDirectory); }
+    public AndroidScreenViewModel(string dataDirectory, string moduleDirectory, IUserFeedbackService? feedback = null)
+    { _moduleDirectory = moduleDirectory; _feedback = feedback; _installer = new(dataDirectory); }
     public event PropertyChangedEventHandler? PropertyChanged;
     public ObservableCollection<AndroidDevice> Devices { get; } = [];
     public AndroidDevice? SelectedDevice { get => _selectedDevice; set => SetField(ref _selectedDevice, value); }
@@ -194,7 +196,7 @@ public sealed class AndroidScreenViewModel : INotifyPropertyChanged, IDisposable
         catch (Exception ex) { failure = ex; message = "投屏中断，请重试。可展开错误详情查看原因。"; }
         if (_session != session) return;
         _session = null; IsRunning = false; ClearFrame(); StatusMessage = message;
-        if (failure is not null) { ErrorDetails = failure.ToString(); HasError = true; }
+        if (failure is not null) _feedback.Report("投屏中断", failure);
         await session.DisposeAsync();
     }
 
@@ -212,7 +214,11 @@ public sealed class AndroidScreenViewModel : INotifyPropertyChanged, IDisposable
         if (!_session.Send(data)) _ = StopAsync("设备响应过慢，已停止投屏，请重新连接。");
     }
     public void SendKey(uint code) { Send(ScrcpyProtocol.Key(code, 0)); Send(ScrcpyProtocol.Key(code, 1)); }
-    public void ShowMessage(string text) => StatusMessage = text;
+    public void ShowMessage(string text, FeedbackKind? kind = null)
+    {
+        StatusMessage = text;
+        if (kind is { } value) _feedback.Notify(value, text);
+    }
 
     private void QueueFrame(EmbeddedScreenSession session, byte[] bytes)
     {
@@ -232,7 +238,7 @@ public sealed class AndroidScreenViewModel : INotifyPropertyChanged, IDisposable
                 FrameInfo = $"{bitmap.PixelSize.Width} × {bitmap.PixelSize.Height} · 最高 30 FPS";
                 if (old is null) { StatusMessage = "画面已就绪。点击画面即可控制手机。"; NotifyState(); }
             }
-            catch (Exception ex) { _ = StopAsync("无法显示视频帧：" + ex.Message); }
+            catch (Exception ex) { _feedback.Report("无法显示视频帧", ex); _ = StopAsync("无法显示视频帧：" + ex.Message); }
         }, DispatcherPriority.Render);
     }
 
@@ -253,7 +259,7 @@ public sealed class AndroidScreenViewModel : INotifyPropertyChanged, IDisposable
         catch (OperationCanceledException) { if (!_disposed) StatusMessage = "操作已取消或连接超时，请检查设备后重试。"; }
         catch (Exception ex)
         {
-            if (!_disposed) { StatusMessage = "操作未完成：" + ex.GetBaseException().Message; ErrorDetails = ex.ToString(); HasError = true; }
+            if (!_disposed) { StatusMessage = "操作未完成：" + ex.GetBaseException().Message; _feedback.Report("操作未完成", ex); }
         }
         finally { _operation = null; IsBusy = false; }
     }

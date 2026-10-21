@@ -9,14 +9,16 @@ public enum LinuxTunDecision
     UseCapableCopy,
     CopyAndSetcap,
     LaunchWithPkexec,
-    PkexecMissing
+    PkexecMissing,
+    SetuidWrapperMissing
 }
 
 public enum LinuxPkexecOutcome
 {
     Success,
     Cancelled,
-    Failed
+    Failed,
+    SetuidWrapperMissing
 }
 
 public readonly record struct LinuxTunFacts(
@@ -26,7 +28,8 @@ public readonly record struct LinuxTunFacts(
     bool SourceHasNetAdmin,
     bool SetcapAvailable,
     bool PkexecAvailable,
-    bool FilesystemHonorsFileCapabilities);
+    bool FilesystemHonorsFileCapabilities,
+    bool PlainPkexecExists = false);
 
 public static class LinuxTunAuthorization
 {
@@ -40,7 +43,7 @@ public static class LinuxTunAuthorization
         if (facts.SourceHasNetAdmin)
             return LinuxTunDecision.UseSource;
         if (!facts.PkexecAvailable)
-            return LinuxTunDecision.PkexecMissing;
+            return facts.PlainPkexecExists ? LinuxTunDecision.SetuidWrapperMissing : LinuxTunDecision.PkexecMissing;
         if (facts.SetcapAvailable && facts.FilesystemHonorsFileCapabilities)
             return LinuxTunDecision.CopyAndSetcap;
         return LinuxTunDecision.LaunchWithPkexec;
@@ -51,6 +54,7 @@ public static class LinuxTunAuthorization
         if (!started) return LinuxPkexecOutcome.Failed;
         if (exitCode == 0) return LinuxPkexecOutcome.Success;
         var error = standardError ?? string.Empty;
+        if (RequiresSetuidWrapper(error)) return LinuxPkexecOutcome.SetuidWrapperMissing;
         if (Contains(error, "not found") || Contains(error, "No such file") || Contains(error, "没有那个文件"))
             return LinuxPkexecOutcome.Failed;
         if (exitCode is 126 or 127
@@ -66,6 +70,9 @@ public static class LinuxTunAuthorization
 
     public static bool OutputHasNetAdmin(string? text) =>
         text?.Contains("cap_net_admin", StringComparison.Ordinal) == true;
+
+    public static bool RequiresSetuidWrapper(string? text) =>
+        Contains(text ?? string.Empty, "setuid") || Contains(text ?? string.Empty, "enablePkexecWrapper");
 
     public static bool XattrHasNetAdmin(ReadOnlySpan<byte> value)
     {
@@ -105,6 +112,52 @@ public static class LinuxCommandPaths
         }
 
         return null;
+    }
+
+    public static string? ResolveSetuid(
+        IEnumerable<string> preferred,
+        string name,
+        Func<string, bool> exists,
+        Func<string, bool> isSetuid,
+        IEnumerable<string> pathDirectories)
+    {
+        foreach (var candidate in Candidates(preferred, name, pathDirectories))
+        {
+            if (exists(candidate) && isSetuid(candidate)) return candidate;
+        }
+
+        return null;
+    }
+
+    public static bool FoundWithoutSetuid(
+        IEnumerable<string> preferred,
+        string name,
+        Func<string, bool> exists,
+        Func<string, bool> isSetuid,
+        IEnumerable<string> pathDirectories)
+    {
+        var saw = false;
+        foreach (var candidate in Candidates(preferred, name, pathDirectories))
+        {
+            if (!exists(candidate)) continue;
+            if (isSetuid(candidate)) return false;
+            saw = true;
+        }
+
+        return saw;
+    }
+
+    private static IEnumerable<string> Candidates(
+        IEnumerable<string> preferred,
+        string name,
+        IEnumerable<string> pathDirectories)
+    {
+        foreach (var candidate in preferred) yield return candidate;
+        foreach (var directory in pathDirectories)
+        {
+            if (string.IsNullOrWhiteSpace(directory)) continue;
+            yield return Path.Combine(directory.Trim(), name);
+        }
     }
 }
 

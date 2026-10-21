@@ -50,9 +50,14 @@ Call("ShowAppInfo");
 host.Measure(new Size(1440,900)); host.Arrange(new Rect(0,0,1440,900)); host.UpdateLayout();
 var stopButton = list.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => Equals(ToolTip.GetTip(b), "结束此轻应用的后台运行"));
 Check(stopButton is not null, "close badge renders");
+typeof(MainWindow).GetField("_applicationsLoaded", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(host, true);
+host.Show();
 stopButton!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-Check(!foreground.IsRunning, "close badge stops app without reopening it");
+var confirmStop = host.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "DialogPrimary");
+confirmStop.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+Check(!foreground.IsRunning, "close badge confirms and stops app without reopening it");
 var metrics = (ISystemMetricsService)typeof(MainWindow).GetField("_systemMetrics", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host)!;
 unopened.GetQuickActions(host, metrics);
 Call("RefreshRunningApplications");
@@ -71,6 +76,7 @@ public sealed class CheckApplication : Application
     public override void Initialize()
     {
         Styles.Add(new Semi.Avalonia.SemiTheme());
+        Styles.Add(new Ursa.Themes.Semi.UrsaSemiTheme());
         Styles.Add(new StyleInclude(new Uri("avares://AsterDock.UI/")) { Source=new Uri("avares://AsterDock.UI/Themes/AsterDockTheme.axaml") });
     }
 }

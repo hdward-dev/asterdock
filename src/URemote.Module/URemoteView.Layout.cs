@@ -200,7 +200,11 @@ public sealed partial class URemoteView
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch
         {
-            if (!disposed && !loggingOut && generation == accountGeneration) catalogHint.Text = devices.Count > 0 ? "刷新失败，保留上次设备列表。请检查网络后重试。" : "暂时无法获取设备，请在“账号与设置”检查登录状态，或点击刷新重试。";
+            if (!disposed && !loggingOut && generation == accountGeneration)
+            {
+                catalogHint.Text = devices.Count > 0 ? "刷新失败，保留上次设备列表。请检查网络后重试。" : "暂时无法获取设备，请在“账号与设置”检查登录状态，或点击刷新重试。";
+                ReportFailure(catalogHint.Text, "设备列表");
+            }
         }
         finally { refreshing = false; if (!disposed) { refresh.IsEnabled = true; refresh.Content = "刷新"; } }
     }
@@ -284,12 +288,12 @@ public sealed partial class URemoteView
         {
             var state = DesktopHostSession.ReadIdentity(identity.Text ?? "").State;
             if (!state.IsAuthenticated || !File.Exists(appliedEncoder)) throw new InvalidOperationException();
-            var window = new RemoteDesktopWindow(device, state, appliedEncoder);
+            var window = new RemoteDesktopWindow(device, state, appliedEncoder, feedback: appContext?.Feedback);
             remoteWindows.Add(device.Id, window);
             window.Closed += async (_, _) => { try { await window.Completion; } finally { remoteWindows.Remove(device.Id); } };
-            window.Show();
+            ShowManaged(window);
         }
-        catch { catalogHint.Text = "无法打开远控窗口，请检查登录状态与视频解码器路径。"; }
+        catch { catalogHint.Text = "无法打开远控窗口，请检查登录状态与视频解码器路径。"; ReportFailure(catalogHint.Text, "远程桌面"); }
     }
     private void OpenTool(UuDevice device, bool terminal)
     {
@@ -300,11 +304,11 @@ public sealed partial class URemoteView
         {
             var state = DesktopHostSession.ReadIdentity(identity.Text ?? "").State;
             if (!state.IsAuthenticated) throw new InvalidOperationException();
-            var window = new RemoteToolsWindow(device, state, terminal); toolWindows.Add(device.Id, window);
+            var window = new RemoteToolsWindow(device, state, terminal, appContext?.Feedback); toolWindows.Add(device.Id, window);
             window.Closed += async (_, _) => { try { await window.Completion; } finally { toolWindows.Remove(device.Id); } };
-            window.Show();
+            ShowManaged(window);
         }
-        catch { catalogHint.Text = "无法打开工具窗口，请检查登录状态。"; }
+        catch { catalogHint.Text = "无法打开工具窗口，请检查登录状态。"; ReportFailure(catalogHint.Text, "远程工具"); }
     }
     private void SaveFavorites()
     {
@@ -316,7 +320,7 @@ public sealed partial class URemoteView
         selectedDeviceId = device.Id;
         deviceDetail.IsVisible = true;
         deviceDetail.Children.Clear();
-        var detailView = new DeviceDetailView { DataContext = new DeviceDetailModel {
+        var detailView = new DeviceDetailView { Feedback = appContext?.Feedback, DataContext = new DeviceDetailModel {
             Name = device.Name,
             Summary = $"{device.PlatformName} · {device.StatusName}",
             Identifier = "设备编号  " + device.Id,

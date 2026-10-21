@@ -1,4 +1,5 @@
 using AsterDock.Host.Modules;
+using AsterDock.UI.Controls;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
@@ -38,11 +39,15 @@ public partial class MainWindow
             WindowStartupLocation = WindowStartupLocation.CenterScreen
         };
         if (ReferenceEquals(ApplicationContent.Content, view)) ApplicationContent.Content = null;
-        window.Content = view;
+        var root = new Grid();
+        root.Children.Add(view);
+        root.Children.Add(new AdFeedbackLayer { Service = _feedbackService });
+        window.Content = root;
         _detachedApplications.Add(application, window);
         application.SetWindowOwner(window);
         window.Closed += (_, _) =>
         {
+            root.Children.Remove(view);
             window.Content = null;
             _detachedApplications.Remove(application);
             application.SetWindowOwner(this);
@@ -60,6 +65,7 @@ public partial class MainWindow
         }
         catch
         {
+            root.Children.Remove(view);
             window.Content = null;
             _detachedApplications.Remove(application);
             application.SetWindowOwner(this);

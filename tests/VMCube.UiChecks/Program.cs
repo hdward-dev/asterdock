@@ -1,5 +1,7 @@
 using System.Reflection;
 using AsterDock.Contracts;
+using AsterDock.UI.Controls;
+using AsterDock.UI.Services;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -41,7 +43,10 @@ AppBuilder.Configure<UiCheckApp>().UsePlatformDetect().AfterSetup(builder =>
         }
         var context = new CheckContext(root);
         using var view = new VMCubeView(context);
-        var window = new Window { Title = "VMCUBE UI checks", Content = view, Width = 1200, Height = 900 };
+        var shell = new Grid();
+        shell.Children.Add(view);
+        shell.Children.Add(new AdFeedbackLayer { Service = context.FeedbackService });
+        var window = new Window { Title = "VMCUBE UI checks", Content = shell, Width = 1200, Height = 900 };
         context.WindowService.Owner = window;
         life.MainWindow = window; window.Show();
         try
@@ -172,9 +177,14 @@ AppBuilder.Configure<UiCheckApp>().UsePlatformDetect().AfterSetup(builder =>
             filter.SelectedIndex = 0; Click(tabs[0]);
             Click(view.GetVisualDescendants().OfType<Button>().Single(x => x.Name == "VmViewMode"));
             var details = (StackPanel)typeof(VMCubeView).GetField("_details", flags)!.GetValue(view)!;
-            Click(details.GetVisualDescendants().OfType<Button>().Single(x => AutomationProperties.GetName(x) == "正常关机")); await Task.Delay(60);
-            if (!details.GetVisualDescendants().OfType<Button>().Any(x => Equals(x.Content, "确认关机"))) throw new Exception("Shutdown confirmation missing");
-            Click(details.GetVisualDescendants().OfType<Button>().Single(x => Equals(x.Content, "取消")));
+            Click(details.GetVisualDescendants().OfType<Button>().Single(x => AutomationProperties.GetName(x) == "正常关机"));
+            var confirmDeadline = DateTime.UtcNow.AddSeconds(3);
+            while (DateTime.UtcNow < confirmDeadline && !window.GetVisualDescendants().OfType<Button>().Any(x => Equals(x.Content, "确认关机")))
+                await Task.Delay(40);
+            if (!window.GetVisualDescendants().OfType<Button>().Any(x => Equals(x.Content, "确认关机")))
+                throw new Exception("Shutdown confirmation missing");
+            Click(window.GetVisualDescendants().OfType<Button>().Single(x => x.Name == "DialogSecondary"));
+            await Task.Delay(80);
             window.Width = 720; await Task.Delay(200); Capture("narrow.png");
             window.Width = 1200; await Task.Delay(100);
             if (TopLevel.GetTopLevel(details) is null || CardCount() != 4) throw new Exception("Responsive detail panel failed to reattach");
@@ -253,6 +263,8 @@ internal sealed class CheckContext(string directory) : IApplicationContext
     public IApplicationShell Shell => throw new NotSupportedException();
     public ISystemMetricsService SystemMetrics => throw new NotSupportedException();
     public ILoadingService Loading { get; } = new IdleLoadingService();
+    public UserFeedbackService FeedbackService { get; } = new(static action => action());
+    public IUserFeedbackService Feedback => FeedbackService;
 }
 
 file sealed class IdleLoadingService : ILoadingService

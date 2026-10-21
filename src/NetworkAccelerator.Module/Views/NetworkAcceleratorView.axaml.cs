@@ -348,17 +348,25 @@ public partial class NetworkAcceleratorView : UserControl
     public NetworkAcceleratorView(IApplicationContext context, string moduleDirectory) : this()
     {
         _context = context;
-        _viewModel = new NetworkAcceleratorViewModel(context.DataDirectory, moduleDirectory, context.Loading);
+        _viewModel = new NetworkAcceleratorViewModel(context.DataDirectory, moduleDirectory, context.Loading, context.Feedback);
         DataContext = _viewModel;
         AttachedToVisualTree += (_, _) =>
         {
             if (_initialized || _viewModel is null) return;
             _initialized = true;
-            _ = InitializeAsync();
+            Run(() => InitializeAsync(), "初始化失败");
         };
     }
 
     public Task ToggleConnectionAsync() => _viewModel?.ToggleConnectionAsync() ?? Task.CompletedTask;
+
+    public void RunToggle() => Run(() => ToggleConnectionAsync(), "连接失败");
+
+    private void Run(Func<Task> action, string errorTitle)
+    {
+        if (_viewModel is null) return;
+        _viewModel.Run(action, errorTitle);
+    }
 
     public void DisposeResources()
     {
@@ -381,7 +389,7 @@ public partial class NetworkAcceleratorView : UserControl
         _viewModel?.Dispose();
     }
 
-    private void OnOverviewMode(ProxyMode mode) => _ = SetModeAsync(mode);
+    private void OnOverviewMode(ProxyMode mode) => Run(() => SetModeAsync(mode), "切换模式失败");
 
     private void OnOverviewSubscription(object? sender, EventArgs e) =>
         UpdateSubscription_Click(this, new RoutedEventArgs());
@@ -396,26 +404,26 @@ public partial class NetworkAcceleratorView : UserControl
         UpdateModeButtons();
     }
 
-    private async void ToggleConnection_Click(object? sender, RoutedEventArgs e) => await _viewModel!.ToggleConnectionAsync();
-    private async void RefreshLatency_Click(object? sender, RoutedEventArgs e) => await _viewModel!.RefreshLatenciesAsync();
-    private async void InstallCore_Click(object? sender, RoutedEventArgs e) => await _viewModel!.InstallCoreAsync();
+    private void ToggleConnection_Click(object? sender, RoutedEventArgs e) => RunToggle();
+    private void RefreshLatency_Click(object? sender, RoutedEventArgs e) => Run(() => _viewModel!.RefreshLatenciesAsync(), "节点延迟测试失败");
+    private void InstallCore_Click(object? sender, RoutedEventArgs e) => Run(() => _viewModel!.InstallCoreAsync(), "核心安装失败");
 
-    private async void CopyTerminalProxyCommand_Click(object? sender, RoutedEventArgs e)
-    {
-        if (_viewModel is null || TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard) return;
-        var port = _viewModel.ProxyPort;
-        var command = OperatingSystem.IsWindows()
-            ? $"$env:HTTP_PROXY='http://127.0.0.1:{port}'; $env:HTTPS_PROXY='http://127.0.0.1:{port}'; $env:ALL_PROXY='socks5://127.0.0.1:{port}'; $env:NO_PROXY='localhost,127.0.0.1'"
-            : $"export HTTP_PROXY='http://127.0.0.1:{port}' HTTPS_PROXY='http://127.0.0.1:{port}' ALL_PROXY='socks5://127.0.0.1:{port}' NO_PROXY='localhost,127.0.0.1'";
-        await clipboard.SetTextAsync(command);
-        _viewModel.ShowStatusMessage(OperatingSystem.IsWindows()
-            ? "已复制 PowerShell 代理命令"
-            : "已复制终端代理命令");
-    }
+    private void CopyTerminalProxyCommand_Click(object? sender, RoutedEventArgs e) =>
+        Run(async () =>
+        {
+            if (_viewModel is null || TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard) return;
+            var port = _viewModel.ProxyPort;
+            var command = OperatingSystem.IsWindows()
+                ? $"$env:HTTP_PROXY='http://127.0.0.1:{port}'; $env:HTTPS_PROXY='http://127.0.0.1:{port}'; $env:ALL_PROXY='socks5://127.0.0.1:{port}'; $env:NO_PROXY='localhost,127.0.0.1'"
+                : $"export HTTP_PROXY='http://127.0.0.1:{port}' HTTPS_PROXY='http://127.0.0.1:{port}' ALL_PROXY='socks5://127.0.0.1:{port}' NO_PROXY='localhost,127.0.0.1'";
+            await clipboard.SetTextAsync(command);
+            var copied = OperatingSystem.IsWindows() ? "已复制 PowerShell 代理命令" : "已复制终端代理命令";
+            _viewModel.ShowStatusMessage(copied, FeedbackKind.Success);
+        }, "复制失败");
 
-    private async void RuleMode_Click(object? sender, RoutedEventArgs e) => await SetModeAsync(ProxyMode.Rule);
-    private async void GlobalMode_Click(object? sender, RoutedEventArgs e) => await SetModeAsync(ProxyMode.Global);
-    private async void DirectMode_Click(object? sender, RoutedEventArgs e) => await SetModeAsync(ProxyMode.Direct);
+    private void RuleMode_Click(object? sender, RoutedEventArgs e) => Run(() => SetModeAsync(ProxyMode.Rule), "切换模式失败");
+    private void GlobalMode_Click(object? sender, RoutedEventArgs e) => Run(() => SetModeAsync(ProxyMode.Global), "切换模式失败");
+    private void DirectMode_Click(object? sender, RoutedEventArgs e) => Run(() => SetModeAsync(ProxyMode.Direct), "切换模式失败");
 
     private async Task SetModeAsync(ProxyMode mode)
     {
@@ -447,29 +455,28 @@ public partial class NetworkAcceleratorView : UserControl
             transform.X = segmentWidth * index;
     }
 
-    private async void ReduceMotion_Click(object? sender, RoutedEventArgs e)
+    private void ReduceMotion_Click(object? sender, RoutedEventArgs e) =>
+        Run(() => _viewModel!.SetReduceMotionAsync(ReduceMotionSwitch.IsChecked), "保存设置失败");
+
+    private void TunToggle_Click(object? sender, RoutedEventArgs e) =>
+        Run(() => _viewModel!.SetTunEnabledAsync(TunToggle.IsChecked == true), "虚拟网卡");
+
+    private void Node_Click(object? sender, RoutedEventArgs e)
     {
-        if (_viewModel is not null) await _viewModel.SetReduceMotionAsync(ReduceMotionSwitch.IsChecked);
+        if (sender is Button { Tag: NodeItemViewModel node })
+            Run(() => _viewModel!.SelectNodeAsync(node), "节点切换失败");
     }
 
-    private async void TunToggle_Click(object? sender, RoutedEventArgs e)
+    private void Configuration_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (_viewModel is not null) await _viewModel.SetTunEnabledAsync(TunToggle.IsChecked == true);
+        if (sender is ComboBox { SelectedItem: SubscriptionConfiguration configuration })
+            Run(() => _viewModel!.SwitchConfigurationAsync(configuration), "配置切换失败");
     }
 
-    private async void Node_Click(object? sender, RoutedEventArgs e)
-    {
-        if (sender is Button { Tag: NodeItemViewModel node } && _viewModel is not null)
-            await _viewModel.SelectNodeAsync(node);
-    }
+    private void ManageSubscription_Click(object? sender, RoutedEventArgs e) =>
+        Run(ManageSubscriptionAsync, "订阅设置失败");
 
-    private async void Configuration_SelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        if (sender is ComboBox { SelectedItem: SubscriptionConfiguration configuration } && _viewModel is not null)
-            await _viewModel.SwitchConfigurationAsync(configuration);
-    }
-
-    private async void ManageSubscription_Click(object? sender, RoutedEventArgs e)
+    private async Task ManageSubscriptionAsync()
     {
         if (_context is null || _viewModel is null) return;
         var result = await _context.Windows.ShowDialogAsync<SubscriptionSettingsResult?>(
@@ -478,15 +485,17 @@ public partial class NetworkAcceleratorView : UserControl
             await _viewModel.ApplyConfigurationsAsync(result.Configurations, result.ActiveConfigurationId);
     }
 
-    private async void UpdateSubscription_Click(object? sender, RoutedEventArgs e)
-    {
-        if (_viewModel is null) return;
-        if (string.IsNullOrWhiteSpace(_viewModel.SubscriptionUrl))
+    private void UpdateSubscription_Click(object? sender, RoutedEventArgs e) =>
+        Run(async () =>
         {
-            ManageSubscription_Click(sender, e);
-            return;
-        }
-        await _viewModel.UpdateSubscriptionAsync(_viewModel.SubscriptionUrl);
-    }
+            if (_viewModel is null) return;
+            if (string.IsNullOrWhiteSpace(_viewModel.SubscriptionUrl))
+            {
+                await ManageSubscriptionAsync();
+                return;
+            }
+
+            await _viewModel.UpdateSubscriptionAsync(_viewModel.SubscriptionUrl);
+        }, "订阅更新失败");
 
 }

@@ -38,13 +38,24 @@ AppBuilder.Configure<GalleryApp>()
     .UseSkia()
     .SetupWithoutStarting();
 RunOverlayChecks(Check);
+FeedbackChecks.Run(Check);
 
 var exportIndex = Array.IndexOf(args, "--export");
+var feedbackExport = Array.IndexOf(args, "--export-feedback");
+if (feedbackExport >= 0 && feedbackExport + 1 < args.Length)
+{
+    var directory = Path.GetFullPath(args[feedbackExport + 1]);
+    Directory.CreateDirectory(directory);
+    GalleryExport.ExportFeedback(directory);
+    Console.WriteLine("EXPORTED " + directory);
+}
+
 if (exportIndex >= 0 && exportIndex + 1 < args.Length)
 {
     var directory = Path.GetFullPath(args[exportIndex + 1]);
     Directory.CreateDirectory(directory);
     GalleryExport.ExportStills(directory);
+    GalleryExport.ExportFeedback(directory);
     GalleryExport.ExportVideo(directory);
     Console.WriteLine("EXPORTED " + directory);
 }
@@ -283,6 +294,7 @@ public sealed class GalleryApp : Application
     public override void Initialize()
     {
         Styles.Add(new Semi.Avalonia.SemiTheme());
+        Styles.Add(new Ursa.Themes.Semi.UrsaSemiTheme());
         Styles.Add(new Avalonia.Markup.Xaml.Styling.StyleInclude(new Uri("avares://AsterDock.UI/"))
         {
             Source = new Uri("avares://AsterDock.UI/Themes/AsterDockTheme.axaml")

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AsterDock.Contracts;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -33,7 +34,11 @@ public sealed partial class VMCubeView
     private void WireInterface()
     {
         try { if (File.Exists(FavoritesPath)) foreach (var key in JsonSerializer.Deserialize<string[]>(File.ReadAllText(FavoritesPath)) ?? []) _favorites.Add(key); }
-        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException) { AddLog("收藏读取失败：" + ex.Message); }
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+        {
+            AddLog("收藏读取失败：" + ex.Message);
+            _context.Feedback.Notify(FeedbackKind.Error, "收藏读取失败：" + ex.Message);
+        }
         _navigation.AddRange([navMachines, navRemote, navDirect, navHistory, navSettings]);
         _catalogTabs.AddRange([tabAll, tabFavorites]);
         _pages = [libraryPage, libraryPage, directPage, logPage, settingsPage];
@@ -103,7 +108,7 @@ public sealed partial class VMCubeView
     private async Task NavigateAsync(int index)
     {
         if (index is 0 or 1 && IsLocal != (index == 0)) {
-            _isLocal = index == 0; _machines.Clear(); _connectedUri = null; _selectedVmId = null; _demo = false; _confirmation = null;
+            _isLocal = index == 0; _machines.Clear(); _connectedUri = null; _selectedVmId = null; _demo = false;
             _consolePassword.Text = "";
             if (!IsLocal && (_uri.Text?.StartsWith("qemu:///", StringComparison.Ordinal) ?? false)) _uri.Text = "qemu+ssh://user@host/system";
         }
@@ -139,11 +144,15 @@ public sealed partial class VMCubeView
             var temp = FavoritesPath + ".tmp"; await File.WriteAllTextAsync(temp, JsonSerializer.Serialize(_favorites), _lifetime.Token);
             File.Move(temp, FavoritesPath, overwrite: true);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { AddLog("收藏暂存于本次会话，保存失败：" + ex.Message); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AddLog("收藏暂存于本次会话，保存失败：" + ex.Message);
+            _context.Feedback.Notify(FeedbackKind.Error, "收藏保存失败：" + ex.Message);
+        }
     }
     private void SelectVm(VirtualMachine vm)
     {
-        _selectedVmId = vm.Id; _confirmation = null; _consolePassword.Text = ""; RenderMachines();
+        _selectedVmId = vm.Id; _consolePassword.Text = ""; RenderMachines();
     }
     private void RenderMachines()
     {
@@ -158,7 +167,7 @@ public sealed partial class VMCubeView
         var columns = _listView ? 1 : _cardColumns;
         _machineCards.ColumnDefinitions = new(columns == 2 && matches.Length > 0 ? "*,*" : "*");
         _machineCards.RowDefinitions = new(string.Join(",", Enumerable.Repeat("Auto", Math.Max(1, (matches.Length + columns - 1) / columns))));
-        if (!matches.Any(x => x.Id == _selectedVmId)) { _selectedVmId = matches.FirstOrDefault()?.Id; _confirmation = null; _consolePassword.Text = ""; }
+        if (!matches.Any(x => x.Id == _selectedVmId)) { _selectedVmId = matches.FirstOrDefault()?.Id; _consolePassword.Text = ""; }
         if (matches.Length == 0) {
             _machineCards.Children.Add(new EmptyMachineCard { DataContext = new EmptyMachineModel {
                 Title = _machines.Count == 0 ? IsLocal ? "创建你的第一台虚拟机" : "连接你的 KVM 主机" : "没有符合条件的虚拟机",
@@ -196,7 +205,7 @@ public sealed partial class VMCubeView
             OpenPreview = () => ExecuteAsync(async () => { SelectVm(vm); if (vm.State == "running") await ConnectConsoleAsync(vm); }),
             Primary = () => ExecuteAsync(async () => { SelectVm(vm); if (vm.State == "running") await ConnectConsoleAsync(vm); else await ActAsync(vm, vm.State == "paused" ? "resume" : "start"); }),
             Pause = () => ExecuteAsync(async () => { SelectVm(vm); await ActAsync(vm, "suspend"); }),
-            Power = () => ExecuteAsync(() => { SelectVm(vm); _confirmation = vm.Id; RenderDetails(); RevealDetails(); return Task.CompletedTask; }),
+            Power = () => ExecuteAsync(async () => { SelectVm(vm); RevealDetails(); await ConfirmPowerAsync(vm, force: false); }),
             Favorite = () => ExecuteAsync(() => ToggleFavoriteAsync(vm)),
             Details = () => { SelectVm(vm); RevealDetails(); }
         } };

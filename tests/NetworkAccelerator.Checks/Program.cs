@@ -1,8 +1,10 @@
 using System.Buffers.Binary;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using AsterDock.Contracts;
 using NetworkAccelerator.Core.Models;
 using NetworkAccelerator.Core.Services;
+using NetworkAccelerator.Module.ViewModels;
 
 var passed = 0;
 void Check(bool condition, string message)
@@ -289,18 +291,22 @@ Check(LinuxTunAuthorization.ClassifyPkexec(0, "", true) == LinuxPkexecOutcome.Su
 Check(LinuxTunAuthorization.ClassifyPkexec(126, "Request dismissed", true) == LinuxPkexecOutcome.Cancelled, "pkexec dismissed");
 Check(LinuxTunAuthorization.ClassifyPkexec(127, "Not authorized", true) == LinuxPkexecOutcome.Cancelled, "pkexec not authorized");
 Check(LinuxTunAuthorization.ClassifyPkexec(127, "pkexec: command not found", true) == LinuxPkexecOutcome.Failed, "pkexec missing command");
+Check(LinuxTunAuthorization.ClassifyPkexec(127, "pkexec must be setuid root", true) == LinuxPkexecOutcome.SetuidWrapperMissing, "pkexec without setuid is not a cancellation");
 Check(LinuxTunAuthorization.ClassifyPkexec(1, "", false) == LinuxPkexecOutcome.Failed, "pkexec did not start");
 Check(LinuxCommandPaths.Resolve(["/run/wrappers/bin/pkexec"], "pkexec", path => path == "/run/wrappers/bin/pkexec", ["/usr/bin"]) == "/run/wrappers/bin/pkexec", "pkexec prefers NixOS wrapper");
 Check(LinuxCommandPaths.Resolve(["/run/wrappers/bin/pkexec"], "pkexec", path => path == "/usr/bin/pkexec", ["/usr/bin"]) == "/usr/bin/pkexec", "pkexec falls back to PATH");
 Check(LinuxCommandPaths.Resolve(["/run/current-system/sw/bin/setcap"], "setcap", path => path == "/usr/bin/setcap", ["/usr/bin"]) == "/usr/bin/setcap", "setcap falls back to PATH");
 Check(LinuxCommandPaths.Resolve(["/missing/setcap"], "setcap", _ => false, ["/usr/bin"]) is null, "missing setcap");
+Check(LinuxCommandPaths.ResolveSetuid(["/run/wrappers/bin/pkexec"], "pkexec", path => path is "/run/wrappers/bin/pkexec" or "/usr/bin/pkexec", path => path == "/run/wrappers/bin/pkexec", ["/usr/bin"]) == "/run/wrappers/bin/pkexec", "setuid pkexec wrapper is preferred");
+Check(LinuxCommandPaths.ResolveSetuid(["/run/wrappers/bin/pkexec"], "pkexec", path => path == "/usr/bin/pkexec", _ => false, ["/usr/bin"]) is null, "a pkexec without setuid is not usable");
+Check(LinuxCommandPaths.FoundWithoutSetuid(["/run/wrappers/bin/pkexec"], "pkexec", path => path == "/usr/bin/pkexec", _ => false, ["/usr/bin"]), "a pkexec without setuid is reported");
 Check(LinuxMountOptions.IsNoSuid("/home/user/.local/share/AsterDock/AppData/network-accelerator/bin/sing-box",
     ["overlay / overlay rw,nosuid 0 0", "/dev/nvme0n1p2 /home ext4 rw,nosuid,nodev 0 0"]), "home nosuid");
 Check(!LinuxMountOptions.IsNoSuid("/home/user/.local/share/app",
     ["overlay / overlay rw 0 0", "/dev/nvme0n1p2 /home ext4 rw,nodev 0 0"]), "home honors file capabilities");
 
-static LinuxTunFacts Facts(bool copy, bool copyCap, bool hash, bool sourceCap, bool setcap, bool pkexec, bool honors = true) =>
-    new(copy, copyCap, hash, sourceCap, setcap, pkexec, honors);
+static LinuxTunFacts Facts(bool copy, bool copyCap, bool hash, bool sourceCap, bool setcap, bool pkexec, bool honors = true, bool plainPkexec = false) =>
+    new(copy, copyCap, hash, sourceCap, setcap, pkexec, honors, plainPkexec);
 Check(LinuxTunAuthorization.Decide(Facts(true, true, true, false, true, true)) == LinuxTunDecision.UseCapableCopy, "reuse capable copy");
 Check(LinuxTunAuthorization.Decide(Facts(false, false, false, true, true, true)) == LinuxTunDecision.UseSource, "source already capable");
 Check(LinuxTunAuthorization.Decide(Facts(true, true, false, false, true, true)) == LinuxTunDecision.CopyAndSetcap, "hash change reauthorizes");
@@ -308,6 +314,7 @@ Check(LinuxTunAuthorization.Decide(Facts(false, false, false, false, true, true)
 Check(LinuxTunAuthorization.Decide(Facts(false, false, false, false, false, true)) == LinuxTunDecision.LaunchWithPkexec, "no setcap launches via pkexec");
 Check(LinuxTunAuthorization.Decide(Facts(false, false, false, false, true, true, honors: false)) == LinuxTunDecision.LaunchWithPkexec, "nosuid filesystem uses pkexec");
 Check(LinuxTunAuthorization.Decide(Facts(false, false, false, false, false, false)) == LinuxTunDecision.PkexecMissing, "no pkexec cannot authorize");
+Check(LinuxTunAuthorization.Decide(Facts(false, false, false, false, true, false, plainPkexec: true)) == LinuxTunDecision.SetuidWrapperMissing, "pkexec without setuid asks for the NixOS wrapper");
 
 var authRoot = Path.Combine(Path.GetTempPath(), "na-tun-auth-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(authRoot);
@@ -398,6 +405,20 @@ try
     }
     Check(missingPkexec, "missing pkexec is a TUN authorization error");
 
+    commands.PlainPkexec = true;
+    var missingWrapper = false;
+    try
+    {
+        await privilege.PrepareAsync(source);
+    }
+    catch (TunAuthorizationException exception)
+    {
+        missingWrapper = exception.SetuidWrapperMissing
+            && exception.Message.Contains("security.polkit.enablePkexecWrapper = true;", StringComparison.Ordinal);
+    }
+    Check(missingWrapper, "pkexec without setuid explains the NixOS wrapper");
+    commands.PlainPkexec = false;
+
     var xattrReader = new FakeXattr
     {
         Read = _ => capableXattr
@@ -414,6 +435,15 @@ finally
     Directory.Delete(authRoot, recursive: true);
 }
 
+var feedback = new RecordingFeedback();
+NetworkAcceleratorViewModel.PresentAuthorization(feedback, new TunAuthorizationException(TunAuthorizationException.CancelledMessage, cancelled: true));
+Check(feedback.Warnings.Count == 1 && feedback.Warnings[0] == TunAuthorizationException.CancelledMessage && feedback.Errors.Count == 0, "cancelled authorization is a warning toast");
+NetworkAcceleratorViewModel.PresentAuthorization(feedback, new TunAuthorizationException(TunAuthorizationException.SetuidWrapperMessage, cancelled: false, setuidWrapperMissing: true));
+Check(feedback.Errors.Count == 1
+    && feedback.Errors[0].Title == "无法授予 TUN 权限"
+    && feedback.Errors[0].Message.Contains("security.polkit.enablePkexecWrapper = true;", StringComparison.Ordinal),
+    "missing setuid wrapper opens an error dialog");
+
 ModuleInteractionChecks.RunMotionClockChecks(Check);
 ModuleInteractionChecks.RunInteractionChecks(Check);
 Console.WriteLine($"PASS network accelerator dashboard checks ({passed})");
@@ -423,9 +453,32 @@ sealed class FakeCommands : ILinuxCommandResolver
     public string? PkexecPath { get; set; } = "/usr/bin/pkexec";
     public string? SetcapPath { get; set; } = "/usr/bin/setcap";
     public string? GetcapPath { get; set; } = "/usr/bin/getcap";
+    public bool PlainPkexec { get; set; }
     public string? FindPkexec() => PkexecPath;
     public string? FindSetcap() => SetcapPath;
     public string? FindGetcap() => GetcapPath;
+    public bool HasPlainPkexec() => PlainPkexec;
+}
+
+sealed class RecordingFeedback : IUserFeedbackService
+{
+    public List<string> Warnings { get; } = [];
+    public List<(string Title, string Message)> Errors { get; } = [];
+    public Task ShowInfoAsync(string title, string message, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task ShowSuccessAsync(string title, string message, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task ShowWarningAsync(string title, string message, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task ShowErrorAsync(string title, string message, Exception? details = null, CancellationToken cancellationToken = default)
+    {
+        Errors.Add((title, message));
+        return Task.CompletedTask;
+    }
+    public Task<bool> ConfirmAsync(string title, string message, string confirmText = "确定", string cancelText = "取消", bool danger = false, CancellationToken cancellationToken = default) => Task.FromResult(true);
+    public void Toast(FeedbackKind kind, string message, string? title = null, string? actionText = null, Action? action = null, TimeSpan? duration = null)
+    {
+        if (kind == FeedbackKind.Warning) Warnings.Add(message);
+    }
+    public Task RunAsync(Func<Task> action, string? errorTitle = null) => action();
+    public void Run(Func<Task> action, string? errorTitle = null) => _ = action();
 }
 
 sealed class FakeRunner(Func<ProcessRequest, ProcessResult> handle) : IProcessRunner

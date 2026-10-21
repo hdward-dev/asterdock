@@ -9,6 +9,8 @@ public interface ILinuxCommandResolver
     string? FindSetcap();
 
     string? FindGetcap();
+
+    bool HasPlainPkexec();
 }
 
 public interface ICapabilityXattrReader
@@ -23,14 +25,31 @@ public interface IFileCapabilityPolicy
 
 public sealed class LinuxCommandResolver : ILinuxCommandResolver
 {
-    public string? FindPkexec() => Resolve(LinuxCommandPaths.PkexecPreferred, "pkexec");
+    public string? FindPkexec() =>
+        LinuxCommandPaths.ResolveSetuid(LinuxCommandPaths.PkexecPreferred, "pkexec", File.Exists, IsSetuid, PathEntries());
 
     public string? FindSetcap() => Resolve(LinuxCommandPaths.SetcapPreferred, "setcap");
 
     public string? FindGetcap() => Resolve(LinuxCommandPaths.GetcapPreferred, "getcap");
 
+    public bool HasPlainPkexec() =>
+        LinuxCommandPaths.FoundWithoutSetuid(LinuxCommandPaths.PkexecPreferred, "pkexec", File.Exists, IsSetuid, PathEntries());
+
     private static string? Resolve(IReadOnlyList<string> preferred, string name) =>
         LinuxCommandPaths.Resolve(preferred, name, File.Exists, PathEntries());
+
+    private static bool IsSetuid(string path)
+    {
+        if (!OperatingSystem.IsLinux()) return false;
+        try
+        {
+            return (File.GetUnixFileMode(path) & UnixFileMode.SetUser) != 0;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
 
     private static IEnumerable<string> PathEntries() =>
         (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)

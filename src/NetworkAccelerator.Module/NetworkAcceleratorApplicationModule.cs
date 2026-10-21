@@ -22,7 +22,7 @@ public sealed class NetworkAcceleratorApplicationModule :
 
     public IReadOnlyList<ApplicationQuickAction> GetQuickActions() =>
     [
-        new ApplicationQuickAction("toggle-connection", "启动/停止网络加速", () => _ = _view?.ToggleConnectionAsync())
+        new ApplicationQuickAction("toggle-connection", "启动/停止网络加速", () => _view?.RunToggle())
     ];
 
     public void Dispose()

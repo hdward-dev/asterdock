@@ -17,12 +17,12 @@ public partial class DeviceInformationView : UserControl
         InitializeComponent();
     }
 
-    public DeviceInformationView(ISystemMetricsService systemMetrics, Action? showWidget)
+    public DeviceInformationView(ISystemMetricsService systemMetrics, Action? showWidget, IUserFeedbackService? feedback = null)
     {
         InitializeComponent();
         _systemMetrics = systemMetrics;
         _showWidget = showWidget;
-        _viewModel = new DeviceInformationViewModel(systemMetrics);
+        _viewModel = new DeviceInformationViewModel(systemMetrics, feedback);
         DataContext = _viewModel;
         AttachedToVisualTree += (_, _) => _ = _viewModel.StartAsync();
         DetachedFromVisualTree += (_, _) => _viewModel.Stop();

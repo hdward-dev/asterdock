@@ -16,7 +16,8 @@ public sealed class AndroidScreenApplicationModule : IApplicationModule, IApplic
         var context = _context ?? throw new InvalidOperationException("Android 投屏应用尚未完成容器初始化");
         return _view ??= new AndroidScreenView(
             context.DataDirectory,
-            Path.GetDirectoryName(typeof(AndroidScreenApplicationModule).Assembly.Location)!);
+            Path.GetDirectoryName(typeof(AndroidScreenApplicationModule).Assembly.Location)!,
+            context.Feedback);
     }
 
     public void Dispose()

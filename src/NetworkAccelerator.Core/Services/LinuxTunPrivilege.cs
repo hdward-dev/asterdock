@@ -55,7 +55,8 @@ public sealed class LinuxTunPrivilege
             sourceHasCap,
             setcap is not null,
             pkexec is not null,
-            _filesystem.HonorsFileCapabilities(copyPath)));
+            _filesystem.HonorsFileCapabilities(copyPath),
+            pkexec is null && _commands.HasPlainPkexec()));
 
         switch (decision)
         {
@@ -65,6 +66,8 @@ public sealed class LinuxTunPrivilege
                 return LinuxTunLaunch.AsUser(sourceExecutable);
             case LinuxTunDecision.PkexecMissing:
                 throw new TunAuthorizationException(TunAuthorizationException.PkexecMissingMessage, cancelled: false);
+            case LinuxTunDecision.SetuidWrapperMissing:
+                throw new TunAuthorizationException(TunAuthorizationException.SetuidWrapperMessage, cancelled: false, setuidWrapperMissing: true);
             case LinuxTunDecision.LaunchWithPkexec:
                 return LinuxTunLaunch.WithPkexec(sourceExecutable, pkexec!);
             case LinuxTunDecision.CopyAndSetcap:
@@ -106,6 +109,8 @@ public sealed class LinuxTunPrivilege
         var outcome = LinuxTunAuthorization.ClassifyPkexec(result.ExitCode, result.StandardError, result.Started);
         if (outcome == LinuxPkexecOutcome.Cancelled)
             throw new TunAuthorizationException(TunAuthorizationException.CancelledMessage, cancelled: true);
+        if (outcome == LinuxPkexecOutcome.SetuidWrapperMissing)
+            throw new TunAuthorizationException(TunAuthorizationException.SetuidWrapperMessage, cancelled: false, setuidWrapperMissing: true);
         if (outcome != LinuxPkexecOutcome.Success)
         {
             var detail = string.IsNullOrWhiteSpace(result.StandardError) ? result.StandardOutput : result.StandardError;

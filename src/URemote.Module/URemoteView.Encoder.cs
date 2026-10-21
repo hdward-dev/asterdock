@@ -62,6 +62,7 @@ public sealed partial class URemoteView
                 if (process.ExitCode != 0 || !output.StartsWith("ffmpeg version ", StringComparison.OrdinalIgnoreCase))
                 {
                     encoderHint.Text = "验证失败：该文件未返回有效的 FFmpeg 版本信息。";
+                    ReportFailure(encoderHint.Text, "视频解码器");
                     return;
                 }
             }

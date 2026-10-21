@@ -98,7 +98,8 @@ public sealed class LoadedApplication : IDisposable
         if (owner is not IApplicationShell shell)
             throw new InvalidOperationException("宿主窗口未提供应用导航服务");
         ILoadingService loading = owner is MainWindow main ? main.Loading : new LoadingService();
-        var context = new ApplicationContext(Manifest.Id, owner, shell, systemMetrics, loading);
+        IUserFeedbackService feedback = owner is MainWindow hostWindow ? hostWindow.Feedback : new UserFeedbackService();
+        var context = new ApplicationContext(Manifest.Id, owner, shell, systemMetrics, loading, feedback);
         try
         {
             if (_module is IApplicationContextAware contextAware) contextAware.Initialize(context);

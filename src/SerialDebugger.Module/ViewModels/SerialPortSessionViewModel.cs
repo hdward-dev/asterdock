@@ -1,3 +1,4 @@
+using AsterDock.Contracts;
 using Avalonia.Media;
 using Avalonia.Threading;
 using SerialDebugger.Module.Models;
@@ -20,6 +21,7 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
     private readonly object _portGate = new();
     private readonly List<SerialLogEntry> _entries = [];
     private readonly SemaphoreSlim _sendGate = new(1, 1);
+    private readonly IUserFeedbackService? _feedback;
     private SerialPort? _port;
     private CancellationTokenSource? _loopCancellation;
     private bool _isRefreshingPorts;
@@ -68,8 +70,10 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
         string title,
         string portName,
         int baudRate,
-        IBrush accentBrush)
+        IBrush accentBrush,
+        IUserFeedbackService? feedback = null)
     {
+        _feedback = feedback;
         _title = title;
         _portName = portName;
         _baudRate = baudRate;
@@ -125,9 +129,9 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
     public bool SaveQuickCommand()
     {
         var name = QuickCommandName.Trim();
-        if (name.Length == 0) { StatusText = "请填写快捷指令名称"; return false; }
+        if (name.Length == 0) { Note("请填写快捷指令名称", FeedbackKind.Warning); return false; }
         try { _ = BuildPayload(); }
-        catch (Exception exception) { StatusText = exception.Message; return false; }
+        catch (Exception exception) { Note(exception.Message, FeedbackKind.Warning); return false; }
         var command = new QuickCommand(name, SendText, IsSendHexMode, EncodingName, LineEnding);
         var existing = QuickCommands.FirstOrDefault(item => string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase));
         if (existing is null) QuickCommands.Add(command);
@@ -309,6 +313,7 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
         catch (Exception exception)
         {
             StatusText = $"扫描失败：{exception.GetBaseException().Message}";
+            _feedback.Report("扫描失败", exception);
         }
     }
 
@@ -365,6 +370,7 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
                 ErrorCount++;
                 OnPropertyChanged(nameof(StatisticsText));
                 StatusText = $"连接失败：{exception.GetBaseException().Message}";
+                _feedback.Report("连接失败", exception);
             });
         }
         finally
@@ -682,6 +688,12 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
         cancellation.Dispose();
     }
 
+    private void Note(string message, FeedbackKind kind)
+    {
+        StatusText = message;
+        _feedback.Notify(kind, message, _title);
+    }
+
     private async Task ReportErrorAsync(string message)
     {
         await Dispatcher.UIThread.InvokeAsync(() =>
@@ -689,6 +701,7 @@ public sealed class SerialPortSessionViewModel : INotifyPropertyChanged, IDispos
             ErrorCount++;
             OnPropertyChanged(nameof(StatisticsText));
             StatusText = message;
+            _feedback.Notify(FeedbackKind.Error, message, _title);
         });
     }
 

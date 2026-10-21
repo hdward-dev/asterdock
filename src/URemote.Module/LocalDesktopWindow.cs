@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using AsterDock.Contracts;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -23,6 +24,7 @@ public sealed partial class LocalDesktopWindow : Window
     private WriteableBitmap? bitmap;
     private int buttons, mouseX, mouseY;
     private volatile bool closed;
+    private IUserFeedbackService? feedback;
     public Task Completion { get; private set; } = Task.CompletedTask;
     public event Action? Connected;
     private bool connected;
@@ -33,11 +35,12 @@ public sealed partial class LocalDesktopWindow : Window
         InitializeComponent();
         protocol = LocalDesktopProtocol.Vnc;
         session = new VncDesktopSession();
+        feedback = null;
     }
 
-    public LocalDesktopWindow(LocalDesktopOptions options) : this()
+    public LocalDesktopWindow(LocalDesktopOptions options, IUserFeedbackService? feedback = null) : this()
     {
-        options.Validate(); protocol = options.Protocol;
+        options.Validate(); protocol = options.Protocol; this.feedback = feedback;
         session = protocol == LocalDesktopProtocol.Vnc ? new VncDesktopSession() : new RdpDesktopSession(VerifyCertificateAsync);
         Title = $"{options.Host}:{options.Port} · {protocol.ToString().ToUpperInvariant()} · U远程";
         status.Text = $"{options.Host}:{options.Port}";
@@ -108,7 +111,12 @@ public sealed partial class LocalDesktopWindow : Window
         catch (Exception e) when (stop.IsCancellationRequested && e is OperationCanceledException or ObjectDisposedException or IOException or System.Net.Sockets.SocketException) { }
         catch (Exception e)
         {
-            if (!closed) { connectingOverlay.IsLoading = false; status.Text = e is ArgumentException or InvalidOperationException or NotSupportedException or InvalidDataException ? e.Message : "连接失败或已中断，请检查服务端及网络。"; }
+            if (!closed)
+            {
+                connectingOverlay.IsLoading = false;
+                status.Text = e is ArgumentException or InvalidOperationException or NotSupportedException or InvalidDataException ? e.Message : "连接失败或已中断，请检查服务端及网络。";
+                feedback.Report("连接失败", e);
+            }
         }
         finally { if (!closed) { ReleaseInputs(); paintTimer.Stop(); } }
     }
@@ -117,7 +125,7 @@ public sealed partial class LocalDesktopWindow : Window
     {
         if (closed || stop.IsCancellationRequested) return;
         try { action(); }
-        catch (IOException) { status.Text = "输入发送失败，连接已断开。"; stop.Cancel(); }
+        catch (IOException) { status.Text = "输入发送失败，连接已断开。"; feedback.Notify(FeedbackKind.Error, status.Text, "远程桌面"); stop.Cancel(); }
     }
     private void ReleaseInputs()
     {

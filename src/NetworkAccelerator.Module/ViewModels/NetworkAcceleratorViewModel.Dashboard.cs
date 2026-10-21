@@ -74,7 +74,7 @@ public sealed partial class NetworkAcceleratorViewModel
         }
         catch (Exception exception)
         {
-            await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = $"保存设置失败：{exception.GetBaseException().Message}");
+            await Dispatcher.UIThread.InvokeAsync(() => Fail("保存设置失败", exception));
         }
     }
 
@@ -120,13 +120,13 @@ public sealed partial class NetworkAcceleratorViewModel
         }
         catch (Exception exception)
         {
-            await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = $"保存设置失败：{exception.GetBaseException().Message}");
+            await Dispatcher.UIThread.InvokeAsync(() => Fail("保存设置失败", exception));
             return;
         }
 
-        await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = enabled
+        await Dispatcher.UIThread.InvokeAsync(() => Succeed(enabled
             ? "已开启局域网代理。同一网络中的设备可以使用此代理"
-            : "已关闭局域网代理");
+            : "已关闭局域网代理"));
         if (IsConnected) await RestartAsync().ConfigureAwait(false);
     }
 

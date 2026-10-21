@@ -1,3 +1,4 @@
+using AsterDock.UI.Controls;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
@@ -21,7 +22,7 @@ public sealed partial class URemoteView
             if (disposed) return;
             try { history.Remember(options); RenderHistory(); localHistoryState.Text = ""; }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-            { localHistoryState.Text = "连接已建立，但历史记录未能保存。"; }
+            { localHistoryState.Text = "连接已建立，但历史记录未能保存。"; ReportFailure(localHistoryState.Text, "连接历史"); }
         }
         void RenderHistory()
         {
@@ -84,8 +85,8 @@ public sealed partial class URemoteView
             OpenLocalConnection(options, state, rememberLocal!);
             password.Text = "";
         }
-        catch (ArgumentException ex) { state.Text = ex.Message; }
-        catch { state.Text = "无法打开连接窗口，请重试。"; }
+        catch (ArgumentException ex) { state.Text = ex.Message; ReportFailure(ex.Message, "直接连接"); }
+        catch { state.Text = "无法打开连接窗口，请重试。"; ReportFailure(state.Text, "直接连接"); }
     }
 
     private void ApplyLocalRecord(LocalConnectionRecord record)
@@ -130,22 +131,23 @@ public sealed partial class URemoteView
                 existing.Close();
             }
             var record = LocalConnectionRecord.From(options);
-            var window = new LocalDesktopWindow(options);
+            var window = new LocalDesktopWindow(options, appContext?.Feedback);
             window.Connected += () => remember(record.Options());
             localWindows.Add(id, window);
             window.Closed += (_, _) => localWindows.Remove(id);
-            try { if (TopLevel.GetTopLevel(this) is Window owner) window.Show(owner); else window.Show(); }
+            try { ShowManaged(window); }
             catch { localWindows.Remove(id); window.Close(); throw; }
             state.Text = "已打开连接窗口。";
         }
-        catch (ArgumentException e) { state.Text = e.Message; }
-        catch { state.Text = "无法打开连接窗口，请重试。"; }
+        catch (ArgumentException e) { state.Text = e.Message; ReportFailure(e.Message, "直接连接"); }
+        catch { state.Text = "无法打开连接窗口，请重试。"; ReportFailure(state.Text, "直接连接"); }
     }
 
     private async Task<string?> PromptLocalPasswordAsync(LocalConnectionRecord record)
     {
         if (TopLevel.GetTopLevel(this) is not Window owner) return null;
         var dialog = new LocalPasswordWindow(record);
+        FeedbackWindow.Attach(dialog, appContext?.Feedback);
         return await dialog.ShowDialog<string?>(owner);
     }
 }

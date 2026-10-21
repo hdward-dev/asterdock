@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using AsterDock.Contracts;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -33,6 +34,7 @@ public sealed partial class ConsoleWindow : Window
     internal bool IsConnected => connected && !closed && !Completion.IsCompleted;
 
     private readonly Func<CancellationToken, Task<ConsoleTunnel>>? openTunnel;
+    private IUserFeedbackService? feedback;
 
     public ConsoleWindow()
     {
@@ -40,11 +42,12 @@ public sealed partial class ConsoleWindow : Window
         protocol = LocalDesktopProtocol.Vnc;
         session = new VncDesktopSession();
         openTunnel = null;
+        feedback = null;
     }
 
-    public ConsoleWindow(string name, LocalDesktopOptions options, Func<CancellationToken, Task<ConsoleTunnel>>? openTunnel = null, ConsoleProtocol consoleProtocol = ConsoleProtocol.Vnc, bool useTls = false, string? caFile = null) : this()
+    public ConsoleWindow(string name, LocalDesktopOptions options, Func<CancellationToken, Task<ConsoleTunnel>>? openTunnel = null, ConsoleProtocol consoleProtocol = ConsoleProtocol.Vnc, bool useTls = false, string? caFile = null, IUserFeedbackService? feedback = null) : this()
     {
-        options.Validate(); protocol = consoleProtocol == ConsoleProtocol.Spice ? LocalDesktopProtocol.Rdp : LocalDesktopProtocol.Vnc; this.openTunnel = openTunnel;
+        options.Validate(); protocol = consoleProtocol == ConsoleProtocol.Spice ? LocalDesktopProtocol.Rdp : LocalDesktopProtocol.Vnc; this.openTunnel = openTunnel; this.feedback = feedback;
         session = consoleProtocol == ConsoleProtocol.Spice ? new SpiceDesktopSession(useTls, caFile) : new VncDesktopSession();
         Title = $"{name} · {consoleProtocol.ToString().ToUpperInvariant()} · VMCUBE";
         WireFileTransfers();
@@ -119,7 +122,11 @@ public sealed partial class ConsoleWindow : Window
         catch (Exception e) when (stop.IsCancellationRequested && e is OperationCanceledException or ObjectDisposedException or IOException or System.Net.Sockets.SocketException) { }
         catch (Exception e)
         {
-            if (!closed) status.Text = e is ArgumentException or InvalidOperationException or NotSupportedException or InvalidDataException ? e.Message : "连接失败或已中断，请检查服务端及网络。";
+            if (!closed)
+            {
+                status.Text = e is ArgumentException or InvalidOperationException or NotSupportedException or InvalidDataException ? e.Message : "连接失败或已中断，请检查服务端及网络。";
+                feedback.Report("控制台连接失败", e);
+            }
         }
         finally { if (!closed) { ReleaseInputs(); paintTimer.Stop(); ConsoleSendFiles.IsEnabled = false; } if (tunnel is not null) await tunnel.DisposeAsync(); ConnectionEnded?.Invoke(); }
     }
@@ -143,7 +150,7 @@ public sealed partial class ConsoleWindow : Window
     {
         if (closed || stop.IsCancellationRequested) return;
         try { action(); }
-        catch (IOException) { status.Text = "输入发送失败，连接已断开。"; stop.Cancel(); }
+        catch (IOException) { status.Text = "输入发送失败，连接已断开。"; feedback.Notify(FeedbackKind.Error, status.Text, "控制台"); stop.Cancel(); }
     }
     private void ReleaseInputs()
     {

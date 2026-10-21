@@ -1,3 +1,4 @@
+using AsterDock.Contracts;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
@@ -48,44 +49,41 @@ public partial class OverviewDashboardView : UserControl
 
     private NetworkAcceleratorViewModel? ViewModel => DataContext as NetworkAcceleratorViewModel;
 
-    private async void ToggleConnection_Click(object? sender, RoutedEventArgs e)
-    {
-        if (ViewModel is not null) await ViewModel.ToggleConnectionAsync();
-    }
+    private void ToggleConnection_Click(object? sender, RoutedEventArgs e) =>
+        Run(model => model.ToggleConnectionAsync(), "连接失败");
 
     private void RuleMode_Click(object? sender, RoutedEventArgs e) => ModeRequested?.Invoke(ProxyMode.Rule);
     private void GlobalMode_Click(object? sender, RoutedEventArgs e) => ModeRequested?.Invoke(ProxyMode.Global);
     private void DirectMode_Click(object? sender, RoutedEventArgs e) => ModeRequested?.Invoke(ProxyMode.Direct);
 
-    private async void SystemProxyToggle_Click(object? sender, RoutedEventArgs e)
-    {
-        if (ViewModel is not null) await ViewModel.SetSystemProxyEnabledAsync(SystemProxyToggle.IsChecked == true);
-    }
+    private void SystemProxyToggle_Click(object? sender, RoutedEventArgs e) =>
+        Run(model => model.SetSystemProxyEnabledAsync(SystemProxyToggle.IsChecked == true), "系统代理");
 
-    private async void TunToggle_Click(object? sender, RoutedEventArgs e)
-    {
-        if (ViewModel is not null) await ViewModel.SetTunEnabledAsync(OverviewTunToggle.IsChecked == true);
-    }
+    private void TunToggle_Click(object? sender, RoutedEventArgs e) =>
+        Run(model => model.SetTunEnabledAsync(OverviewTunToggle.IsChecked == true), "虚拟网卡");
 
-    private async void AllowLanToggle_Click(object? sender, RoutedEventArgs e)
-    {
-        if (ViewModel is not null) await ViewModel.SetAllowLanAsync(AllowLanToggle.IsChecked == true);
-    }
+    private void AllowLanToggle_Click(object? sender, RoutedEventArgs e) =>
+        Run(model => model.SetAllowLanAsync(AllowLanToggle.IsChecked == true), "局域网代理");
 
-    private async void CopyLanAddress_Click(object? sender, RoutedEventArgs e)
-    {
-        if (ViewModel is null || ViewModel.LanAddressText == "—") return;
-        if (TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard) return;
-        await clipboard.SetTextAsync(ViewModel.LanAddressText);
-        ViewModel.ShowStatusMessage("已复制内网 IP");
-    }
+    private void CopyLanAddress_Click(object? sender, RoutedEventArgs e) =>
+        Run(async model =>
+        {
+            if (model.LanAddressText == "—") return;
+            if (TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard) return;
+            await clipboard.SetTextAsync(model.LanAddressText);
+            model.ShowStatusMessage("已复制内网 IP", FeedbackKind.Success);
+        }, "复制失败");
 
     private void UpdateSubscription_Click(object? sender, RoutedEventArgs e) =>
         SubscriptionUpdateRequested?.Invoke(this, e);
 
-    private async void RefreshServices_Click(object? sender, RoutedEventArgs e)
+    private void RefreshServices_Click(object? sender, RoutedEventArgs e) =>
+        Run(model => model.RefreshServiceStatusAsync(), "服务状态测试失败");
+
+    private void Run(Func<NetworkAcceleratorViewModel, Task> action, string errorTitle)
     {
-        if (ViewModel is not null) await ViewModel.RefreshServiceStatusAsync();
+        if (ViewModel is not { } model) return;
+        model.Run(() => action(model), errorTitle);
     }
 
     private void OpenSection_Click(object? sender, RoutedEventArgs e)

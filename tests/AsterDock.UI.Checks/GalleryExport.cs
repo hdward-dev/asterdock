@@ -17,9 +17,9 @@ internal static class GalleryExport
         foreach (var dark in new[] { false, true })
         {
             var suffix = dark ? "dark" : "light";
-            Save(Indicators(), Path.Combine(directory, $"loading_indicators_{suffix}.png"), 1080, 420, dark, TimeSpan.FromMilliseconds(40));
-            Save(CardOverlay(), Path.Combine(directory, $"loading_overlay_card_{suffix}.png"), 880, 480, dark, TimeSpan.FromMilliseconds(900));
-            Save(WindowOverlay(), Path.Combine(directory, $"loading_window_overlay_{suffix}.png"), 1080, 640, dark, TimeSpan.FromMilliseconds(40));
+            Save(Indicators(), Path.Combine(directory, $"loading_indicators_{suffix}.png"), 1080, 420, dark, SpinnerMotion.PeakAt);
+            Save(CardOverlay(), Path.Combine(directory, $"loading_overlay_card_{suffix}.png"), 880, 480, dark, SpinnerMotion.PeakAt);
+            Save(WindowOverlay(), Path.Combine(directory, $"loading_window_overlay_{suffix}.png"), 1080, 640, dark, SpinnerMotion.PeakAt);
             Save(Skeletons(), Path.Combine(directory, $"loading_skeleton_{suffix}.png"), 880, 460, dark, TimeSpan.FromMilliseconds(630));
         }
     }
@@ -109,7 +109,7 @@ internal static class GalleryExport
 
         window.Close();
         LoadingClock.Resume();
-        Encode(frameDirectory, Path.Combine(directory, "loading_morph_and_overlay.mp4"), fps);
+        Encode(frameDirectory, Path.Combine(directory, "loading_spinner_and_overlay.mp4"), fps);
     }
 
     private static Control Indicators()
@@ -345,6 +345,8 @@ internal static class GalleryExport
         process.StartInfo.ArgumentList.Add("libx264");
         process.StartInfo.ArgumentList.Add("-pix_fmt");
         process.StartInfo.ArgumentList.Add("yuv420p");
+        process.StartInfo.ArgumentList.Add("-crf");
+        process.StartInfo.ArgumentList.Add("16");
         process.StartInfo.ArgumentList.Add("-movflags");
         process.StartInfo.ArgumentList.Add("+faststart");
         process.StartInfo.ArgumentList.Add(output);

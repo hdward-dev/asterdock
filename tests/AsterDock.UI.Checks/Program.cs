@@ -160,15 +160,34 @@ static void RunSchedulerChecks(Action<bool, string> check)
 
 static void RunShapeChecks(Action<bool, string> check)
 {
-    var sweep = SpinnerMotion.ArcSweep;
-    check(sweep > Math.PI * 0.4 && sweep < Math.PI, "spinner arc is a partial stroke");
-    var parked = SpinnerMotion.Rotation(TimeSpan.Zero, reduceMotion: false);
-    check(Math.Abs(parked - (-Math.PI / 2)) < 0.001, "spinner starts at the top");
-    var turned = SpinnerMotion.Rotation(TimeSpan.FromSeconds(SpinnerMotion.TurnSeconds), false);
-    check(Math.Abs((turned - parked) - Math.Tau) < 0.001, "spinner completes one turn per cycle");
-    check(Math.Abs(SpinnerMotion.Rotation(TimeSpan.FromSeconds(1.4), true) - (-Math.PI / 2)) < 0.001, "reduced motion does not rotate");
-    var pulse = SpinnerMotion.PulseOpacity(TimeSpan.FromSeconds(0.8));
-    check(pulse is > 0.45 and <= 1, "reduced motion pulse stays gentle");
+    var rest = SpinnerMotion.Sample(TimeSpan.Zero, reduceMotion: false);
+    var peak = SpinnerMotion.Sample(SpinnerMotion.PeakAt, false);
+    var loop = SpinnerMotion.Sample(TimeSpan.FromSeconds(SpinnerMotion.CycleSeconds), false);
+    check(peak.Sweep > rest.Sweep * 4, "arc grows through the cycle");
+    check(peak.Sweep > Math.Tau * 0.55 && peak.Sweep < Math.Tau * 0.8, "peak arc stays an open stroke");
+    check(peak.EchoSweep > 0 && peak.Sweep + peak.EchoSweep < Math.Tau * 0.92, "the trail follows without closing the ring");
+    check(Math.Abs(loop.Sweep - rest.Sweep) < 0.02, "sweep returns at the end of the cycle");
+    var beforeLoop = SpinnerMotion.Sample(TimeSpan.FromSeconds(SpinnerMotion.CycleSeconds * 0.99), false);
+    var traveled = beforeLoop.Start + beforeLoop.Sweep - (rest.Start + rest.Sweep);
+    check(traveled > Math.Tau * 1.5, "spinner travels more than one turn per cycle");
+    check(peak.RingScale > rest.RingScale && peak.RingScale <= 1 && peak.DiscScale <= 1, "pulse grows toward the resting bounds");
+
+    var forward = true;
+    var previous = rest.Start + rest.Sweep;
+    for (var i = 1; i <= 48; i++)
+    {
+        var pose = SpinnerMotion.Sample(TimeSpan.FromSeconds(SpinnerMotion.CycleSeconds * i / 48d), false);
+        var head = pose.Start + pose.Sweep;
+        if (head + 1e-6 < previous) forward = false;
+        previous = head;
+    }
+
+    check(forward, "arc head keeps moving forward");
+    var reduced = SpinnerMotion.Sample(TimeSpan.FromSeconds(1.4), true);
+    var later = SpinnerMotion.Sample(TimeSpan.FromSeconds(2.1), true);
+    check(Math.Abs(reduced.Start - later.Start) < 0.001 && Math.Abs(reduced.Sweep - later.Sweep) < 0.001, "reduced motion does not spin");
+    check(reduced.EchoSweep == 0 && Math.Abs(reduced.RingScale - 1) < 0.001, "reduced motion keeps a single static arc");
+    check(reduced.Opacity > 0.45 && reduced.Opacity <= 1 && later.Opacity != reduced.Opacity, "reduced motion only pulses opacity");
 }
 
 static void RunEasingChecks(Action<bool, string> check)

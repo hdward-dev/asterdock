@@ -46,6 +46,7 @@ public class AdLoadingIndicator : TemplatedControl, ILoadingClockClient
     private TextBlock? _label;
     private Pen? _trackPen;
     private Pen? _progressPen;
+    private Pen? _glowPen;
     private Color _penColor;
     private double _penThickness = -1;
     private int _variantSync;
@@ -226,17 +227,19 @@ public class AdLoadingIndicator : TemplatedControl, ILoadingClockClient
         var accent = ResolveAccent();
         var now = LoadingClock.Now;
         var reduce = MotionPreferences.ReduceMotion;
+        var pose = SpinnerMotion.Sample(now, reduce);
         var center = new Point(size.Width / 2, size.Height / 2);
         var diameter = Math.Min(size.Width, size.Height);
         if (IsContained)
         {
             var container = ContainerBrush ?? (IsDark ? DarkContainerBrush : LightContainerBrush);
-            context.DrawEllipse(container, null, center, diameter / 2, diameter / 2);
+            var disc = diameter / 2 * (IsDeterminate ? 1 : pose.DiscScale);
+            context.DrawEllipse(container, null, center, disc, disc);
         }
 
-        var thickness = Math.Clamp(diameter * 0.09, 1.75, 3.25);
-        var inset = IsContained ? diameter * 0.18 : (thickness / 2) + 0.6;
-        var radius = (diameter / 2) - inset;
+        var thickness = Math.Clamp(diameter * 0.105, 2, 3.6);
+        var inset = IsContained ? diameter * 0.2 : (thickness / 2) + 1;
+        var radius = ((diameter / 2) - inset) * (IsDeterminate ? 1 : pose.RingScale);
         if (radius <= 1) return;
         EnsurePens(accent, thickness);
         if (_trackPen is null || _progressPen is null) return;
@@ -248,11 +251,18 @@ public class AdLoadingIndicator : TemplatedControl, ILoadingClockClient
             return;
         }
 
-        var sweep = SpinnerMotion.ArcSweep;
-        var start = SpinnerMotion.Rotation(now, reduce);
-        var arcOpacity = reduce ? SpinnerMotion.PulseOpacity(now) : 1;
-        using (context.PushOpacity(arcOpacity))
-            DrawArc(context, center, radius, start, sweep, _progressPen);
+        using (context.PushOpacity(pose.Opacity))
+        {
+            if (pose.EchoSweep > 0.02)
+            {
+                using (context.PushOpacity(0.4))
+                    DrawArc(context, center, radius, pose.EchoStart, pose.EchoSweep, _progressPen);
+            }
+
+            if (!reduce && _glowPen is not null)
+                DrawArc(context, center, radius, pose.Start, pose.Sweep, _glowPen);
+            DrawArc(context, center, radius, pose.Start, pose.Sweep, _progressPen);
+        }
     }
 
     private void OnThemeChanged(object? sender, EventArgs e)
@@ -324,9 +334,11 @@ public class AdLoadingIndicator : TemplatedControl, ILoadingClockClient
         if (_trackPen is not null && _penColor == color && Math.Abs(_penThickness - thickness) <= 0.01) return;
         _penColor = color;
         _penThickness = thickness;
-        var track = new SolidColorBrush(Color.FromArgb(38, color.R, color.G, color.B));
+        var track = new SolidColorBrush(Color.FromArgb(56, color.R, color.G, color.B));
+        var glow = new SolidColorBrush(Color.FromArgb(36, color.R, color.G, color.B));
         _trackPen = new Pen(track, thickness, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
         _progressPen = new Pen(accent, thickness, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
+        _glowPen = new Pen(glow, thickness * 1.45, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
     }
 
     private void DrawProgressArc(DrawingContext context, Point center, double radius, double progress)

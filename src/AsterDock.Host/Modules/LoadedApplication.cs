@@ -50,6 +50,15 @@ public sealed class LoadedApplication : IDisposable
         return _view = _module!.CreateView();
     }
 
+    /// <summary>
+    /// A second page for an independent window. This is never the control already shown in the host.
+    /// </summary>
+    public Control CreateDetachedView(Window owner, ISystemMetricsService systemMetrics)
+    {
+        EnsureInitialized(owner, systemMetrics);
+        return _module!.CreateView();
+    }
+
     public IReadOnlyList<ApplicationQuickAction> GetQuickActions(Window owner, ISystemMetricsService systemMetrics)
     {
         EnsureInitialized(owner, systemMetrics);

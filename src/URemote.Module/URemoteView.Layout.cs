@@ -29,6 +29,7 @@ public sealed partial class URemoteView
         logout.IsVisible = authenticated; loginPanel.IsVisible = !authenticated;
     }
     private int deviceColumns = 2;
+    private int _hostPanelPlacement;
     private bool listView;
     private int deviceTab;
     private readonly List<Button> navigation = [];
@@ -87,20 +88,27 @@ public sealed partial class URemoteView
         SizeChanged += (_, e) =>
         {
             var wide = e.NewSize.Width >= 1150;
-            body.ColumnDefinitions = new(wide ? "300,*,190" : "270,*,150");
-            page.Margin = new Thickness(wide ? 24 : 14);
-            if (e.NewSize.Width < 850)
+            var narrow = e.NewSize.Width < 850;
+            body.ColumnDefinitions = new(narrow ? "0,*,130" : wide ? "300,*,190" : "270,*,150");
+            page.Margin = new Thickness(wide && !narrow ? 24 : 14);
+            hostBorder.IsVisible = !narrow;
+            // hostPanel moves between two parents of this same window. Do it after the
+            // current arrange, so the move is not inside the layout pass that raised SizeChanged.
+            var generation = ++_hostPanelPlacement;
+            Dispatcher.UIThread.Post(() =>
             {
-                body.ColumnDefinitions = new("0,*,130"); hostBorder.IsVisible = false;
-                hostPanel.Margin = new Thickness(0);
-                if (!hostPage.Children.Contains(hostPanel)) { hostScroll.Content = null; hostPage.Children.Insert(2, hostPanel); }
-            }
-            else
-            {
-                if (hostPage.Children.Contains(hostPanel)) { hostPage.Children.Remove(hostPanel); hostScroll.Content = hostPanel; }
-                hostPanel.Margin = new Thickness(14, 12);
-                hostBorder.IsVisible = true;
-            }
+                if (generation != _hostPanelPlacement) return;
+                if (narrow)
+                {
+                    hostPanel.Margin = new Thickness(0);
+                    if (!hostPage.Children.Contains(hostPanel)) { hostScroll.Content = null; hostPage.Children.Insert(2, hostPanel); }
+                }
+                else
+                {
+                    if (hostPage.Children.Contains(hostPanel)) { hostPage.Children.Remove(hostPanel); hostScroll.Content = hostPanel; }
+                    hostPanel.Margin = new Thickness(14, 12);
+                }
+            }, DispatcherPriority.Background);
             var columns = e.NewSize.Width >= 1150 ? 2 : 1;
             if (columns != deviceColumns) { deviceColumns = columns; RenderDevices(); }
         };

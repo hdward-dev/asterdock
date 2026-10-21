@@ -162,9 +162,7 @@ public partial class MainWindow : Window, IApplicationShell
             {
                 SettingsPanel.IsVisible = false;
                 HideAppInfo();
-                ApplicationContent.Content = _detachedApplications.ContainsKey(application)
-                    ? CreateDetachedPlaceholder(application)
-                    : application.GetOrCreateView(this, _systemMetrics);
+                ApplicationContent.Content = application.GetOrCreateView(this, _systemMetrics);
                 EmptyState.IsVisible = false;
                 SetCurrentApplication(application);
                 UpdateCapsuleState();
@@ -379,7 +377,6 @@ public partial class MainWindow : Window, IApplicationShell
                 var home = Applications.FirstOrDefault(item => item.Manifest.Id == "home");
                 if (home is not null) OpenApplication(home);
             }
-            // Prevent the detached-window close handler from restoring a disposed view.
             if (_detachedApplications.TryGetValue(application, out var window))
             {
                 _closingDetachedApplications = true;

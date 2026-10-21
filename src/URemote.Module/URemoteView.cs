@@ -345,9 +345,14 @@ public sealed partial class URemoteView : UserControl, IDisposable
     }
     internal void ShowManaged(Window window)
     {
+        if (appContext?.Windows is { } windows)
+        {
+            windows.Show(window);
+            return;
+        }
+
         FeedbackWindow.Attach(window, appContext?.Feedback);
-        if (appContext?.Windows is { } windows) windows.Show(window);
-        else window.Show();
+        window.Show();
     }
 
     internal void ReportFailure(string message, string? title = null) =>

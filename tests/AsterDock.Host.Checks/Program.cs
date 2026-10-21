@@ -65,21 +65,33 @@ Check(list.ItemsSource!.Cast<LoadedApplication>().Contains(unopened), "backgroun
 Call("StopRunningApplication", unopened);
 Check(!unopened.IsRunning, "background-only app can stop");
 Call("OpenApplication", foreground);
+host.Show();
 host.UpdateLayout();
 Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+var page = host.FindControl<ContentControl>("ApplicationContent")!.Content;
+Check(page is not null, "measured module page is in the main window");
 Call("OpenDetachedApplication", foreground);
-for (var i = 0; i < 8; i++) Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 Check(detached.ContainsKey(foreground), "shown window can open a detached window");
 var popped = detached[foreground];
-popped.Measure(new Size(900, 640));
-popped.Arrange(new Rect(0, 0, 900, 640));
-popped.UpdateLayout();
-Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+ExerciseLayouts(host, popped);
+Check(ReferenceEquals(host.FindControl<ContentControl>("ApplicationContent")!.Content, page), "pop-out leaves the measured page in the main window");
+var pageControl = (Control)page!;
 var fixtureAction = popped.GetVisualDescendants().OfType<Button>().Single(button => button.Name == "FixtureAction");
+var pageButton = pageControl.GetVisualDescendants().OfType<Button>().Single(button => button.Name == "FixtureAction");
+Check(!ReferenceEquals(fixtureAction, pageButton), "detached window uses a new page instance");
 var fixtureClicks = 0;
 fixtureAction.Click += (_, _) => fixtureClicks++;
 fixtureAction.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 Check(fixtureClicks == 1, "detached page button receives clicks");
+popped.Close();
+Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+ExerciseLayouts(host);
+Check(!detached.ContainsKey(foreground) && ReferenceEquals(host.FindControl<ContentControl>("ApplicationContent")!.Content, page),
+    "closing the detached window leaves the main page in place");
+var pageClicks = 0;
+pageButton.Click += (_, _) => pageClicks++;
+pageButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+Check(pageClicks == 1, "main page button still receives clicks after pop-out closes");
 Call("StopRunningApplication", foreground);
 var count=FixtureModule.Disposals;
 foreground.Stop(); Check(FixtureModule.Disposals == count, "repeated stop is idempotent");
@@ -87,6 +99,22 @@ foreach(var app in host.Applications) app.Dispose();
 try { unopened.GetQuickActions(host, null!); throw new Exception("disposed app relaunched"); }
 catch(ObjectDisposedException) { Console.WriteLine("PASS disposed app cannot relaunch"); }
 Console.WriteLine("All host lifecycle checks passed.");
+
+static void ExerciseLayouts(params Window[] windows)
+{
+    for (var frame = 0; frame < 4; frame++)
+    {
+        foreach (var window in windows)
+        {
+            window.InvalidateMeasure();
+            window.InvalidateArrange();
+            window.UpdateLayout();
+        }
+
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    }
+}
 
 public sealed class CheckApplication : Application
 {

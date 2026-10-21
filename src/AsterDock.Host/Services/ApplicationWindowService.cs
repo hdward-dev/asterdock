@@ -21,6 +21,7 @@ internal sealed class ApplicationWindowService : IWindowService, IDisposable
 
     public void Show(Window window, bool owned = true)
     {
+        // Wrap once, before the first show. Attach does nothing after the window is visible.
         FeedbackWindow.Attach(window, _feedback);
         Track(window);
         try

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=星栈
+Comment=星栈
+Exec=AsterDock.Host
+Icon=asterdock
+StartupWMClass=AsterDock.Host
+Terminal=false
+Categories=Utility;

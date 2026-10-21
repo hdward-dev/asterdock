@@ -1,12 +1,17 @@
 using System.Reflection;
+using System.Text.Json;
 using AsterDock.Contracts;
 using AsterDock.Host.Modules;
+using AsterDock.Host.Services;
 using AsterDock.Host.Views;
+using AsterDock.UI.Services;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml.Styling;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 
 AppBuilder.Configure<CheckApplication>().UseHeadless(new AvaloniaHeadlessPlatformOptions()).SetupWithoutStarting();
@@ -95,6 +100,65 @@ Check(pageClicks == 1, "main page button still receives clicks after pop-out clo
 Call("StopRunningApplication", foreground);
 var count=FixtureModule.Disposals;
 foreground.Stop(); Check(FixtureModule.Disposals == count, "repeated stop is idempotent");
+var missingSetting = JsonSerializer.Deserialize<HostUiSettings>("""{"ReduceMotion":true}""")!;
+Check(missingSetting.AllowSystemNotifications && missingSetting.ReduceMotion, "missing notification setting stays enabled");
+var disabledSetting = JsonSerializer.Deserialize<HostUiSettings>("""{"AllowSystemNotifications":false,"ReduceMotion":true}""")!;
+Check(!disabledSetting.AllowSystemNotifications && disabledSetting.ReduceMotion, "notification setting can be turned off");
+disabledSetting.AllowSystemNotifications = true;
+var roundTrip = JsonSerializer.Deserialize<HostUiSettings>(JsonSerializer.Serialize(disabledSetting))!;
+Check(roundTrip.AllowSystemNotifications && roundTrip.ReduceMotion, "both appearance settings round-trip");
+var notes = new RecordingNotifications();
+host.FeedbackService.SystemNotifications = notes;
+var allowSwitch = host.FindControl<ToggleSwitch>("AllowSystemNotificationsSwitch")!;
+if (allowSwitch.IsChecked != true) allowSwitch.IsChecked = true;
+host.Hide();
+Dispatcher.UIThread.RunJobs();
+host.FeedbackService.Toast(FeedbackKind.Warning, "窗口已隐藏");
+Check(notes.Published.Any(item => item.Body == "窗口已隐藏" && item.ModuleId is null), "hidden window routes a host toast to the system");
+host.Show();
+host.WindowState = WindowState.Minimized;
+allowSwitch.IsChecked = false;
+Dispatcher.UIThread.RunJobs();
+var publishedBefore = notes.Published.Count;
+host.FeedbackService.Toast(FeedbackKind.Info, "设置关闭后排队");
+Check(notes.Published.Count == publishedBefore && host.FeedbackService.DeferredCount == 1, "disabled setting queues while minimized");
+host.WindowState = WindowState.Normal;
+host.Activate();
+Dispatcher.UIThread.RunJobs();
+Check(host.FeedbackService.VisibleToasts.Any(item => item.Message == "设置关闭后排队"), "restoring the window shows the queued toast");
+allowSwitch.IsChecked = true;
+Call("OpenApplication", foreground);
+var notifier = FixtureModule.Last!;
+Call("OpenApplication", home);
+notifier.NotifyFailure();
+Check(notes.Published.Any(item => item.ModuleId == "fixture-front" && item.OpenErrorDialog), "hidden module routes an error to the system");
+var routed = notes.Published.Last(item => item.ModuleId == "fixture-front");
+notes.Raise(routed.Token);
+for (var i = 0; i < 8; i++) Dispatcher.UIThread.RunJobs();
+Check(ReferenceEquals(typeof(MainWindow).GetField("_currentApplication", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host), foreground),
+    "notification activation opens the module");
+Check(host.FeedbackService.ActiveDialog?.Details?.Contains("stack-line") == true, "notification activation opens the error");
+host.GetVisualDescendants().OfType<Button>().Single(button => button.Name == "DialogPrimary")
+    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+for (var i = 0; i < 8; i++) Dispatcher.UIThread.RunJobs();
+host.WindowState = WindowState.Minimized;
+var confirm = host.FeedbackService.ConfirmAsync("仍要确认", "继续吗");
+Button? confirmButton = null;
+for (var i = 0; i < 16 && confirmButton is null; i++)
+{
+    Dispatcher.UIThread.RunJobs();
+    host.UpdateLayout();
+    confirmButton = host.GetVisualDescendants().OfType<TextBlock>()
+        .Where(text => text.Text == "继续吗")
+        .SelectMany(text => text.GetVisualAncestors())
+        .SelectMany(ancestor => ancestor.GetVisualDescendants().OfType<Button>())
+        .FirstOrDefault(button => button.Name == "DialogPrimary");
+}
+Check(confirmButton is not null && !confirm.IsCompleted, "confirmation stays in the window while minimized");
+confirmButton!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+for (var i = 0; i < 4; i++) Dispatcher.UIThread.RunJobs();
+Check(confirm.IsCompletedSuccessfully && confirm.Result, "minimized confirmation still returns the choice");
+host.WindowState = WindowState.Normal;
 foreach(var app in host.Applications) app.Dispose();
 try { unopened.GetQuickActions(host, null!); throw new Exception("disposed app relaunched"); }
 catch(ObjectDisposedException) { Console.WriteLine("PASS disposed app cannot relaunch"); }
@@ -135,5 +199,20 @@ public sealed class FixtureModule : IApplicationModule, IApplicationContextAware
     public void Initialize(IApplicationContext value) { context=value; Last=this; }
     public Control CreateView() => new Border { Child = new Button { Name = "FixtureAction", Content = "动作" } };
     public void OpenChild() { Child=new Window(); context!.Windows.Show(Child, false); }
+    public void NotifyFailure() => context!.Feedback.ShowErrorAsync("订阅失败", "未能更新", new InvalidOperationException("stack-line"));
     public void Dispose() { Stopped=true; Disposals++; }
+}
+
+sealed class RecordingNotifications : ISystemNotificationBackend
+{
+    public bool IsAvailable => true;
+    public List<SystemNotificationRequest> Published { get; } = [];
+    public event EventHandler<SystemNotificationActivation>? Activated;
+    public bool TryPublish(SystemNotificationRequest request)
+    {
+        Published.Add(request);
+        return true;
+    }
+
+    public void Raise(string token) => Activated?.Invoke(this, new SystemNotificationActivation { Token = token });
 }

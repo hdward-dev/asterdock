@@ -13,11 +13,12 @@ internal sealed class ApplicationContext : IApplicationContext, IDisposable
         IApplicationShell shell,
         ISystemMetricsService systemMetrics,
         ILoadingService loading,
-        IUserFeedbackService feedback)
+        IUserFeedbackService feedback,
+        UserFeedbackService? windowFeedback = null)
     {
         ApplicationId = applicationId;
         DataDirectory = ApplicationPaths.GetApplicationDataDirectory(applicationId);
-        _windowService = new ApplicationWindowService(owner, feedback as UserFeedbackService);
+        _windowService = new ApplicationWindowService(owner, windowFeedback ?? feedback as UserFeedbackService);
         Shell = shell;
         SystemMetrics = systemMetrics;
         Loading = loading;

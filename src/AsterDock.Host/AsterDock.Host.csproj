@@ -52,6 +52,9 @@
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.0" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="AsterDock.Host.Checks" />
+  </ItemGroup>
+  <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
     <Compile Include="../Home.Module/**/*.cs" Exclude="../Home.Module/bin/**;../Home.Module/obj/**" LinkBase="BuiltIn/Home" />
     <AvaloniaXaml Include="../Home.Module/Views/*.axaml" Link="BuiltIn/Home/Views/%(Filename)%(Extension)" />

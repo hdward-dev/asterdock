@@ -6,6 +6,8 @@ internal sealed class HostUiSettings
 {
     public bool ReduceMotion { get; set; }
 
+    public bool AllowSystemNotifications { get; set; } = true;
+
     public static HostUiSettings Load()
     {
         try

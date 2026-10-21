@@ -10,5 +10,6 @@
     <PackageReference Include="Avalonia.Headless" Version="12.1.0" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
     <PackageReference Include="Semi.Avalonia" Version="12.1.0.1" />
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.94.1" />
   </ItemGroup>
 </Project>

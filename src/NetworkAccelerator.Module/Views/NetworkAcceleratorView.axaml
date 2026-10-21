@@ -5,7 +5,7 @@
              xmlns:controls="using:NetworkAccelerator.Module.Controls"
              xmlns:ui="using:AsterDock.UI.Controls"
              x:Class="NetworkAccelerator.Module.Views.NetworkAcceleratorView"
-             x:CompileBindings="False" Background="{DynamicResource AppPageBrush}">
+             x:CompileBindings="False" Background="{DynamicResource AppPageBrush}" ClipToBounds="False">
   <UserControl.Resources>
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
@@ -148,11 +148,46 @@
     <Style Selector="UserControl.still Button.section-nav">
       <Setter Property="Transitions" Value="{x:Null}"/>
     </Style>
-    <Style Selector="Border.nav-float:light">
-      <Setter Property="BoxShadow" Value="0 10 28 0 #2A152033"/>
+    <Style Selector="Border.nav-float">
+      <Setter Property="ClipToBounds" Value="False"/>
+      <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+      <Setter Property="RenderTransform" Value="scale(1)"/>
+      <Setter Property="BoxShadow" Value="0 4 24 0 #1A000000"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BoxShadowsTransition Property="BoxShadow" Duration="0:0:0.16"/>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.16"/>
+        </Transitions>
+      </Setter>
     </Style>
     <Style Selector="Border.nav-float:dark">
-      <Setter Property="BoxShadow" Value="0 12 32 0 #99000000"/>
+      <Setter Property="BoxShadow" Value="0 4 24 0 #33000000"/>
+    </Style>
+    <Style Selector="Border.nav-float:pointerover">
+      <Setter Property="BoxShadow" Value="0 4 24 0 #33000000"/>
+      <Setter Property="RenderTransform" Value="scale(1.015)"/>
+    </Style>
+    <Style Selector="Border.nav-float:dark:pointerover">
+      <Setter Property="BoxShadow" Value="0 4 24 0 #4D000000"/>
+    </Style>
+    <Style Selector="Border.nav-float.down">
+      <Setter Property="BoxShadow" Value="0 4 24 0 #4D000000"/>
+      <Setter Property="RenderTransform" Value="scale(1.02)"/>
+    </Style>
+    <Style Selector="Border.nav-float:pointerover.down">
+      <Setter Property="BoxShadow" Value="0 4 24 0 #4D000000"/>
+      <Setter Property="RenderTransform" Value="scale(1.02)"/>
+    </Style>
+    <Style Selector="Border.nav-float:dark.down">
+      <Setter Property="BoxShadow" Value="0 4 24 0 #66000000"/>
+    </Style>
+    <Style Selector="Border.nav-float:dark:pointerover.down">
+      <Setter Property="BoxShadow" Value="0 4 24 0 #66000000"/>
+    </Style>
+    <Style Selector="UserControl.still Border.nav-float">
+      <Setter Property="Transitions">
+        <Transitions/>
+      </Setter>
     </Style>
     <Style Selector="Button:disabled ui|AdLoadingIndicator.accent-mark">
       <Setter Property="ShapeBrush" Value="{DynamicResource AppMutedBrush}"/>
@@ -168,7 +203,7 @@
     </Style>
   </UserControl.Styles>
 
-  <Grid ColumnDefinitions="*,Auto">
+  <Grid ColumnDefinitions="*,Auto" ClipToBounds="False">
     <ScrollViewer x:Name="PageScroll" Grid.Column="0" HorizontalScrollBarVisibility="Disabled"
                   VerticalScrollBarVisibility="Auto" AllowAutoHide="False" HorizontalContentAlignment="Stretch">
       <StackPanel Margin="24" Spacing="20">
@@ -498,8 +533,8 @@
     <Border x:Name="NavChrome" Grid.Column="1" Classes="nav-float"
             HorizontalAlignment="Right" VerticalAlignment="Center"
             Margin="12" CornerRadius="24" Background="Transparent" ClipToBounds="False">
-      <Border CornerRadius="24" ClipToBounds="True" Background="Transparent">
-        <controls:LiquidGlassBar x:Name="NavGlass">
+      <controls:LiquidGlassBar x:Name="NavGlass">
+        <Border CornerRadius="24" ClipToBounds="True" Background="Transparent">
         <Grid Margin="8,10">
           <Border x:Name="NavPill" Height="68" CornerRadius="16"
                   Background="{DynamicResource NavPillBrush}"
@@ -534,8 +569,8 @@
           </Button>
           </StackPanel>
         </Grid>
-        </controls:LiquidGlassBar>
-      </Border>
+        </Border>
+      </controls:LiquidGlassBar>
     </Border>
   </Grid>
 </UserControl>

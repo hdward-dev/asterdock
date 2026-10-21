@@ -9,6 +9,7 @@ using Avalonia.Input;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using NetworkAccelerator.Core.Models;
@@ -85,6 +86,7 @@ static class ModuleInteractionChecks
             CheckSwitchSurvivesDetach(check);
             CheckCustomHitTargets(check);
             CheckRefreshIconsCentered(check);
+            CheckNavChromeShadow(check);
             CheckClosedViewCanBeCollected(check);
         }
         finally
@@ -327,6 +329,107 @@ static class ModuleInteractionChecks
             model.Dispose();
             root.Delete(recursive: true);
         }
+    }
+
+    private static void CheckNavChromeShadow(Action<bool, string> check)
+    {
+        var reduceMotion = DashboardMotion.ReduceMotion;
+        DashboardMotion.ReduceMotion = true;
+        var previousTheme = Application.Current?.RequestedThemeVariant;
+        Window? window = null;
+        try
+        {
+            if (Application.Current is not null)
+                Application.Current.RequestedThemeVariant = ThemeVariant.Light;
+            var view = new NetworkAcceleratorView { Width = 1100, Height = 820 };
+            window = new Window
+            {
+                Width = 1100,
+                Height = 820,
+                Content = view,
+                WindowDecorations = WindowDecorations.None
+            };
+            window.Show();
+            Settle(window);
+            var chrome = view.FindControl<Border>("NavChrome")!;
+            var glass = view.FindControl<LiquidGlassBar>("NavGlass")!;
+            check(chrome.ClipToBounds == false && chrome.Margin.Right >= 8 && chrome.Margin.Bottom >= 8,
+                "nav chrome keeps shadow room outside the capsule");
+            var rest = LiquidGlassBar.CreateOuterShadow(false, false, false);
+            check(rest.Count == 1 && rest[0].OffsetX == 0 && rest[0].OffsetY == 4 && rest[0].Blur == 24 && rest[0].Color.A == 0x1A,
+                "nav rest shadow is black at 10% with blur 24 and offset 4");
+            check(SameShadow(chrome.BoxShadow, rest), "nav chrome uses that rest shadow");
+            check(LiquidGlassBar.BackdropBlurRadius == 8 && LiquidGlassBar.SlowBackdropBlurRadius == 5,
+                "nav snapshot blur starts at 8 and falls back to 5");
+
+            var point = chrome.TranslatePoint(new Point(chrome.Bounds.Width / 2, 36), window);
+            check(point is not null, "nav chrome has a window point");
+            if (point is { } hoverPoint)
+            {
+                window.MouseMove(hoverPoint);
+                Settle(window);
+            }
+
+            var hover = LiquidGlassBar.CreateOuterShadow(false, true, false);
+            check(hover.Count == 1 && hover[0].OffsetY == 4 && hover[0].Blur == 24 && hover[0].Color.A > rest[0].Color.A,
+                "nav hover raises shadow alpha without changing the drop");
+            check(SameShadow(chrome.BoxShadow, hover), "nav chrome uses that hover shadow");
+            var hoverScale = chrome.RenderTransform?.Value.M11 ?? 1;
+            check(hoverScale > 1.01 && hoverScale < 1.03, "nav hover lifts the chrome slightly");
+
+            chrome.Classes.Add("down");
+            Settle(window);
+            var pressed = LiquidGlassBar.CreateOuterShadow(false, true, true);
+            check(pressed[0].Color.A > hover[0].Color.A && pressed[0].Blur == 24 && pressed[0].OffsetY == 4,
+                "nav press raises shadow alpha further");
+            check(SameShadow(chrome.BoxShadow, pressed), "nav press uses that stronger shadow");
+            var pressScale = chrome.RenderTransform?.Value.M11 ?? 1;
+            check(pressScale >= hoverScale - 0.001 && pressScale < 1.03, "nav press keeps a slight scale");
+            chrome.Classes.Remove("down");
+            window.MouseMove(new Point(0, 0));
+            Settle(window);
+
+            if (Application.Current is not null)
+                Application.Current.RequestedThemeVariant = ThemeVariant.Dark;
+            Settle(window);
+            var dark = chrome.BoxShadow;
+            var darkExpected = LiquidGlassBar.CreateOuterShadow(true, false, false);
+            check(SameShadow(dark, darkExpected)
+                  && dark[0].OffsetY == 4 && dark[0].Blur == 24 && dark[0].Color.A > rest[0].Color.A,
+                "nav dark shadow keeps the same drop with a stronger alpha");
+
+            var bar = new LiquidGlassBar { Width = 72, Height = 280 };
+            bar.Measure(new Size(72, 280));
+            bar.Arrange(new Rect(0, 0, 72, 280));
+            using var bitmap = new RenderTargetBitmap(new PixelSize(72, 280), new Vector(96, 96));
+            bitmap.Render(bar);
+            check(glass.Bounds.Width > 1, "styled nav glass laid out beside the fallback render");
+        }
+        finally
+        {
+            window?.Close();
+            DashboardMotion.ReduceMotion = reduceMotion;
+            if (Application.Current is not null)
+                Application.Current.RequestedThemeVariant = previousTheme;
+        }
+    }
+
+    private static bool SameShadow(BoxShadows actual, BoxShadows expected)
+    {
+        if (actual.Count != expected.Count) return false;
+        for (var i = 0; i < actual.Count; i++)
+        {
+            var left = actual[i];
+            var right = expected[i];
+            if (left.IsInset != right.IsInset) return false;
+            if (Math.Abs(left.OffsetX - right.OffsetX) > 0.01) return false;
+            if (Math.Abs(left.OffsetY - right.OffsetY) > 0.01) return false;
+            if (Math.Abs(left.Blur - right.Blur) > 0.01) return false;
+            if (Math.Abs(left.Spread - right.Spread) > 0.01) return false;
+            if (left.Color != right.Color) return false;
+        }
+
+        return true;
     }
 
     private static Button NamedButton(Control root, string name) =>

@@ -30,7 +30,7 @@ public class PowerButton : Panel
     public static readonly RoutedEvent<RoutedEventArgs> ClickEvent =
         RoutedEvent.Register<PowerButton, RoutedEventArgs>(nameof(Click), RoutingStrategies.Bubble);
 
-    private const double Diameter = 88;
+    private const double Diameter = DashboardMotion.PowerDiameter;
     private const double GlyphBox = 46;
 
     // Soft primary glow, stronger below the circle. Avalonia converts

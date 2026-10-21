@@ -249,7 +249,7 @@
         <Border Classes="dash-card dash-hover hero" Padding="0" BorderThickness="0">
         <Grid>
           <Canvas IsHitTestVisible="False">
-            <controls:StatusBlob Width="190" Height="190" FillBrush="{DynamicResource AppCookieBrush}"/>
+            <controls:StatusBlob FillBrush="{DynamicResource AppCookieBrush}"/>
           </Canvas>
           <Grid Margin="16,12" ColumnDefinitions="*,Auto">
           <StackPanel Spacing="6">

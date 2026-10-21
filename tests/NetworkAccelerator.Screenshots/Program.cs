@@ -87,8 +87,12 @@ static void CaptureCookieSizes(string output)
             Settle(window);
             var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("cookie frame missing");
             var path = Path.Combine(output, $"cookie-{size.Name}-{themeName}.png");
+            var centres = CookieCentres(window);
             SaveHeroCard(window, frame, path, zoom: 1);
-            LogCookieAlignment(window, $"{size.Name}-{themeName}");
+            SaveHeroCard(window, frame, Path.Combine(output, $"cookie-{size.Name}-{themeName}-crosshair.png"), zoom: 1, crosshairs: centres);
+            LogCookieAlignment(window, $"{size.Name}-{themeName}", centres);
+            if (theme == ThemeVariant.Light)
+                CapturePressedCookie(window, output, size.Name);
         }
         finally
         {
@@ -99,22 +103,66 @@ static void CaptureCookieSizes(string output)
     }
 }
 
-static void LogCookieAlignment(Window window, string name)
+static (Point Button, Point Cookie) CookieCentres(Window window)
+{
+    var button = window.GetVisualDescendants().OfType<PowerButton>().FirstOrDefault()
+        ?? throw new InvalidOperationException("start button missing");
+    var blob = window.GetVisualDescendants().OfType<StatusBlob>().FirstOrDefault()
+        ?? throw new InvalidOperationException("cookie missing");
+    var buttonCenter = button.TranslatePoint(new Point(button.Bounds.Width / 2, button.Bounds.Height / 2), window)
+        ?? throw new InvalidOperationException("button centre missing");
+    var blobCenter = blob.TranslatePoint(new Point(blob.Bounds.Width / 2, blob.Bounds.Height / 2), window)
+        ?? throw new InvalidOperationException("cookie centre missing");
+    return (buttonCenter, blobCenter);
+}
+
+static void CapturePressedCookie(Window window, string output, string sizeName)
+{
+    DashboardMotion.ReduceMotion = false;
+    MotionClock.Manual = true;
+    try
+    {
+        var button = window.GetVisualDescendants().OfType<PowerButton>().First();
+        button.PreviewPress(true);
+        for (var i = 0; i < 8; i++)
+        {
+            MotionClock.Advance(TimeSpan.FromMilliseconds(40));
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick(2);
+        }
+
+        window.UpdateLayout();
+        var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("pressed cookie frame missing");
+        var centres = CookieCentres(window);
+        SaveHeroCard(window, frame, Path.Combine(output, $"cookie-{sizeName}-light-pressed-crosshair.png"), zoom: 1, crosshairs: centres);
+        LogCookieAlignment(window, $"{sizeName}-light-pressed", centres);
+        button.PreviewPress(false);
+    }
+    finally
+    {
+        MotionClock.Manual = false;
+        DashboardMotion.ReduceMotion = true;
+    }
+}
+
+static void LogCookieAlignment(Window window, string name, (Point Button, Point Cookie)? centres = null)
 {
     var button = window.GetVisualDescendants().OfType<PowerButton>().FirstOrDefault();
     var blob = window.GetVisualDescendants().OfType<StatusBlob>().FirstOrDefault();
     if (button is null || blob is null) throw new InvalidOperationException("cookie or button missing");
-    var buttonCenter = button.TranslatePoint(new Point(button.Bounds.Width / 2, button.Bounds.Height / 2), window);
-    var blobCenter = blob.TranslatePoint(new Point(blob.Bounds.Width / 2, blob.Bounds.Height / 2), window);
-    if (buttonCenter is null || blobCenter is null) throw new InvalidOperationException("cookie alignment missing");
-    var dx = blobCenter.Value.X - buttonCenter.Value.X;
-    var dy = blobCenter.Value.Y - buttonCenter.Value.Y;
+    var measured = centres ?? CookieCentres(window);
+    var dx = measured.Cookie.X - measured.Button.X;
+    var dy = measured.Cookie.Y - measured.Button.Y;
     var card = HeroCard(window);
+    var geometry = StatusBlob.GeometryBounds;
+    var geometryCentre = new Point(geometry.X + geometry.Width / 2d, geometry.Y + geometry.Height / 2d);
     Console.WriteLine(
-        $"cookie {name} window={window.Bounds.Width:0} card={card?.Bounds.Width:0}x{card?.Bounds.Height:0} " +
-        $"blob={blob.Bounds.Width:0}x{blob.Bounds.Height:0} dx={dx:0.00} dy={dy:0.00}");
-    if (Math.Abs(blob.Bounds.Width - StatusBlob.BoxSize) > 0.5 || Math.Abs(blob.Bounds.Height - StatusBlob.BoxSize) > 0.5
-        || Math.Abs(dx) > 1 || Math.Abs(dy) > 1)
+        $"cookie {name} window={window.Bounds.Width:0} card={card?.Bounds.Width:0.##}x{card?.Bounds.Height:0.##} " +
+        $"button=({measured.Button.X:0.00},{measured.Button.Y:0.00}) cookie=({measured.Cookie.X:0.00},{measured.Cookie.Y:0.00}) " +
+        $"dx={dx:0.00} dy={dy:0.00} outer={StatusBlob.OuterDiameter:0.00} mean={StatusBlob.MeanDiameter:0.00} " +
+        $"box={blob.Bounds.Width:0.00} geometryCentre=({geometryCentre.X:0.00},{geometryCentre.Y:0.00})");
+    if (Math.Abs(blob.Bounds.Width - StatusBlob.BoxSize) > 0.05 || Math.Abs(blob.Bounds.Height - StatusBlob.BoxSize) > 0.05
+        || Math.Abs(dx) > 0.05 || Math.Abs(dy) > 0.05
+        || Math.Abs(geometryCentre.X) > 0.05 || Math.Abs(geometryCentre.Y) > 0.05)
         throw new InvalidOperationException($"cookie {name} is not a fixed shape centred on the button");
 }
 
@@ -738,7 +786,7 @@ static void CaptureNavClip(string directory)
     }
 }
 
-static void SaveHeroCard(Window window, Bitmap frame, string path, int zoom = 2)
+static void SaveHeroCard(Window window, Bitmap frame, string path, int zoom = 2, (Point Button, Point Cookie)? crosshairs = null)
 {
     var card = HeroCard(window);
     if (card is null) return;
@@ -752,9 +800,28 @@ static void SaveHeroCard(Window window, Bitmap frame, string path, int zoom = 2)
     var h = (int)Math.Min(frame.PixelSize.Height - y, Math.Ceiling((card.Bounds.Height + pad * 2) * scale));
     var bitmap = new RenderTargetBitmap(new PixelSize(w * zoom, h * zoom), new Vector(96, 96));
     using (var context = bitmap.CreateDrawingContext())
+    {
         context.DrawImage(frame, new Rect(x, y, w, h), new Rect(0, 0, w * zoom, h * zoom));
+        if (crosshairs is { } marks)
+        {
+            Point Map(Point windowPoint) => new((windowPoint.X * scale - x) * zoom, (windowPoint.Y * scale - y) * zoom);
+            // The button mark is the longer crimson cross. The cookie mark is the
+            // shorter sky-blue cross. They share a centre when the two coincide.
+            DrawCrosshair(context, Map(marks.Button), new Pen(Brushes.Crimson, 1.5), 22, 8);
+            DrawCrosshair(context, Map(marks.Cookie), new Pen(Brushes.DeepSkyBlue, 1.5), 11, 3);
+        }
+    }
+
     bitmap.Save(path, new PngBitmapEncoderOptions());
     Console.WriteLine(path);
+}
+
+static void DrawCrosshair(DrawingContext context, Point centre, Pen pen, double arm, double gap)
+{
+    context.DrawLine(pen, centre + new Vector(-arm, 0), centre + new Vector(-gap, 0));
+    context.DrawLine(pen, centre + new Vector(gap, 0), centre + new Vector(arm, 0));
+    context.DrawLine(pen, centre + new Vector(0, -arm), centre + new Vector(0, -gap));
+    context.DrawLine(pen, centre + new Vector(0, gap), centre + new Vector(0, arm));
 }
 
 static void SaveButtonCloseup(Window window, Bitmap frame, string path)

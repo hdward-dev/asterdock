@@ -6,14 +6,20 @@ using Avalonia.VisualTree;
 namespace NetworkAccelerator.Module.Controls;
 
 /// <summary>
-/// Fixed 12-lobe cookie behind the start button. The mean circle is 176px
-/// across (lobes reach about 187px) and is never scaled with the card.
-/// The control sits in a canvas and is moved so its centre matches the button.
+/// Fixed 12-lobe cookie behind the start button. The lobe tips span the same
+/// multiple of the button as FlClash's idle cookie on the standard desktop
+/// card (decoration box 290, button 104). The control sits in a canvas and is
+/// placed so the curve's centre, which is the control's centre, is the button's
+/// layout centre. A press scale drawn inside the button does not move it.
 /// </summary>
 public class StatusBlob : Control
 {
-    public const double MeanDiameter = 176;
-    public const double BoxSize = 190;
+    /// <summary>FlClash standard-desktop decoration box divided by its start button.</summary>
+    public const double OuterToButton = 290d / 104d;
+
+    public const double OuterDiameter = DashboardMotion.PowerDiameter * OuterToButton;
+    public const double MeanDiameter = OuterDiameter / (1d + Amplitude);
+    public const double BoxSize = 250;
 
     public static readonly StyledProperty<IBrush?> FillBrushProperty =
         AvaloniaProperty.Register<StatusBlob, IBrush?>(nameof(FillBrush));
@@ -23,7 +29,7 @@ public class StatusBlob : Control
     private const double Amplitude = 0.06;
     private const double Phase = 0.525;
 
-    private readonly StreamGeometry _shape = CreateShape();
+    private static readonly StreamGeometry Shape = CreateShape();
     private IBrush _fill = Brushes.Transparent;
     private bool _aligning;
 
@@ -35,9 +41,13 @@ public class StatusBlob : Control
     public StatusBlob()
     {
         IsHitTestVisible = false;
+        UseLayoutRounding = false;
         Width = BoxSize;
         Height = BoxSize;
     }
+
+    /// <summary>Bounds of the curve around the origin. Empty until the geometry is realized.</summary>
+    public static Rect GeometryBounds => Shape.Bounds;
 
     public IBrush? FillBrush
     {
@@ -66,7 +76,7 @@ public class StatusBlob : Control
         if (size.Width < 2 || size.Height < 2) return;
         var origin = new Point(size.Width / 2d, size.Height / 2d);
         using (context.PushTransform(Matrix.CreateTranslation(origin.X, origin.Y)))
-            context.DrawGeometry(FillBrush ?? _fill, null, _shape);
+            context.DrawGeometry(FillBrush ?? _fill, null, Shape);
     }
 
     private void OnLayoutUpdated(object? sender, EventArgs e) => AlignToButton();
@@ -78,19 +88,68 @@ public class StatusBlob : Control
             ? null
             : card.GetVisualDescendants().OfType<PowerButton>().FirstOrDefault();
         if (button is null || button.Bounds.Width < 1) return;
-        var center = button.TranslatePoint(new Point(button.Bounds.Width / 2d, button.Bounds.Height / 2d), canvas);
-        if (center is null) return;
-        var left = center.Value.X - Bounds.Width / 2d;
-        var top = center.Value.Y - Bounds.Height / 2d;
+
+        // Layout slots only. The button's press scale and shake are render
+        // transforms (or drawn inside the face) and must not drag the cookie.
+        var center = LayoutPoint(button, new Point(button.Bounds.Width / 2d, button.Bounds.Height / 2d), canvas);
+        var left = center.X - Bounds.Width / 2d;
+        var top = center.Y - Bounds.Height / 2d;
         var currentLeft = Canvas.GetLeft(this);
         var currentTop = Canvas.GetTop(this);
-        if (!double.IsNaN(currentLeft) && !double.IsNaN(currentTop)
-            && Math.Abs(currentLeft - left) < 0.5 && Math.Abs(currentTop - top) < 0.5)
+        if (double.IsNaN(currentLeft) || double.IsNaN(currentTop)
+            || Math.Abs(currentLeft - left) > 0.01 || Math.Abs(currentTop - top) > 0.01)
+        {
+            _aligning = true;
+            Canvas.SetLeft(this, left);
+            Canvas.SetTop(this, top);
+            _aligning = false;
             return;
-        _aligning = true;
-        Canvas.SetLeft(this, left);
-        Canvas.SetTop(this, top);
-        _aligning = false;
+        }
+
+        var dx = center.X - (Bounds.X + Bounds.Width / 2d);
+        var dy = center.Y - (Bounds.Y + Bounds.Height / 2d);
+        if (Math.Abs(dx) < 0.01 && Math.Abs(dy) < 0.01)
+        {
+            if (RenderTransform is not null) RenderTransform = null;
+            return;
+        }
+
+        if (RenderTransform is TranslateTransform shift
+            && Math.Abs(shift.X - dx) < 0.01 && Math.Abs(shift.Y - dy) < 0.01)
+            return;
+        RenderTransform = new TranslateTransform(dx, dy);
+    }
+
+    /// <summary>
+    /// Maps a point in <paramref name="visual"/> into <paramref name="space"/> using
+    /// layout bounds, skipping render transforms on either control.
+    /// </summary>
+    private static Point LayoutPoint(Visual visual, Point point, Visual space)
+    {
+        var ancestor = CommonAncestor(visual, space);
+        var from = OffsetTo(visual, point, ancestor);
+        var origin = OffsetTo(space, new Point(0, 0), ancestor);
+        return new Point(from.X - origin.X, from.Y - origin.Y);
+    }
+
+    private static Visual CommonAncestor(Visual left, Visual right)
+    {
+        var seen = new HashSet<Visual>();
+        for (Visual? node = left; node is not null; node = node.GetVisualParent())
+            seen.Add(node);
+        for (Visual? node = right; node is not null; node = node.GetVisualParent())
+        {
+            if (seen.Contains(node)) return node;
+        }
+
+        return left;
+    }
+
+    private static Point OffsetTo(Visual from, Point point, Visual ancestor)
+    {
+        for (var node = from; node != ancestor; node = node.GetVisualParent() ?? ancestor)
+            point = new Point(point.X + node.Bounds.X, point.Y + node.Bounds.Y);
+        return point;
     }
 
     private void CacheBrush()

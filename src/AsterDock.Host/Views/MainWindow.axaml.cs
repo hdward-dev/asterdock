@@ -11,6 +11,8 @@ using Avalonia.Threading;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using AsterDock.Host.Services;
+using AsterDock.UI.Motion;
+using AsterDock.UI.Services;
 
 namespace AsterDock.Host.Views;
 
@@ -26,10 +28,12 @@ public partial class MainWindow : Window, IApplicationShell
         Applications,
         Discover,
         Shortcuts,
+        Appearance,
         Update
     }
 
     private readonly ModuleCatalog _catalog = new();
+    private readonly LoadingService _loadingService = new();
     private readonly SharedSystemMetricsService _systemMetrics = new();
     private readonly GitHubUpdateService _updateService = new();
     private readonly GitHubApplicationDiscoveryService _discoveryService = new();
@@ -45,6 +49,7 @@ public partial class MainWindow : Window, IApplicationShell
     private bool _discoveryLoaded;
     private readonly Dictionary<string, DateTimeOffset> _recentApplications = new(StringComparer.OrdinalIgnoreCase);
 
+    public ILoadingService Loading => _loadingService;
     public ObservableCollection<LoadedApplication> Applications { get; } = [];
     public ObservableCollection<DiscoverableApplication> DiscoverableApplications { get; } = [];
     public ObservableCollection<string> AppCategories { get; } = [];
@@ -59,6 +64,18 @@ public partial class MainWindow : Window, IApplicationShell
     {
         InitializeComponent();
         ConfigureWindowChrome();
+        _loadingService.Changed += OnLoadingServiceChanged;
+        WindowLoadingOverlay.CancelRequested += (_, _) => _loadingService.Cancel();
+        var uiSettings = HostUiSettings.Load();
+        MotionPreferences.ReduceMotion = uiSettings.ReduceMotion;
+        ReduceMotionSwitch.IsChecked = uiSettings.ReduceMotion;
+        ReduceMotionSwitch.IsCheckedChanged += (_, _) =>
+        {
+            var enabled = ReduceMotionSwitch.IsChecked == true;
+            if (MotionPreferences.ReduceMotion == enabled) return;
+            MotionPreferences.ReduceMotion = enabled;
+            new HostUiSettings { ReduceMotion = enabled }.Save();
+        };
         DataContext = this;
         AddHandler(InputElement.KeyDownEvent, Window_KeyDown, RoutingStrategies.Tunnel);
         AddHandler(InputElement.KeyUpEvent, Window_KeyUp, RoutingStrategies.Tunnel);
@@ -74,6 +91,7 @@ public partial class MainWindow : Window, IApplicationShell
             _updateCancellation.Dispose();
             _updateService.Dispose();
             _discoveryService.Dispose();
+            _loadingService.Changed -= OnLoadingServiceChanged;
         };
         Deactivated += (_, _) => ResetShortcutState();
         CurrentVersionText.Text = $"v{GitHubUpdateService.CurrentVersion}";
@@ -132,30 +150,33 @@ public partial class MainWindow : Window, IApplicationShell
 
     private void OpenApplication(LoadedApplication application)
     {
-        HideAppSwitcher();
-        try
+        using (_loadingService.Begin($"正在打开 {application.Name}"))
         {
-            SettingsPanel.IsVisible = false;
-            HideAppInfo();
-            ApplicationContent.Content = _detachedApplications.ContainsKey(application)
-                ? CreateDetachedPlaceholder(application)
-                : application.GetOrCreateView(this, _systemMetrics);
-            EmptyState.IsVisible = false;
-            SetCurrentApplication(application);
-            UpdateCapsuleState();
-            WindowTitleText.Text = $"星栈  ·  {application.Name}";
-            Title = $"星栈 · {application.Name}";
-            _recentApplications[application.Manifest.Id] = DateTimeOffset.Now;
-            StateChanged?.Invoke(this, EventArgs.Empty);
-        }
-        catch (Exception exception)
-        {
-            ApplicationContent.Content = null;
-            EmptyState.IsVisible = true;
-            DetachApplicationNavigation();
-            _currentApplication = null;
-            UpdateCapsuleState();
-            EmptyMessage.Text = $"{application.Name} 加载失败：{exception.GetBaseException().Message}";
+            HideAppSwitcher();
+            try
+            {
+                SettingsPanel.IsVisible = false;
+                HideAppInfo();
+                ApplicationContent.Content = _detachedApplications.ContainsKey(application)
+                    ? CreateDetachedPlaceholder(application)
+                    : application.GetOrCreateView(this, _systemMetrics);
+                EmptyState.IsVisible = false;
+                SetCurrentApplication(application);
+                UpdateCapsuleState();
+                WindowTitleText.Text = $"星栈  ·  {application.Name}";
+                Title = $"星栈 · {application.Name}";
+                _recentApplications[application.Manifest.Id] = DateTimeOffset.Now;
+                StateChanged?.Invoke(this, EventArgs.Empty);
+            }
+            catch (Exception exception)
+            {
+                ApplicationContent.Content = null;
+                EmptyState.IsVisible = true;
+                DetachApplicationNavigation();
+                _currentApplication = null;
+                UpdateCapsuleState();
+                EmptyMessage.Text = $"{application.Name} 加载失败：{exception.GetBaseException().Message}";
+            }
         }
     }
 
@@ -235,6 +256,19 @@ public partial class MainWindow : Window, IApplicationShell
     {
         e.Handled = true;
         if (e.ClickCount >= 3) FlyoutBase.ShowAttachedFlyout(TitleLogo);
+    }
+
+    private void OnLoadingServiceChanged(object? sender, EventArgs e)
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() => OnLoadingServiceChanged(sender, e));
+            return;
+        }
+
+        WindowLoadingOverlay.Text = _loadingService.Text;
+        WindowLoadingOverlay.IsCancellable = _loadingService.IsCancellable;
+        WindowLoadingOverlay.IsLoading = _loadingService.IsLoading;
     }
 
     private void SettingsMenuItem_Click(object? sender, RoutedEventArgs e) => PostAfterInput(ShowSettings);
@@ -458,6 +492,9 @@ public partial class MainWindow : Window, IApplicationShell
     private void ShortcutsSettingsNav_Click(object? sender, RoutedEventArgs e)
         => ShowSettingsSection(SettingsSection.Shortcuts);
 
+    private void AppearanceSettingsNav_Click(object? sender, RoutedEventArgs e)
+        => ShowSettingsSection(SettingsSection.Appearance);
+
     private void UpdateSettingsNav_Click(object? sender, RoutedEventArgs e)
         => ShowSettingsSection(SettingsSection.Update);
 
@@ -467,16 +504,19 @@ public partial class MainWindow : Window, IApplicationShell
         var showDiscover = section == SettingsSection.Discover;
         var showApplicationManagement = showApplications || showDiscover;
         var showShortcuts = section == SettingsSection.Shortcuts;
+        var showAppearance = section == SettingsSection.Appearance;
         var showUpdate = section == SettingsSection.Update;
         SettingsApplicationsSection.IsVisible = showApplications;
         SettingsDiscoverSection.IsVisible = showDiscover;
         SettingsShortcutsSection.IsVisible = showShortcuts;
+        SettingsAppearanceSection.IsVisible = showAppearance;
         SettingsUpdateSection.IsVisible = showUpdate;
         ApplicationManagementTabs.IsVisible = showApplicationManagement;
         SettingsSectionSubtitle.Text = showApplications ? "应用管理 · 已安装" :
-            showDiscover ? "应用管理 · 发现" : showShortcuts ? "快捷键" : "软件更新";
+            showDiscover ? "应用管理 · 发现" : showShortcuts ? "快捷键" : showAppearance ? "外观" : "软件更新";
         ApplicationsSettingsNavButton.Classes.Set("selected", showApplicationManagement);
         ShortcutsSettingsNavButton.Classes.Set("selected", showShortcuts);
+        AppearanceSettingsNavButton.Classes.Set("selected", showAppearance);
         UpdateSettingsNavButton.Classes.Set("selected", showUpdate);
         InstalledApplicationsTabButton.Classes.Set("selected", showApplications);
         DiscoverApplicationsTabButton.Classes.Set("selected", showDiscover);

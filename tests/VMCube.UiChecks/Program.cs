@@ -252,6 +252,30 @@ internal sealed class CheckContext(string directory) : IApplicationContext
     public IWindowService Windows => WindowService;
     public IApplicationShell Shell => throw new NotSupportedException();
     public ISystemMetricsService SystemMetrics => throw new NotSupportedException();
+    public ILoadingService Loading { get; } = new IdleLoadingService();
+}
+
+file sealed class IdleLoadingService : ILoadingService
+{
+    public bool IsLoading => false;
+    public string? Text => null;
+    public bool IsCancellable => false;
+    public event EventHandler? Changed { add { } remove { } }
+    public IDisposable Begin(string? text = null) => Empty.Instance;
+    public IDisposable Begin(string? text, out CancellationToken cancellationToken)
+    {
+        cancellationToken = CancellationToken.None;
+        return Empty.Instance;
+    }
+    public void Cancel() { }
+    public Task RunAsync(Func<Task> action, string? text = null) => action();
+    public Task RunAsync(Func<CancellationToken, Task> action, string? text = null) => action(CancellationToken.None);
+
+    private sealed class Empty : IDisposable
+    {
+        public static readonly Empty Instance = new();
+        public void Dispose() { }
+    }
 }
 
 internal sealed class CheckWindows : IWindowService

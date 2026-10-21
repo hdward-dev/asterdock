@@ -4,9 +4,13 @@
     <RootNamespace>AsterDock.UI</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\AsterDock.Contracts\AsterDock.Contracts.csproj" />
     <PackageReference Include="Avalonia" Version="12.1.0" />
     <PackageReference Include="Semi.Avalonia" Version="12.1.0.1" />
     <PackageReference Include="Irihi.Ursa" Version="2.2.0" />
     <PackageReference Include="Irihi.Ursa.Themes.Semi" Version="2.2.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AsterDock.UI.Checks" />
   </ItemGroup>
 </Project>

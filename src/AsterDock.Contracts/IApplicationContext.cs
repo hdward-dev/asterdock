@@ -9,6 +9,7 @@ public interface IApplicationContext
     IWindowService Windows { get; }
     IApplicationShell Shell { get; }
     ISystemMetricsService SystemMetrics { get; }
+    ILoadingService Loading { get; }
 }
 
 public interface IApplicationContextAware

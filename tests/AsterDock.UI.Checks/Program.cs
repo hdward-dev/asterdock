@@ -160,29 +160,15 @@ static void RunSchedulerChecks(Action<bool, string> check)
 
 static void RunShapeChecks(Action<bool, string> check)
 {
-    var buffer = new float[LoadingShapes.Samples];
-    LoadingShapes.Interpolate(TimeSpan.Zero, reduceMotion: false, buffer);
-    check(buffer.SequenceEqual(LoadingShapes.Frames[0]), "morph starts on the cookie");
-    check(PeakCount(LoadingShapes.Frames[0]) >= 10, "cookie has twelve lobes");
-    check(LoadingShapes.Frames[0].Min() > 0.84, "cookie lobes stay soft");
-    check(LoadingShapes.Frames[1].Min() > 0.68, "clover stays plump");
-    check(LoadingShapes.Frames[2].Min() > 0.75, "pentagon stays rounded");
-    check(PeakCount(LoadingShapes.Frames[1]) == 4, "clover has four petals");
-    check(PeakCount(LoadingShapes.Frames[2]) == 5, "pentagon has five corners");
-    check(LoadingShapes.Frames[3].All(value => Math.Abs(value - 1) < 0.001), "circle is even");
-    check(LoadingShapes.Frames.All(frame => frame.Length == LoadingShapes.Samples && frame.All(value => value is > 0 and <= 1)),
-        "every shape uses the same normalized samples");
-    LoadingShapes.Interpolate(TimeSpan.FromMilliseconds(200), false, buffer);
-    var next = new float[LoadingShapes.Samples];
-    LoadingShapes.Interpolate(TimeSpan.FromMilliseconds(216), false, next);
-    var jump = buffer.Zip(next).Max(pair => Math.Abs(pair.First - pair.Second));
-    check(jump < 0.2, "adjacent morph frames stay continuous");
-    LoadingShapes.Interpolate(TimeSpan.FromSeconds(1), true, buffer);
-    check(buffer.SequenceEqual(LoadingShapes.Frames[3]), "reduced motion uses a static circle");
-    check(Math.Abs(LoadingShapes.Rotation(TimeSpan.FromSeconds(2), false) - Math.Tau) < 0.001, "rotation completes one turn in two seconds");
-    check(LoadingShapes.Rotation(TimeSpan.FromSeconds(2), true) == 0, "reduced motion does not rotate");
-    var pulse = LoadingShapes.PulseOpacity(TimeSpan.FromSeconds(0.8));
-    check(pulse is > 0.58 and <= 1, "reduced motion pulse stays gentle");
+    var sweep = SpinnerMotion.ArcSweep;
+    check(sweep > Math.PI * 0.4 && sweep < Math.PI, "spinner arc is a partial stroke");
+    var parked = SpinnerMotion.Rotation(TimeSpan.Zero, reduceMotion: false);
+    check(Math.Abs(parked - (-Math.PI / 2)) < 0.001, "spinner starts at the top");
+    var turned = SpinnerMotion.Rotation(TimeSpan.FromSeconds(SpinnerMotion.TurnSeconds), false);
+    check(Math.Abs((turned - parked) - Math.Tau) < 0.001, "spinner completes one turn per cycle");
+    check(Math.Abs(SpinnerMotion.Rotation(TimeSpan.FromSeconds(1.4), true) - (-Math.PI / 2)) < 0.001, "reduced motion does not rotate");
+    var pulse = SpinnerMotion.PulseOpacity(TimeSpan.FromSeconds(0.8));
+    check(pulse is > 0.45 and <= 1, "reduced motion pulse stays gentle");
 }
 
 static void RunEasingChecks(Action<bool, string> check)
@@ -199,23 +185,6 @@ static void RunEasingChecks(Action<bool, string> check)
 
     check(increasing, "emphasized easing is monotonic");
     check(EmphasizedEasing.Ease(0.35) > 0.35, "emphasized easing settles toward the destination");
-}
-
-static int PeakCount(float[] radii)
-{
-    var count = 0;
-    var window = Math.Max(1, radii.Length / 96);
-    for (var i = 0; i < radii.Length; i++)
-    {
-        var previous = radii[(i - window + radii.Length) % radii.Length];
-        var next = radii[(i + window) % radii.Length];
-        var left = radii[(i + radii.Length - 1) % radii.Length];
-        var right = radii[(i + 1) % radii.Length];
-        if (radii[i] >= left && radii[i] >= right && radii[i] > previous + 0.0005 && radii[i] > next + 0.0005 && radii[i] > 0.9)
-            count++;
-    }
-
-    return count;
 }
 
 static void RunOverlayChecks(Action<bool, string> check)

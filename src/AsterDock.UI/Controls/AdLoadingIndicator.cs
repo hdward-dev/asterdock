@@ -41,9 +41,6 @@ public class AdLoadingIndicator : TemplatedControl, ILoadingClockClient
     public static readonly StyledProperty<IBrush?> ContainerBrushProperty =
         AvaloniaProperty.Register<AdLoadingIndicator, IBrush?>(nameof(ContainerBrush));
 
-    private readonly float[] _radii = new float[LoadingShapes.Samples];
-    private readonly Point[] _points = new Point[LoadingShapes.Samples];
-    private readonly StreamGeometry _shape = new();
     private readonly StreamGeometry _arc = new();
     private LoadingMark? _mark;
     private TextBlock? _label;
@@ -231,29 +228,31 @@ public class AdLoadingIndicator : TemplatedControl, ILoadingClockClient
         var reduce = MotionPreferences.ReduceMotion;
         var center = new Point(size.Width / 2, size.Height / 2);
         var diameter = Math.Min(size.Width, size.Height);
-        var opacity = reduce && !IsDeterminate ? LoadingShapes.PulseOpacity(now) : 1;
-        using (context.PushOpacity(opacity))
+        if (IsContained)
         {
-            if (IsContained)
-            {
-                var container = ContainerBrush ?? (IsDark ? DarkContainerBrush : LightContainerBrush);
-                context.DrawEllipse(container, null, center, diameter / 2, diameter / 2);
-            }
-
-            var shapeRadius = diameter * (IsContained ? 1d / 3d : 0.46);
-            if (IsDeterminate)
-            {
-                DrawCircle(center, shapeRadius);
-                context.DrawGeometry(accent, null, _shape.Clone());
-                DrawProgress(context, center, diameter, accent);
-            }
-            else
-            {
-                LoadingShapes.Interpolate(now, reduce, _radii);
-                DrawPolar(center, shapeRadius, LoadingShapes.Rotation(now, reduce));
-                context.DrawGeometry(accent, null, _shape.Clone());
-            }
+            var container = ContainerBrush ?? (IsDark ? DarkContainerBrush : LightContainerBrush);
+            context.DrawEllipse(container, null, center, diameter / 2, diameter / 2);
         }
+
+        var thickness = Math.Clamp(diameter * 0.09, 1.75, 3.25);
+        var inset = IsContained ? diameter * 0.18 : (thickness / 2) + 0.6;
+        var radius = (diameter / 2) - inset;
+        if (radius <= 1) return;
+        EnsurePens(accent, thickness);
+        if (_trackPen is null || _progressPen is null) return;
+        context.DrawEllipse(null, _trackPen, center, radius, radius);
+
+        if (IsDeterminate)
+        {
+            DrawProgressArc(context, center, radius, Math.Clamp(Progress, 0, 1));
+            return;
+        }
+
+        var sweep = SpinnerMotion.ArcSweep;
+        var start = SpinnerMotion.Rotation(now, reduce);
+        var arcOpacity = reduce ? SpinnerMotion.PulseOpacity(now) : 1;
+        using (context.PushOpacity(arcOpacity))
+            DrawArc(context, center, radius, start, sweep, _progressPen);
     }
 
     private void OnThemeChanged(object? sender, EventArgs e)
@@ -319,75 +318,32 @@ public class AdLoadingIndicator : TemplatedControl, ILoadingClockClient
         return IsDark ? Brushes.White : Brushes.Black;
     }
 
-    private void DrawPolar(Point center, double maxRadius, double rotation)
-    {
-        for (var i = 0; i < LoadingShapes.Samples; i++)
-        {
-            var theta = rotation + (i * Math.Tau / LoadingShapes.Samples);
-            var radius = _radii[i] * maxRadius;
-            _points[i] = new Point(center.X + (Math.Cos(theta) * radius), center.Y + (Math.Sin(theta) * radius));
-        }
-
-        FillSmooth(_shape);
-    }
-
-    private void DrawCircle(Point center, double radius)
-    {
-        for (var i = 0; i < LoadingShapes.Samples; i++)
-        {
-            var theta = i * Math.Tau / LoadingShapes.Samples;
-            _points[i] = new Point(center.X + (Math.Cos(theta) * radius), center.Y + (Math.Sin(theta) * radius));
-        }
-
-        FillSmooth(_shape);
-    }
-
-    private void FillSmooth(StreamGeometry geometry)
-    {
-        var count = LoadingShapes.Samples;
-        using var ctx = geometry.Open();
-        ctx.BeginFigure(_points[0], isFilled: true);
-        for (var i = 0; i < count; i++)
-        {
-            var p0 = _points[(i - 1 + count) % count];
-            var p1 = _points[i];
-            var p2 = _points[(i + 1) % count];
-            var p3 = _points[(i + 2) % count];
-            var c1 = new Point(p1.X + ((p2.X - p0.X) / 6), p1.Y + ((p2.Y - p0.Y) / 6));
-            var c2 = new Point(p2.X - ((p3.X - p1.X) / 6), p2.Y - ((p3.Y - p1.Y) / 6));
-            ctx.CubicBezierTo(c1, c2, p2);
-        }
-
-        ctx.EndFigure(true);
-    }
-
-    private void DrawProgress(DrawingContext context, Point center, double diameter, IBrush accent)
+    private void EnsurePens(IBrush accent, double thickness)
     {
         var color = (accent as ISolidColorBrush)?.Color ?? LightAccent;
-        var thickness = Math.Clamp(diameter * 0.065, 2, 3.5);
-        if (_trackPen is null || _penColor != color || Math.Abs(_penThickness - thickness) > 0.01)
-        {
-            _penColor = color;
-            _penThickness = thickness;
-            var track = new SolidColorBrush(Color.FromArgb(31, color.R, color.G, color.B));
-            _trackPen = new Pen(track, thickness, lineCap: PenLineCap.Round);
-            _progressPen = new Pen(accent, thickness, lineCap: PenLineCap.Round);
-        }
+        if (_trackPen is not null && _penColor == color && Math.Abs(_penThickness - thickness) <= 0.01) return;
+        _penColor = color;
+        _penThickness = thickness;
+        var track = new SolidColorBrush(Color.FromArgb(38, color.R, color.G, color.B));
+        _trackPen = new Pen(track, thickness, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
+        _progressPen = new Pen(accent, thickness, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
+    }
 
-        var radius = (diameter / 2) - (thickness / 2) - 0.75;
-        if (radius <= 0 || _trackPen is null || _progressPen is null) return;
-        context.DrawEllipse(null, _trackPen, center, radius, radius);
-        var progress = Math.Clamp(Progress, 0, 1);
-        if (progress <= 0) return;
+    private void DrawProgressArc(DrawingContext context, Point center, double radius, double progress)
+    {
+        if (progress <= 0 || _progressPen is null) return;
         if (progress >= 0.999)
         {
             context.DrawEllipse(null, _progressPen, center, radius, radius);
             return;
         }
 
-        var sweep = progress * Math.Tau;
-        var start = -Math.PI / 2;
-        var steps = Math.Max(16, (int)Math.Ceiling(sweep / Math.Tau * 120));
+        DrawArc(context, center, radius, -Math.PI / 2, progress * Math.Tau, _progressPen);
+    }
+
+    private void DrawArc(DrawingContext context, Point center, double radius, double start, double sweep, Pen pen)
+    {
+        var steps = Math.Max(16, (int)Math.Ceiling(sweep / Math.Tau * 96));
         using (var ctx = _arc.Open())
         {
             ctx.BeginFigure(PointOn(center, radius, start), isFilled: false);
@@ -396,7 +352,7 @@ public class AdLoadingIndicator : TemplatedControl, ILoadingClockClient
             ctx.EndFigure(false);
         }
 
-        context.DrawGeometry(null, _progressPen, _arc.Clone());
+        context.DrawGeometry(null, pen, _arc.Clone());
     }
 
     private static Point PointOn(Point center, double radius, double angle)

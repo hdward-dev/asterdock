@@ -192,7 +192,7 @@
           <Button x:Name="deviceTabFav" Classes="ad-chip" Content="收藏" Click="DeviceTab_Click" Tag="1"/>
         </StackPanel>
         <StackPanel x:Name="deviceDetail" Spacing="10" IsVisible="False"/>
-        <local:DeviceCardWrap x:Name="deviceRows" HorizontalAlignment="Stretch" MinItemWidth="300" MaxItemWidth="520" ItemSpacing="16" LineSpacing="16"/>
+        <local:DeviceCardWrap x:Name="deviceRows" HorizontalAlignment="Stretch" MinItemWidth="380" MaxItemWidth="640" ItemSpacing="16" LineSpacing="16"/>
         <TextBlock Text="预览为设备上传的桌面壁纸，非实时画面。远程控制将在独立窗口中打开。" FontSize="12" TextWrapping="Wrap" Classes="ad-muted"/>
       </StackPanel>
 

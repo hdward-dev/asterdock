@@ -22,12 +22,13 @@ void Check(bool condition, string message)
     else Console.WriteLine("PASS: " + message);
 }
 
-Check(DeviceCardWrap.Resolve(900, 300, 520, 16, true) is (2, var wide) && Math.Abs(wide - 442) < 0.01, "900px viewport uses two cards that fill the row");
-Check(DeviceCardWrap.Resolve(1400, 300, 520, 16, true) is (4, var mid) && Math.Abs(mid - 338) < 0.01, "1400px viewport uses four narrower cards");
-Check(DeviceCardWrap.Resolve(560, 300, 520, 16, true) is (1, var narrow) && Math.Abs(narrow - 520) < 0.01, "narrow viewport keeps one card and caps it at the max width");
-Check(DeviceCardWrap.Resolve(240, 300, 520, 16, true) is (1, var tight) && Math.Abs(tight - 240) < 0.01, "viewport narrower than the minimum still gives the card that width");
-Check(DeviceCardWrap.Resolve(double.PositiveInfinity, 300, 520, 16, true).ItemWidth >= 300, "infinite measure uses a finite card width");
-Check(DeviceCardWrap.Resolve(980, 300, 520, 16, false).ItemWidth == 980, "list mode uses the full row");
+Check(DeviceCardWrap.Resolve(900, 380, 640, 16, true) is (2, var wide) && Math.Abs(wide - 442) < 0.01, "900px viewport uses two cards that fill the row");
+Check(DeviceCardWrap.Resolve(1400, 380, 640, 16, true) is (3, var mid) && Math.Abs(mid - 456) < 0.01, "1400px viewport uses three wider cards");
+Check(DeviceCardWrap.Resolve(700, 380, 640, 16, true) is (1, var capped) && Math.Abs(capped - 640) < 0.01, "a pane too narrow for two cards caps one card at the max width");
+Check(DeviceCardWrap.Resolve(560, 380, 640, 16, true) is (1, var narrow) && Math.Abs(narrow - 560) < 0.01, "a pane under the max uses the available width");
+Check(DeviceCardWrap.Resolve(240, 380, 640, 16, true) is (1, var tight) && Math.Abs(tight - 240) < 0.01, "viewport narrower than the minimum still gives the card that width");
+Check(DeviceCardWrap.Resolve(double.PositiveInfinity, 380, 640, 16, true).ItemWidth >= 380, "infinite measure uses a finite card width");
+Check(DeviceCardWrap.Resolve(980, 380, 640, 16, false).ItemWidth == 980, "list mode uses the full row");
 
 var flags = BindingFlags.Instance | BindingFlags.NonPublic;
 var view = new URemoteView();
@@ -103,7 +104,7 @@ Check(message.Bounds.Width > 200 && Math.Abs(message.Bounds.Width - rows.Bounds.
 var loose = new DeviceCardWrap();
 for (var i = 0; i < 9; i++) loose.Children.Add(Card(i));
 loose.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-Check(loose.DesiredSize.Width >= 300 && loose.Children.OfType<DeviceCard>().All(card => card.Width >= 300 && card.DesiredSize.Width >= 280),
+Check(loose.DesiredSize.Width >= 380 && loose.Children.OfType<DeviceCard>().All(card => card.Width >= 380 && card.DesiredSize.Width >= 280),
     "a wrapping panel measured with infinite width does not collapse");
 
 var shot = Path.Combine(Path.GetTempPath(), "uremote-device-cards.png");

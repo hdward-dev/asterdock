@@ -10,10 +10,10 @@ namespace URemote.Module;
 public sealed class DeviceCardWrap : Panel
 {
     public static readonly StyledProperty<double> MinItemWidthProperty =
-        AvaloniaProperty.Register<DeviceCardWrap, double>(nameof(MinItemWidth), 300);
+        AvaloniaProperty.Register<DeviceCardWrap, double>(nameof(MinItemWidth), 380);
 
     public static readonly StyledProperty<double> MaxItemWidthProperty =
-        AvaloniaProperty.Register<DeviceCardWrap, double>(nameof(MaxItemWidth), 520);
+        AvaloniaProperty.Register<DeviceCardWrap, double>(nameof(MaxItemWidth), 640);
 
     public static readonly StyledProperty<double> ItemSpacingProperty =
         AvaloniaProperty.Register<DeviceCardWrap, double>(nameof(ItemSpacing), 16);

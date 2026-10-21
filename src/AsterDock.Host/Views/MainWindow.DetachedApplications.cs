@@ -1,9 +1,13 @@
+using System.Diagnostics;
 using AsterDock.Host.Modules;
 using AsterDock.UI.Controls;
+using AsterDock.UI.Services;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.VisualTree;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.Threading;
 
 namespace AsterDock.Host.Views;
 
@@ -38,40 +42,78 @@ public partial class MainWindow
             MinHeight = 480,
             WindowStartupLocation = WindowStartupLocation.CenterScreen
         };
-        if (ReferenceEquals(ApplicationContent.Content, view)) ApplicationContent.Content = null;
+        // The feedback layer is created with the window, before the already-measured page is moved in.
         var root = new Grid();
-        root.Children.Add(view);
         root.Children.Add(new AdFeedbackLayer { Service = _feedbackService });
         window.Content = root;
+        var wasShowing = ReferenceEquals(ApplicationContent.Content, view);
+        if (wasShowing) ApplicationContent.Content = null;
         _detachedApplications.Add(application, window);
         application.SetWindowOwner(window);
+
+        void Fail(Exception exception)
+        {
+            Trace.TraceError("独立窗口未能打开: " + exception);
+            root.Children.Remove(view);
+            _detachedApplications.Remove(application);
+            application.SetWindowOwner(this);
+            if (wasShowing && ReferenceEquals(_currentApplication, application) && view.Parent is null)
+                ApplicationContent.Content = view;
+            try { window.Close(); }
+            catch (Exception close) when (close is not OutOfMemoryException)
+            {
+                Trace.TraceError("独立窗口未能关闭: " + close);
+            }
+        }
+
+        window.Closing += (_, _) =>
+        {
+            try
+            {
+                if (view.Parent == root) root.Children.Remove(view);
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                Trace.TraceError("独立窗口移出页面失败: " + exception);
+            }
+        };
         window.Closed += (_, _) =>
         {
-            root.Children.Remove(view);
-            window.Content = null;
             _detachedApplications.Remove(application);
             application.SetWindowOwner(this);
             if (_closingDetachedApplications) return;
-            if (ReferenceEquals(_currentApplication, application))
-                ApplicationContent.Content = view;
+            if (!ReferenceEquals(_currentApplication, application)) return;
+            Dispatcher.UIThread.Post(() =>
+            {
+                try
+                {
+                    if (view.Parent is null && view.GetVisualParent() is null)
+                        ApplicationContent.Content = view;
+                }
+                catch (Exception exception) when (exception is not OutOfMemoryException)
+                {
+                    Trace.TraceError("页面移回主窗口失败: " + exception);
+                }
+            }, DispatcherPriority.Background);
         };
 
-        try
+        FeedbackWindow.Adopt(view, control =>
         {
-            window.Show();
-            if (ReferenceEquals(_currentApplication, application))
-                ApplicationContent.Content = CreateDetachedPlaceholder(application);
-            HideAppInfo();
-        }
-        catch
-        {
-            root.Children.Remove(view);
-            window.Content = null;
-            _detachedApplications.Remove(application);
-            application.SetWindowOwner(this);
-            if (ReferenceEquals(_currentApplication, application)) ApplicationContent.Content = view;
-            window.Close();
-        }
+            if (!_detachedApplications.TryGetValue(application, out var current) || !ReferenceEquals(current, window))
+                return;
+            try
+            {
+                root.Children.Insert(0, control);
+                window.Show();
+                if (wasShowing && ReferenceEquals(_currentApplication, application))
+                    ApplicationContent.Content = CreateDetachedPlaceholder(application);
+                HideAppInfo();
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                Fail(exception);
+            }
+        }, Fail);
     }
 
     private Control CreateDetachedPlaceholder(LoadedApplication application)

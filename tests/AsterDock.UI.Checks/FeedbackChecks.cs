@@ -1,4 +1,5 @@
 using AsterDock.Contracts;
+using Avalonia;
 using AsterDock.UI.Controls;
 using AsterDock.UI.Motion;
 using AsterDock.UI.Services;
@@ -18,6 +19,7 @@ internal static class FeedbackChecks
         RunService(check);
         RunCards(check);
         RunLayer(check);
+        RunAttach(check);
         MotionPreferences.ReduceMotion = false;
         FeedbackMotion.Snap = false;
     }
@@ -152,6 +154,57 @@ internal static class FeedbackChecks
         Dispatcher.UIThread.RunJobs();
         check(dialog.IsCompletedSuccessfully, "overlay primary button completes the dialog");
         window.Close();
+        FeedbackMotion.Snap = false;
+    }
+
+    private static void RunAttach(Action<bool, string> check)
+    {
+        FeedbackMotion.Snap = true;
+        var service = new UserFeedbackService(action => Dispatcher.UIThread.Post(action));
+        var clicks = 0;
+        var button = new Button { Name = "PageAction", Content = "动作" };
+        button.Click += (_, _) => clicks++;
+        var window = new Window { Width = 480, Height = 320, Content = button };
+        FeedbackWindow.Attach(window, service);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        check(clicks == 1 && button.Parent is not null, "feedback attach leaves the page button clickable");
+
+        var lateClicks = 0;
+        var late = new Button { Name = "LateAction", Content = "稍后" };
+        late.Click += (_, _) => lateClicks++;
+        var shown = new Window { Width = 480, Height = 320, Content = late };
+        shown.Show();
+        shown.Measure(new Size(480, 320));
+        shown.Arrange(new Rect(0, 0, 480, 320));
+        shown.UpdateLayout();
+        Dispatcher.UIThread.RunJobs();
+        FeedbackWindow.Attach(shown, service);
+        for (var i = 0; i < 8; i++) Dispatcher.UIThread.RunJobs();
+        late.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        check(lateClicks == 1, "attach after measure does not throw and the button still clicks");
+        var moved = 0;
+        var moving = new Button { Name = "MovedAction", Content = "移出" };
+        moving.Click += (_, _) => moved++;
+        var source = new Window { Width = 480, Height = 320, Content = moving };
+        source.Show();
+        source.UpdateLayout();
+        Dispatcher.UIThread.RunJobs();
+        var destination = new Window { Width = 480, Height = 320 };
+        var root = new Grid();
+        root.Children.Add(new AdFeedbackLayer { Service = service });
+        destination.Content = root;
+        FeedbackWindow.Adopt(moving, control => root.Children.Insert(0, control));
+        for (var i = 0; i < 8; i++) Dispatcher.UIThread.RunJobs();
+        destination.Show();
+        Dispatcher.UIThread.RunJobs();
+        moving.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        check(moved == 1 && TopLevel.GetTopLevel(moving) == destination, "measured control moves into a new window without a layout fault");
+        window.Close();
+        shown.Close();
+        source.Close();
+        destination.Close();
         FeedbackMotion.Snap = false;
     }
 }

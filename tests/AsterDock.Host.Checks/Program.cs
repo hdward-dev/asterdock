@@ -64,6 +64,23 @@ Call("RefreshRunningApplications");
 Check(list.ItemsSource!.Cast<LoadedApplication>().Contains(unopened), "background initialization is listed without open history");
 Call("StopRunningApplication", unopened);
 Check(!unopened.IsRunning, "background-only app can stop");
+Call("OpenApplication", foreground);
+host.UpdateLayout();
+Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+Call("OpenDetachedApplication", foreground);
+for (var i = 0; i < 8; i++) Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+Check(detached.ContainsKey(foreground), "shown window can open a detached window");
+var popped = detached[foreground];
+popped.Measure(new Size(900, 640));
+popped.Arrange(new Rect(0, 0, 900, 640));
+popped.UpdateLayout();
+Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+var fixtureAction = popped.GetVisualDescendants().OfType<Button>().Single(button => button.Name == "FixtureAction");
+var fixtureClicks = 0;
+fixtureAction.Click += (_, _) => fixtureClicks++;
+fixtureAction.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+Check(fixtureClicks == 1, "detached page button receives clicks");
+Call("StopRunningApplication", foreground);
 var count=FixtureModule.Disposals;
 foreground.Stop(); Check(FixtureModule.Disposals == count, "repeated stop is idempotent");
 foreach(var app in host.Applications) app.Dispose();
@@ -88,7 +105,7 @@ public sealed class FixtureModule : IApplicationModule, IApplicationContextAware
     public Window? Child;
     private IApplicationContext? context;
     public void Initialize(IApplicationContext value) { context=value; Last=this; }
-    public Control CreateView() => new Border();
+    public Control CreateView() => new Border { Child = new Button { Name = "FixtureAction", Content = "动作" } };
     public void OpenChild() { Child=new Window(); context!.Windows.Show(Child, false); }
     public void Dispose() { Stopped=true; Disposals++; }
 }

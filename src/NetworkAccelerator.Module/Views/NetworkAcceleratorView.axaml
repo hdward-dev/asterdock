@@ -515,11 +515,11 @@
         </Grid>
       </StackPanel>
     </ScrollViewer>
-    <Border x:Name="NavChrome" Classes="nav-float"
+    <controls:PassThroughBorder x:Name="NavChrome" Classes="nav-float"
             HorizontalAlignment="Right" VerticalAlignment="Center"
-            Margin="12" CornerRadius="24" Background="Transparent" ClipToBounds="False">
+            Margin="12" CornerRadius="24" ClipToBounds="False">
       <controls:LiquidGlassBar x:Name="NavGlass">
-        <Border CornerRadius="24" ClipToBounds="True" Background="Transparent">
+        <controls:PassThroughBorder CornerRadius="24" ClipToBounds="True">
         <Grid Margin="8,10">
           <Border x:Name="NavPill" Height="68" CornerRadius="16"
                   Background="{DynamicResource NavPillBrush}"
@@ -554,8 +554,8 @@
           </Button>
           </StackPanel>
         </Grid>
-        </Border>
+        </controls:PassThroughBorder>
       </controls:LiquidGlassBar>
-    </Border>
+    </controls:PassThroughBorder>
   </Grid>
 </UserControl>

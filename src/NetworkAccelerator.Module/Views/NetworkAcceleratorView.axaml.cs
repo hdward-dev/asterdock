@@ -58,7 +58,6 @@ public partial class NetworkAcceleratorView : UserControl
         SizeChanged += OnViewSize;
         NavChrome.SizeChanged += OnViewSize;
         PageScroll.LayoutUpdated += OnPageLayout;
-        NavGlass.Backdrop = PageScroll;
         SelectSection("Overview");
     }
 
@@ -321,18 +320,19 @@ public partial class NetworkAcceleratorView : UserControl
 
     private void UpdateLayoutForWidth()
     {
-        // The nav overlays the page so acrylic samples the page surface instead of
-        // an empty column. Right padding keeps the old column width (bar plus its
-        // 12px gaps) so cards, switches and the scrollbar stop where they used to.
-        var reserved = NavChrome.Bounds.Width + NavChrome.Margin.Left + NavChrome.Margin.Right;
-        var contentMargin = new Thickness(24, 24, 24 + reserved, 24);
+        // Cards run about 32px under the capsule so acrylic samples them. The rest of
+        // the bar stays clear of right-aligned switches, whose centres must remain clickable.
+        var bar = NavChrome.Bounds.Width;
+        const double overlap = 32;
+        var marginRight = bar > 1 ? Math.Max(24, NavChrome.Margin.Right + bar - overlap) : 24;
+        var contentMargin = new Thickness(24, 24, marginRight, 24);
         if (PageBody.Margin != contentMargin)
             PageBody.Margin = contentMargin;
         KeepScrollbarClearOfNav();
         var viewport = PageScroll.Bounds.Width > 1
-            ? Math.Max(0, PageScroll.Bounds.Width - reserved)
-            : Math.Max(0, Bounds.Width - reserved);
-        var contentWidth = Math.Max(0, viewport - 48);
+            ? PageScroll.Bounds.Width
+            : Bounds.Width;
+        var contentWidth = Math.Max(0, viewport - contentMargin.Left - contentMargin.Right);
         var stackedProxies = _selectedSection == "Proxies" && contentWidth < 900;
         var splitProxies = _selectedSection == "Proxies" && !stackedProxies;
         ProxiesPage.ColumnDefinitions = new ColumnDefinitions(splitProxies ? "*,20,300" : "*");
@@ -439,7 +439,6 @@ public partial class NetworkAcceleratorView : UserControl
         SizeChanged -= OnViewSize;
         NavChrome.SizeChanged -= OnViewSize;
         PageScroll.LayoutUpdated -= OnPageLayout;
-        NavGlass.Backdrop = null;
         DataContext = null;
         if (_ownsModel) _viewModel?.Dispose();
     }

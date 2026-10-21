@@ -549,17 +549,17 @@ sealed class RecordingFeedback : IUserFeedbackService
 {
     public List<string> Warnings { get; } = [];
     public List<(string Title, string Message)> Errors { get; } = [];
-    public Task ShowInfoAsync(string title, string message, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    public Task ShowSuccessAsync(string title, string message, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    public Task ShowWarningAsync(string title, string message, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    public Task ShowErrorAsync(string title, string message, Exception? details = null, CancellationToken cancellationToken = default)
+    public Task ShowInfoAsync(string title, string message, CancellationToken cancellationToken = default, FeedbackDelivery delivery = FeedbackDelivery.Auto) => Task.CompletedTask;
+    public Task ShowSuccessAsync(string title, string message, CancellationToken cancellationToken = default, FeedbackDelivery delivery = FeedbackDelivery.Auto) => Task.CompletedTask;
+    public Task ShowWarningAsync(string title, string message, CancellationToken cancellationToken = default, FeedbackDelivery delivery = FeedbackDelivery.Auto) => Task.CompletedTask;
+    public Task ShowErrorAsync(string title, string message, Exception? details = null, CancellationToken cancellationToken = default, FeedbackDelivery delivery = FeedbackDelivery.Auto)
     {
         Errors.Add((title, message));
         return Task.CompletedTask;
     }
     public Task<bool> ConfirmAsync(string title, string message, string confirmText = "确定", string cancelText = "取消", bool danger = false, CancellationToken cancellationToken = default) => Task.FromResult(true);
     public List<string> ErrorToasts { get; } = [];
-    public void Toast(FeedbackKind kind, string message, string? title = null, string? actionText = null, Action? action = null, TimeSpan? duration = null)
+    public void Toast(FeedbackKind kind, string message, string? title = null, string? actionText = null, Action? action = null, TimeSpan? duration = null, FeedbackDelivery delivery = FeedbackDelivery.Auto)
     {
         if (kind == FeedbackKind.Warning) Warnings.Add(message);
         else if (kind == FeedbackKind.Error) ErrorToasts.Add(message);

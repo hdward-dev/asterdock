@@ -118,10 +118,10 @@ static class ModuleInteractionChecks
             "acrylic retires after three slow frames, not two");
         var light = LiquidGlassBar.CreateAcrylicTint(false);
         var dark = LiquidGlassBar.CreateAcrylicTint(true);
-        check(light.R == 0xF5 && light.G == 0xF7 && light.B == 0xFA && light.A == 0x73,
-            "acrylic light tint follows the page frost");
-        check(dark.R == 0x2A && dark.G == 0x3A && dark.B == 0x52 && dark.A == 0x99,
-            "acrylic dark tint follows the approximate slate veil");
+        check(light.R == 0xF5 && light.G == 0xF7 && light.B == 0xFA && light.A == LiquidGlassBar.AcrylicLightTintAlpha,
+            "acrylic light tint is a thin page wash");
+        check(dark.R == 0x2A && dark.G == 0x3A && dark.B == 0x52 && dark.A == LiquidGlassBar.AcrylicDarkTintAlpha,
+            "acrylic dark tint is a thin slate wash");
 
         LiquidGlassBar.ResetSessionChoice();
         LiquidGlassBar.ProbeOverride = NavGlassProbe.FastSoftware;
@@ -150,14 +150,25 @@ static class ModuleInteractionChecks
                   && Math.Abs(surface.Vibrancy - LiquidGlassBar.AcrylicVibrancy) < 0.001
                   && Math.Abs(surface.Brightness - LiquidGlassBar.AcrylicBrightness) < 0.001,
                 "acrylic nav uses the Fluid demo frost");
-            check(surface.RefractionHeight == LiquidGlassBar.AcrylicRefractionHeight
+            check(surface is AcrylicInteractiveSurface { IsInteractive: true, RevealBorderEnabled: true }
+                  && surface.RefractionHeight == LiquidGlassBar.AcrylicRefractionHeight
                   && surface.RefractionAmount == LiquidGlassBar.AcrylicRefractionAmount
-                  && !surface.ChromaticAberration && !surface.RevealBorderEnabled,
-                "acrylic nav keeps Fluid refraction and leaves chromatic aberration and reveal off");
+                  && !surface.ChromaticAberration,
+                "acrylic nav is Fluid's interactive surface with refraction and a reveal rim");
             check(surface.HighlightEnabled && surface.ShadowEnabled
-                  && Math.Abs(surface.HighlightOpacity - 0.5) < 0.001
+                  && Math.Abs(surface.HighlightOpacity - LiquidGlassBar.AcrylicHighlightRest) < 0.001
                   && Math.Abs(surface.HighlightWidth - 0.5) < 0.001,
                 "acrylic nav keeps Fluid highlight and drop shadow");
+            var scroll = view.FindControl<ScrollViewer>("PageScroll")!;
+            var chrome = view.FindControl<Border>("NavChrome")!;
+            var scrollRight = scroll.TranslatePoint(new Point(scroll.Bounds.Width, 0), window)?.X;
+            var barLeft = chrome.TranslatePoint(default, window)?.X;
+            check(scrollRight is double pageRight && barLeft is double navLeft && pageRight > navLeft + 8,
+                "page scroll extends under the floating nav");
+            var body = view.FindControl<StackPanel>("PageBody")!;
+            var bodyRight = body.TranslatePoint(new Point(body.Bounds.Width, 0), window)?.X;
+            check(bodyRight is double contentRight && barLeft is double navEdge && contentRight <= navEdge - 11,
+                "page content keeps the reserved column clearance beside the nav");
             check(view.FindControl<Border>("NavChrome")!.BoxShadow.Count == 0,
                 "nav chrome does not stack a second shadow over Fluid's");
             check(surface.CornerRadius == new CornerRadius(LiquidGlassBar.Corner), "acrylic nav keeps the 24 corner");
@@ -180,6 +191,19 @@ static class ModuleInteractionChecks
             overview.Focus();
             Settle(window);
             check(overview.IsFocused, "section button takes keyboard focus through acrylic");
+            DashboardMotion.ReduceMotion = true;
+            var hoverAt = chrome.TranslatePoint(new Point(chrome.Bounds.Width / 2, 36), window);
+            if (hoverAt is { } hoverPoint)
+                window.MouseMove(hoverPoint);
+            Settle(window);
+            var hoverScale = chrome.RenderTransform?.Value.M11 ?? 1;
+            check(hoverScale > 1.04, "acrylic hover scales the capsule enough to see");
+            check(surface.HighlightOpacity > 0.8, "acrylic hover strengthens the Fluid highlight");
+            check(surface.ShadowColor.A > 0x1A && chrome.BoxShadow.Count == 0,
+                "acrylic hover deepens Fluid's own shadow without a second drop");
+            check(Hits(window, overview, Center(overview)), "section button still hit-tests while the capsule is hovered");
+            window.MouseMove(new Point(4, 4));
+            Settle(window);
 
             if (Application.Current is not null)
                 Application.Current.RequestedThemeVariant = ThemeVariant.Dark;

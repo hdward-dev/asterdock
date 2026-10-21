@@ -528,10 +528,15 @@ static void RequireClearOfBar(Window window, string label)
     var scroll = window.GetVisualDescendants().OfType<ScrollViewer>().First(item => item.Name == "PageScroll");
     var scrollRight = scroll.TranslatePoint(new Point(scroll.Bounds.Width, 0), window)?.X
         ?? throw new InvalidOperationException(label + " page has no position");
-    var gap = barLeft - scrollRight;
-    Console.WriteLine($"{label} scrollRight={scrollRight:0.0} barLeft={barLeft:0.0} bar={chrome.Bounds.Width:0} gap={gap:0.0}");
+    var body = window.GetVisualDescendants().OfType<StackPanel>().First(item => item.Name == "PageBody");
+    var contentRight = body.TranslatePoint(new Point(body.Bounds.Width, 0), window)?.X
+        ?? throw new InvalidOperationException(label + " page body has no position");
+    var gap = barLeft - contentRight;
+    Console.WriteLine($"{label} scrollRight={scrollRight:0.0} contentRight={contentRight:0.0} barLeft={barLeft:0.0} bar={chrome.Bounds.Width:0} gap={gap:0.0}");
+    if (scrollRight < barLeft + 8)
+        throw new InvalidOperationException($"{label} page does not extend under the bar");
     if (gap < 11)
-        throw new InvalidOperationException($"{label} content column is {gap:0.0}px from the bar");
+        throw new InvalidOperationException($"{label} content is {gap:0.0}px from the bar");
     foreach (var scroller in scroll.GetVisualDescendants().OfType<ScrollBar>())
     {
         if (!scroller.IsEffectivelyVisible || scroller.Bounds.Width < 2) continue;

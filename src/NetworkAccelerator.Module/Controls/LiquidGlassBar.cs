@@ -18,10 +18,11 @@ using Fluid.Avalonia.Acrylic;
 namespace NetworkAccelerator.Module.Controls;
 
 /// <summary>
-/// Floating capsule drawn over the page. Prefers a Fluid <see cref="AcrylicSurface"/>
-/// with the library refraction (height 12, amount 24) and the demo-card frost.
-/// Falls back to a page snapshot blurred with <see cref="BlurEffect"/> when software
-/// Skia or the frame budget is too slow, and stays there until <see cref="ResetSessionChoice"/>.
+/// Floating capsule drawn over the page. Prefers a Fluid <see cref="AcrylicInteractiveSurface"/>
+/// with the library refraction (height 12, amount 24) and the demo-card frost, sampling
+/// whatever page pixels sit behind it. Falls back to a page snapshot blurred with
+/// <see cref="BlurEffect"/> when software Skia or the frame budget is too slow, and stays
+/// there until <see cref="ResetSessionChoice"/>.
 /// </summary>
 public class LiquidGlassBar : Decorator
 {
@@ -39,9 +40,25 @@ public class LiquidGlassBar : Decorator
     public const double AcrylicRefractionHeight = 12;
 
     public const double AcrylicRefractionAmount = 24;
+
+    /// <summary>
+    /// Theme wash over the sampled page. Alpha stays low: the shader fills with
+    /// tint alpha × 0.75, and a heavier veil turns the frost into a solid plate.
+    /// </summary>
+    public const byte AcrylicLightTintAlpha = 0x40;
+
+    public const byte AcrylicDarkTintAlpha = 0x50;
+
+    /// <summary>Library highlight at rest. Hover and press raise it so the rim reads.</summary>
+    public const double AcrylicHighlightRest = 0.5;
+
+    public const double AcrylicHighlightHover = 0.95;
+
     private const double Pad = 16;
     private const double HoverScale = 1.015;
     private const double PressScale = 1.02;
+    private const double AcrylicHoverScale = 1.05;
+    private const double AcrylicPressScale = 1.07;
 
     private static readonly List<WeakReference<LiquidGlassBar>> LiveBars = new();
     private static NavGlassPath _session = NavGlassPath.Pending;
@@ -117,10 +134,12 @@ public class LiquidGlassBar : Decorator
     public bool RendererKnown => _rendererKnown;
 
     /// <summary>
-    /// Light frost over AppPageBrush (#F5F7FA) and the same slate the approximate veil uses in the dark theme.
+    /// Light wash over AppPageBrush (#F5F7FA) and the same slate the approximate veil uses in the dark theme.
     /// </summary>
     public static Color CreateAcrylicTint(bool dark) =>
-        dark ? Color.FromArgb(0x99, 0x2A, 0x3A, 0x52) : Color.FromArgb(0x73, 0xF5, 0xF7, 0xFA);
+        dark
+            ? Color.FromArgb(AcrylicDarkTintAlpha, 0x2A, 0x3A, 0x52)
+            : Color.FromArgb(AcrylicLightTintAlpha, 0xF5, 0xF7, 0xFA);
 
     public LiquidGlassBar()
     {
@@ -551,14 +570,38 @@ public class LiquidGlassBar : Decorator
         var dark = _chrome.ActualThemeVariant == ThemeVariant.Dark;
         if (_path == NavGlassPath.Acrylic)
         {
-            // Drop the local shadow without animating back to it. Fluid draws the only drop.
+            // Clear the chrome drop before any BoxShadow transition can play it back.
+            // Fluid draws the only shadow; the chrome only eases its hover scale.
             _chrome.Transitions = new Transitions();
             _chrome.ClearValue(Border.BoxShadowProperty);
+            if (!DashboardMotion.ReduceMotion)
+            {
+                _chrome.Transitions = new Transitions
+                {
+                    new TransformOperationsTransition
+                    {
+                        Property = Visual.RenderTransformProperty,
+                        Duration = TimeSpan.FromMilliseconds(160)
+                    }
+                };
+            }
+
+            ApplyAcrylicHover();
         }
         else
             _chrome.BoxShadow = CreateOuterShadow(dark, _hovered, _pressed);
-        var scale = _pressed ? PressScale : _hovered ? HoverScale : 1;
+        var scale = _path == NavGlassPath.Acrylic
+            ? _pressed ? AcrylicPressScale : _hovered ? AcrylicHoverScale : 1
+            : _pressed ? PressScale : _hovered ? HoverScale : 1;
         _chrome.RenderTransform = new ScaleTransform(scale, scale);
+    }
+
+    private void ApplyAcrylicHover()
+    {
+        if (_acrylic is null) return;
+        _acrylic.HighlightOpacity = _pressed || _hovered ? AcrylicHighlightHover : AcrylicHighlightRest;
+        var alpha = _pressed ? (byte)0x73 : _hovered ? (byte)0x55 : (byte)0x1A;
+        _acrylic.ShadowColor = Color.FromArgb(alpha, 0, 0, 0);
     }
 
     private void DrawBackdrop(DrawingContext context, Rect rect)
@@ -857,7 +900,7 @@ public class LiquidGlassBar : Decorator
 
     private AcrylicSurface CreateAcrylicSurface()
     {
-        var surface = new AcrylicSurface
+        var surface = new AcrylicInteractiveSurface
         {
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch,
@@ -870,7 +913,10 @@ public class LiquidGlassBar : Decorator
             RefractionHeight = AcrylicRefractionHeight,
             RefractionAmount = AcrylicRefractionAmount,
             HighlightEnabled = true,
-            ShadowEnabled = true
+            ShadowEnabled = true,
+            RevealBorderEnabled = true,
+            IsInteractive = true,
+            InteractiveMaxScaleDip = 24
         };
         AcrylicBackdrop.SetIsExcludedFromCapture(surface, true);
         return surface;

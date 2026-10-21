@@ -1,10 +1,13 @@
 using AsterDock.Contracts;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 using Avalonia.Input.Platform;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using NetworkAccelerator.Core.Models;
 using NetworkAccelerator.Module.Controls;
 using NetworkAccelerator.Module.Models;
@@ -54,6 +57,7 @@ public partial class NetworkAcceleratorView : UserControl
         ModeSliderHost.SizeChanged += OnModeSliderSize;
         SizeChanged += OnViewSize;
         NavChrome.SizeChanged += OnViewSize;
+        PageScroll.LayoutUpdated += OnPageLayout;
         NavGlass.Backdrop = PageScroll;
         SelectSection("Overview");
     }
@@ -317,10 +321,17 @@ public partial class NetworkAcceleratorView : UserControl
 
     private void UpdateLayoutForWidth()
     {
-        // The nav column is the bar's measured width plus its horizontal margin
-        // (12px gap on the left, 12px window inset on the right).
+        // The nav overlays the page so acrylic samples the page surface instead of
+        // an empty column. Right padding keeps the old column width (bar plus its
+        // 12px gaps) so cards, switches and the scrollbar stop where they used to.
         var reserved = NavChrome.Bounds.Width + NavChrome.Margin.Left + NavChrome.Margin.Right;
-        var viewport = PageScroll.Bounds.Width > 1 ? PageScroll.Bounds.Width : Math.Max(0, Bounds.Width - reserved);
+        var contentMargin = new Thickness(24, 24, 24 + reserved, 24);
+        if (PageBody.Margin != contentMargin)
+            PageBody.Margin = contentMargin;
+        KeepScrollbarClearOfNav();
+        var viewport = PageScroll.Bounds.Width > 1
+            ? Math.Max(0, PageScroll.Bounds.Width - reserved)
+            : Math.Max(0, Bounds.Width - reserved);
         var contentWidth = Math.Max(0, viewport - 48);
         var stackedProxies = _selectedSection == "Proxies" && contentWidth < 900;
         var splitProxies = _selectedSection == "Proxies" && !stackedProxies;
@@ -340,6 +351,41 @@ public partial class NetworkAcceleratorView : UserControl
         Grid.SetRow(DurationMetric, compact ? 1 : 0);
         Grid.SetRow(PortMetric, compact ? 1 : 0);
         DurationMetric.Margin = PortMetric.Margin = new Avalonia.Thickness(0, compact ? 16 : 0, 0, 0);
+    }
+
+    private void KeepScrollbarClearOfNav()
+    {
+        if (NavChrome.Bounds.Width < 1) return;
+        var limit = NavChrome.TranslatePoint(default, this)?.X - NavChrome.Margin.Left;
+        if (limit is not double navLeft) return;
+        foreach (var bar in PageScroll.GetVisualDescendants().OfType<ScrollBar>())
+        {
+            if (bar.Orientation != Orientation.Vertical || bar.Bounds.Width < 2 || !bar.IsEffectivelyVisible)
+            {
+                if (bar.RenderTransform is not null)
+                    bar.RenderTransform = null;
+                continue;
+            }
+
+            var current = bar.RenderTransform is TranslateTransform shift ? shift.X : 0;
+            var visualRight = bar.TranslatePoint(new Point(bar.Bounds.Width, 0), this)?.X;
+            if (visualRight is not double right) continue;
+            var layoutRight = right - current;
+            var needed = layoutRight - navLeft;
+            var next = needed > 0.5 ? new TranslateTransform(-needed, 0) : null;
+            if (next is null)
+            {
+                if (bar.RenderTransform is not null)
+                    bar.RenderTransform = null;
+                continue;
+            }
+
+            if (bar.RenderTransform is TranslateTransform existing
+                && Math.Abs(existing.X - next.X) < 0.5
+                && Math.Abs(existing.Y - next.Y) < 0.5)
+                continue;
+            bar.RenderTransform = next;
+        }
     }
 
     private void ClearSearch_Click(object? sender, RoutedEventArgs e)
@@ -392,6 +438,7 @@ public partial class NetworkAcceleratorView : UserControl
         ModeSliderHost.SizeChanged -= OnModeSliderSize;
         SizeChanged -= OnViewSize;
         NavChrome.SizeChanged -= OnViewSize;
+        PageScroll.LayoutUpdated -= OnPageLayout;
         NavGlass.Backdrop = null;
         DataContext = null;
         if (_ownsModel) _viewModel?.Dispose();
@@ -405,6 +452,8 @@ public partial class NetworkAcceleratorView : UserControl
     private void OnModeSliderSize(object? sender, SizeChangedEventArgs e) => UpdateModeSlider();
 
     private void OnViewSize(object? sender, SizeChangedEventArgs e) => UpdateLayoutForWidth();
+
+    private void OnPageLayout(object? sender, EventArgs e) => KeepScrollbarClearOfNav();
 
     private async Task InitializeAsync()
     {

@@ -18,10 +18,10 @@ public partial class DeviceStatusWidgetWindow : Window
         InitializeComponent();
     }
 
-    public DeviceStatusWidgetWindow(ISystemMetricsService systemMetrics)
+    public DeviceStatusWidgetWindow(ISystemMetricsService systemMetrics, IUserFeedbackService? feedback = null)
         : this()
     {
-        _viewModel = new DeviceInformationViewModel(systemMetrics);
+        _viewModel = new DeviceInformationViewModel(systemMetrics, feedback);
         DataContext = _viewModel;
         // AcrylicBlur/Blur color the whole rectangular native surface. Per-pixel
         // transparency keeps the area outside the rounded root border invisible.

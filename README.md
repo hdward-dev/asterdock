@@ -83,7 +83,7 @@ AsterDock.Host/bin/<Configuration>/net10.0/Apps/DeviceInformation/
 
 宿主不引用具体应用模块，只扫描 `Apps` 目录下的 `app.json`，再通过独立 `AssemblyLoadContext` 加载入口程序集。主页、设备信息页和桌面悬浮窗通过容器提供的同一个 `ISystemMetricsService` 订阅设备数据；首个订阅者启动采集，全部退订 8 秒后自动休眠。
 
-界面基线由 `AsterDock.UI` 统一提供：宿主加载 Semi.Avalonia 与 Ursa Semi 主题，模块通过共享控件、`App*` 设计令牌和 `ad-*` 语义样式复用页面标题、卡片、分段按钮、状态徽标、紧凑输入等外观。页面只保留业务专属样式。
+界面基线由 `AsterDock.UI` 统一提供：宿主加载 Semi.Avalonia 与 Ursa Semi 主题，模块通过共享控件、`App*` 设计令牌和 `ad-*` 语义样式复用页面标题、卡片、分段按钮、状态徽标、紧凑输入等外观。页面只保留业务专属样式。加载状态使用 `AdLoadingIndicator` / `AdLoadingOverlay`；错误、确认和短暂提示使用 `IApplicationContext.Feedback`，说明见 [docs/user-feedback.md](docs/user-feedback.md)。
 
 网络加速应用首次使用时，可在页面内点击“安装核心”。应用会从 SagerNet 官方 Release 下载与当前 Windows/macOS 架构匹配的 sing-box 稳定版，并使用 GitHub Release 资产自带的 digest 校验 SHA-256；核心安装在该应用的数据目录，不写入容器安装目录。订阅输入支持 HTTPS 地址或本地 sing-box JSON 配置文件。
 

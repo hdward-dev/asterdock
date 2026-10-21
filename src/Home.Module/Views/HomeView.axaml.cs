@@ -9,6 +9,8 @@ namespace Home.Module.Views;
 public partial class HomeView : UserControl
 {
     private HomeViewModel? _viewModel;
+    private readonly bool _ownsModel;
+    private bool _observing;
 
     public HomeView()
     {
@@ -16,15 +18,40 @@ public partial class HomeView : UserControl
     }
 
     public HomeView(IApplicationContext context)
-        : this()
+        : this(new HomeViewModel(context), ownsModel: true)
     {
-        _viewModel = new HomeViewModel(context);
-        DataContext = _viewModel;
-        AttachedToVisualTree += (_, _) => _ = _viewModel.StartAsync();
-        DetachedFromVisualTree += (_, _) => _viewModel.Stop();
     }
 
-    public void DisposeResources() => _viewModel?.Dispose();
+    public HomeView(HomeViewModel viewModel, bool ownsModel = false)
+        : this()
+    {
+        _viewModel = viewModel;
+        _ownsModel = ownsModel;
+        DataContext = viewModel;
+        AttachedToVisualTree += (_, _) =>
+        {
+            if (_observing || _viewModel is null) return;
+            _observing = true;
+            _ = _viewModel.StartAsync();
+        };
+        DetachedFromVisualTree += (_, _) =>
+        {
+            if (!_observing || _viewModel is null) return;
+            _observing = false;
+            _viewModel.Stop();
+        };
+    }
+
+    public void DisposeResources()
+    {
+        if (_observing && _viewModel is not null)
+        {
+            _observing = false;
+            _viewModel.Stop();
+        }
+
+        if (_ownsModel) _viewModel?.Dispose();
+    }
 
     private void OpenInvoicePrinter_Click(object? sender, RoutedEventArgs e) => _viewModel?.OpenInvoicePrinter();
     private void OpenDeviceInformation_Click(object? sender, RoutedEventArgs e) => _viewModel?.OpenDeviceInformation();

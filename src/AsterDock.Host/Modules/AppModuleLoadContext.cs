@@ -34,6 +34,7 @@ internal sealed class AppModuleLoadContext : AssemblyLoadContext
         string.Equals(name, typeof(IApplicationModule).Assembly.GetName().Name, StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "AsterDock.UI", StringComparison.OrdinalIgnoreCase) ||
         name?.StartsWith("Avalonia", StringComparison.OrdinalIgnoreCase) == true ||
+        string.Equals(name, "Fluid.Avalonia.Acrylic", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name, "HarfBuzzSharp", StringComparison.OrdinalIgnoreCase) ||
         name?.StartsWith("Irihi.", StringComparison.OrdinalIgnoreCase) == true ||
         string.Equals(name, "MicroCom.Runtime", StringComparison.OrdinalIgnoreCase) ||

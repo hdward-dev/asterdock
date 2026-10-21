@@ -18,18 +18,20 @@ public partial class InvoicePrinterView : UserControl
     private readonly SystemPrintService _systemPrint = new();
     private readonly InvoiceOcrService _ocrService = new();
     private readonly IWindowService? _windowService;
+    private readonly IUserFeedbackService? _feedback;
     private int _currentPage;
 
     public ObservableCollection<InvoicePageItem> Pages { get; } = [];
 
-    public InvoicePrinterView() : this(null)
+    public InvoicePrinterView() : this(null, null)
     {
     }
 
-    public InvoicePrinterView(IWindowService? windowService)
+    public InvoicePrinterView(IWindowService? windowService, IUserFeedbackService? feedback = null)
     {
         InitializeComponent();
         _windowService = windowService;
+        _feedback = feedback;
         DataContext = this;
         InvoicesPerPageComboBox.SelectionChanged += PrintLayoutSetting_Changed;
         FullPageStandaloneToggle.PropertyChanged += ToggleSetting_PropertyChanged;
@@ -103,8 +105,11 @@ public partial class InvoicePrinterView : UserControl
         RefreshPreview();
     }
 
-    private void Clear_Click(object? sender, RoutedEventArgs e)
+    private async void Clear_Click(object? sender, RoutedEventArgs e)
     {
+        if (Pages.Count == 0) return;
+        if (_feedback is not null && !await _feedback.ConfirmAsync("清空发票", "将移除已导入的全部发票。", "清空", "取消", danger: true))
+            return;
         DisposeResources();
         _currentPage = 0;
         RefreshPreview();
@@ -149,7 +154,8 @@ public partial class InvoicePrinterView : UserControl
             output,
             pageCount,
             invoicesPerPage,
-            keepFullPageInvoicesSeparate);
+            keepFullPageInvoicesSeparate,
+            _feedback);
         if (_windowService is not null) await _windowService.ShowDialogAsync<bool>(dialog);
         else await dialog.ShowDialog<bool>(owner);
         if (Pages.Count > 0) await RunRecognitionAsync();
@@ -243,28 +249,6 @@ public partial class InvoicePrinterView : UserControl
             UpdatePrintLayoutSettings();
     }
 
-    private async Task ShowErrorAsync(string message)
-    {
-        if (TopLevel.GetTopLevel(this) is not Window owner) return;
-        var dialog = new Window
-        {
-            Title = "提示",
-            Width = 480,
-            Height = 180,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner
-        };
-        var ok = new Button { Content = "确定", HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Right, Width = 90 };
-        ok.Click += (_, _) => dialog.Close();
-        dialog.Content = new StackPanel
-        {
-            Margin = new Avalonia.Thickness(22),
-            Spacing = 18,
-            Children =
-            {
-                new TextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap },
-                ok
-            }
-        };
-        await dialog.ShowDialog(owner);
-    }
+    private Task ShowErrorAsync(string message) =>
+        _feedback?.ShowErrorAsync("提示", message) ?? Task.CompletedTask;
 }

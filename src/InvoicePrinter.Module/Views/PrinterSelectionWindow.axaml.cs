@@ -1,3 +1,4 @@
+using AsterDock.Contracts;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using InvoicePrinter.Module.Services;
@@ -11,11 +12,12 @@ public partial class PrinterSelectionWindow : Window
 
     private readonly SystemPrintService _service;
     private readonly string _pdfPath;
+    private readonly IUserFeedbackService? _feedback;
     public ObservableCollection<PrinterInfo> Printers { get; } = [];
 
     public PrinterSelectionWindow()
     {
-        InitializeComponent(); DataContext = this; _service = new SystemPrintService(); _pdfPath = string.Empty;
+        InitializeComponent(); DataContext = this; _service = new SystemPrintService(); _pdfPath = string.Empty; _feedback = null;
     }
 
     public PrinterSelectionWindow(
@@ -23,9 +25,10 @@ public partial class PrinterSelectionWindow : Window
         string pdfPath,
         int pageCount,
         int invoicesPerPage,
-        bool keepFullPageInvoicesSeparate) : this()
+        bool keepFullPageInvoicesSeparate,
+        IUserFeedbackService? feedback = null) : this()
     {
-        _service = service; _pdfPath = pdfPath;
+        _service = service; _pdfPath = pdfPath; _feedback = feedback;
         LayoutText.Text = invoicesPerPage == 1
             ? "A4 · 纵向 · 每页 1 张"
             : keepFullPageInvoicesSeparate
@@ -37,7 +40,7 @@ public partial class PrinterSelectionWindow : Window
     private async void LoadPrintersAsync(object? sender, EventArgs e)
     {
         try { foreach (var printer in await _service.GetPrintersAsync()) Printers.Add(printer); }
-        catch (Exception exception) { StatusText.Text = exception.Message; }
+        catch (Exception exception) { StatusText.Text = exception.Message; _feedback.Report("读取打印机失败", exception); }
         LoadingProgress.IsVisible = false;
         PrinterComboBox.SelectedItem = Printers.FirstOrDefault(item => item.IsDefault) ?? Printers.FirstOrDefault();
         PrintButton.IsEnabled = PrinterComboBox.SelectedItem is not null;
@@ -52,10 +55,11 @@ public partial class PrinterSelectionWindow : Window
         {
             await _service.PrintAsync(_pdfPath, printer.Name);
             StatusText.Text = $"已发送到 {printer.DisplayName}";
+            _feedback.Notify(FeedbackKind.Success, StatusText.Text);
             await Task.Delay(PrintSuccessDisplayDuration);
             Close(true);
         }
-        catch (Exception exception) { StatusText.Text = $"打印失败：{exception.Message}"; PrintButton.IsEnabled = true; }
+        catch (Exception exception) { StatusText.Text = $"打印失败：{exception.Message}"; _feedback.Report("打印失败", exception); PrintButton.IsEnabled = true; }
     }
 
     private void Cancel_Click(object? sender, RoutedEventArgs e) => Close(false);

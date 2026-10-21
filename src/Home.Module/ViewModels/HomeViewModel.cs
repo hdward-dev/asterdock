@@ -70,15 +70,21 @@ public sealed class HomeViewModel : INotifyPropertyChanged, IDisposable
     public bool HasApplications { get => _hasApplications; private set => SetField(ref _hasApplications, value); }
     public bool HasRecentApplications { get => _hasRecentApplications; private set => SetField(ref _hasRecentApplications, value); }
 
+    private int _attachments;
+
     public Task StartAsync()
     {
-        if (_disposed || _metricsSubscription is not null) return Task.CompletedTask;
-        _metricsSubscription = _systemMetrics.Subscribe(ApplyMetrics, HandleMetricsError);
+        if (_disposed) return Task.CompletedTask;
+        if (Interlocked.Increment(ref _attachments) != 1) return Task.CompletedTask;
+        _metricsSubscription ??= _systemMetrics.Subscribe(ApplyMetrics, HandleMetricsError);
         return Task.CompletedTask;
     }
 
     public void Stop()
     {
+        var remaining = Interlocked.Decrement(ref _attachments);
+        if (remaining > 0) return;
+        if (remaining < 0) Interlocked.Exchange(ref _attachments, 0);
         Interlocked.Exchange(ref _metricsSubscription, null)?.Dispose();
     }
 
@@ -96,7 +102,8 @@ public sealed class HomeViewModel : INotifyPropertyChanged, IDisposable
     {
         _context.Shell.StateChanged -= Shell_StateChanged;
         _disposed = true;
-        Stop();
+        _attachments = 0;
+        Interlocked.Exchange(ref _metricsSubscription, null)?.Dispose();
     }
 
     private void Shell_StateChanged(object? sender, EventArgs e)

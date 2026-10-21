@@ -1,3 +1,4 @@
+using AsterDock.Contracts;
 using Avalonia.Media;
 using SerialDebugger.Module.Models;
 using SerialDebugger.Module.Services;
@@ -19,6 +20,7 @@ public sealed class SerialDebuggerViewModel : INotifyPropertyChanged, IDisposabl
     ];
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private readonly string _settingsPath;
+    private readonly IUserFeedbackService? _feedback;
     private bool _initialized;
     private bool _disposed;
     private bool _isTileLayout;
@@ -28,8 +30,9 @@ public sealed class SerialDebuggerViewModel : INotifyPropertyChanged, IDisposabl
     private bool _isBusy;
     private string _workspaceStatus = "双串口工作区已就绪";
 
-    public SerialDebuggerViewModel(string dataDirectory)
+    public SerialDebuggerViewModel(string dataDirectory, IUserFeedbackService? feedback = null)
     {
+        _feedback = feedback;
         _settingsPath = Path.Combine(dataDirectory, "workspace.json");
         CreateDefaultSessions();
     }
@@ -78,7 +81,10 @@ public sealed class SerialDebuggerViewModel : INotifyPropertyChanged, IDisposabl
         catch (Exception exception)
         {
             await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
-                WorkspaceStatus = $"工作区恢复失败：{exception.GetBaseException().Message}");
+            {
+                WorkspaceStatus = $"工作区恢复失败：{exception.GetBaseException().Message}";
+                _feedback.Report("工作区恢复失败", exception);
+            });
         }
     }
 
@@ -96,7 +102,8 @@ public sealed class SerialDebuggerViewModel : INotifyPropertyChanged, IDisposabl
             GetSessionTitle(Sessions.Count),
             preferredPort,
             profile?.BaudRate ?? (Sessions.Count == 1 ? 9600 : 115200),
-            new SolidColorBrush(AccentColors[Sessions.Count % AccentColors.Length]));
+            new SolidColorBrush(AccentColors[Sessions.Count % AccentColors.Length]),
+            _feedback);
         if (profile is not null) session.ApplyProfile(profile with { PortName = preferredPort });
         session.IsSinglePortFocus = IsTabLayout;
         session.PropertyChanged += Session_PropertyChanged;
@@ -152,7 +159,10 @@ public sealed class SerialDebuggerViewModel : INotifyPropertyChanged, IDisposabl
         catch (Exception exception)
         {
             await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
-                WorkspaceStatus = $"保存失败：{exception.GetBaseException().Message}");
+            {
+                WorkspaceStatus = $"保存失败：{exception.GetBaseException().Message}";
+                _feedback.Report("保存失败", exception);
+            });
         }
     }
 
@@ -203,7 +213,10 @@ public sealed class SerialDebuggerViewModel : INotifyPropertyChanged, IDisposabl
         catch (Exception exception)
         {
             await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
-                WorkspaceStatus = $"联调执行失败：{exception.GetBaseException().Message}");
+            {
+                WorkspaceStatus = $"联调执行失败：{exception.GetBaseException().Message}";
+                _feedback.Report("联调执行失败", exception);
+            });
         }
         finally
         {

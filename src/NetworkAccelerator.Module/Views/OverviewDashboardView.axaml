@@ -1,0 +1,723 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:NetworkAccelerator.Module.Controls"
+             xmlns:ui="using:AsterDock.UI.Controls"
+             x:Class="NetworkAccelerator.Module.Views.OverviewDashboardView"
+             x:CompileBindings="False"
+             HorizontalAlignment="Stretch">
+  <UserControl.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://NetworkAccelerator.Module/Themes/NetworkAcceleratorIcons.axaml"/>
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </UserControl.Resources>
+  <UserControl.Styles>
+    <Style Selector="Border.dash-card">
+      <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="22"/>
+      <Setter Property="Padding" Value="18,16"/>
+      <Setter Property="ClipToBounds" Value="True"/>
+    </Style>
+    <Style Selector="Border.dash-card.hero">
+      <Setter Property="Height" Value="170"/>
+      <Setter Property="Padding" Value="16,12"/>
+    </Style>
+    <Style Selector="Border.dash-card.mid">
+      <Setter Property="MinHeight" Value="150"/>
+      <Setter Property="Padding" Value="14,8"/>
+    </Style>
+    <Style Selector="Button.ad-segment /template/ ContentPresenter#PART_ContentPresenter,
+                     Button.ad-segment:pointerover /template/ ContentPresenter#PART_ContentPresenter,
+                     Button.ad-segment:pressed /template/ ContentPresenter#PART_ContentPresenter,
+                     Button.ad-segment.selected /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
+    </Style>
+    <Style Selector="TextBlock.dash-label">
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppMutedBrush}"/>
+    </Style>
+    <Style Selector="TextBlock.dash-figure">
+      <Setter Property="FontSize" Value="32"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppStrongTextBrush}"/>
+    </Style>
+    <Style Selector="Border.dash-tag">
+      <Setter Property="Background" Value="{DynamicResource AppSubtleBrush}"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Padding" Value="8,3"/>
+      <Setter Property="Margin" Value="0,0,6,6"/>
+    </Style>
+    <Style Selector="Border.dash-tag TextBlock">
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppMutedBrush}"/>
+    </Style>
+    <Style Selector="Button.dash-power">
+      <Setter Property="Width" Value="68"/>
+      <Setter Property="Height" Value="68"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="CornerRadius" Value="34"/>
+      <Setter Property="Background" Value="{DynamicResource AppAccentBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+      <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+    <Style Selector="Button.dash-power /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AppAccentBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+      <Setter Property="CornerRadius" Value="34"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="BoxShadow" Value="0 8 18 0 #331267E8"/>
+    </Style>
+    <Style Selector="Button.dash-power:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AppAccentHoverBrush}"/>
+    </Style>
+    <Style Selector="Button.dash-power:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AppAccentPressedBrush}"/>
+    </Style>
+    <Style Selector="Button.dash-power">
+      <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+      <Setter Property="RenderTransform" Value="scale(1)"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.dash-power:pointerover">
+      <Setter Property="RenderTransform" Value="scale(1.05)"/>
+    </Style>
+    <Style Selector="Button.dash-power:pressed">
+      <Setter Property="RenderTransform" Value="scale(0.96)"/>
+    </Style>
+    <Style Selector="UserControl.still Button.dash-power, UserControl.still Button.dash-power:pointerover, UserControl.still Button.dash-power:pressed">
+      <Setter Property="Transitions" Value="{x:Null}"/>
+      <Setter Property="RenderTransform" Value="none"/>
+    </Style>
+    <Style Selector="Button.conn-tab">
+      <Setter Property="Height" Value="32"/>
+      <Setter Property="Padding" Value="12,0"/>
+      <Setter Property="Margin" Value="0,0,8,0"/>
+      <Setter Property="CornerRadius" Value="16"/>
+      <Setter Property="Background" Value="{DynamicResource AppSubtleBrush}"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="FontSize" Value="13"/>
+    </Style>
+    <Style Selector="Button.conn-tab /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AppSubtleBrush}"/>
+      <Setter Property="CornerRadius" Value="16"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
+      <Setter Property="Padding" Value="12,0"/>
+    </Style>
+    <Style Selector="Button.conn-tab.selected">
+      <Setter Property="Background" Value="{DynamicResource AppAccentBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="Button.conn-tab.selected /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AppAccentBrush}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AppOnAccentBrush}"/>
+    </Style>
+    <Style Selector="Border.dash-hover">
+      <Setter Property="RenderTransform" Value="scale(1)"/>
+      <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border.dash-hover:pointerover">
+      <Setter Property="RenderTransform" Value="scale(1.012)"/>
+    </Style>
+    <Style Selector="UserControl.still Border.dash-hover, UserControl.still Border.dash-hover:pointerover">
+      <Setter Property="Transitions" Value="{x:Null}"/>
+      <Setter Property="RenderTransform" Value="none"/>
+    </Style>
+    <Style Selector="Path.accent-glyph">
+      <Setter Property="Fill" Value="{DynamicResource AppAccentBrush}"/>
+    </Style>
+    <Style Selector="Button:disabled Path.accent-glyph">
+      <Setter Property="Fill" Value="{DynamicResource AppMutedBrush}"/>
+    </Style>
+    <Style Selector="Button:disabled ui|AdLoadingIndicator.accent-mark">
+      <Setter Property="ShapeBrush" Value="{DynamicResource AppMutedBrush}"/>
+    </Style>
+    <Style Selector="UserControl.still Button.ad-segment, UserControl.still Button.ad-segment:pointerover, UserControl.still Button.ad-segment:pressed">
+      <Setter Property="Transitions" Value="{x:Null}"/>
+      <Setter Property="RenderTransform" Value="none"/>
+    </Style>
+    <Style Selector="Button.dash-power Path.power-play">
+      <Setter Property="Opacity" Value="1"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.2" Easing="CubicEaseOut"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.dash-power Path.power-stop">
+      <Setter Property="Opacity" Value="0"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.2" Easing="CubicEaseOut"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.dash-power.running Path.power-play">
+      <Setter Property="Opacity" Value="0"/>
+    </Style>
+    <Style Selector="Button.dash-power.running Path.power-stop">
+      <Setter Property="Opacity" Value="1"/>
+    </Style>
+    <Style Selector="UserControl.still Button.dash-power Path">
+      <Setter Property="Transitions" Value="{x:Null}"/>
+    </Style>
+    <Style Selector="Ellipse.power-glow">
+      <Setter Property="Opacity" Value="0"/>
+      <Setter Property="IsHitTestVisible" Value="False"/>
+    </Style>
+    <Style Selector="Ellipse.power-glow.live">
+      <Setter Property="Opacity" Value="0.4"/>
+    </Style>
+    <Style Selector="UserControl:not(.still) Ellipse.power-glow.live">
+      <Style.Animations>
+        <Animation Duration="0:0:1.4" IterationCount="Infinite" PlaybackDirection="Alternate" Easing="SineEaseInOut">
+          <KeyFrame Cue="0%">
+            <Setter Property="Opacity" Value="0.22"/>
+          </KeyFrame>
+          <KeyFrame Cue="100%">
+            <Setter Property="Opacity" Value="0.62"/>
+          </KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+    <Style Selector="Border.summary-chip">
+      <Setter Property="Background" Value="{DynamicResource AppSubtleBrush}"/>
+      <Setter Property="CornerRadius" Value="12"/>
+      <Setter Property="Padding" Value="10,4"/>
+    </Style>
+    <Style Selector="Border.summary-chip.all">
+      <Setter Property="Background" Value="{DynamicResource AppPositiveSurfaceBrush}"/>
+    </Style>
+    <Style Selector="TextBlock.summary-text">
+      <Setter Property="Foreground" Value="{DynamicResource AppMutedBrush}"/>
+      <Setter Property="FontSize" Value="12"/>
+    </Style>
+    <Style Selector="TextBlock.summary-text.all">
+      <Setter Property="Foreground" Value="{DynamicResource AppPositiveBrush}"/>
+    </Style>
+    <Style Selector="TextBlock.summary-text.partial">
+      <Setter Property="Foreground" Value="{DynamicResource AppWarningBrush}"/>
+    </Style>
+    <Style Selector="TextBlock.summary-text.down">
+      <Setter Property="Foreground" Value="{DynamicResource AppDangerBrush}"/>
+    </Style>
+    <Style Selector="Ellipse.svc-dot">
+      <Setter Property="Fill" Value="{DynamicResource AppMutedBrush}"/>
+      <Setter Property="Width" Value="8"/>
+      <Setter Property="Height" Value="8"/>
+    </Style>
+    <Style Selector="Ellipse.svc-dot.ok">
+      <Setter Property="Fill" Value="{DynamicResource AppPositiveBrush}"/>
+    </Style>
+    <Style Selector="Ellipse.svc-dot.slow">
+      <Setter Property="Fill" Value="{DynamicResource AppWarningBrush}"/>
+    </Style>
+    <Style Selector="Ellipse.svc-dot.down">
+      <Setter Property="Fill" Value="{DynamicResource AppDangerBrush}"/>
+    </Style>
+    <Style Selector="Border.conn-row">
+      <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
+      <Setter Property="BorderThickness" Value="0,0,0,1"/>
+      <Setter Property="Padding" Value="0,8"/>
+    </Style>
+  </UserControl.Styles>
+
+  <StackPanel Spacing="12">
+    <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowOverviewAlert}">
+      <ui:AdLoadingIndicator Diameter="16" Variant="Bare" ShowContainer="False"
+                             IsVisible="{Binding IsBusy, FallbackValue=False, TargetNullValue=False}" VerticalAlignment="Center"/>
+      <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" FontSize="12"
+                 Foreground="{DynamicResource AppWarningBrush}" VerticalAlignment="Center"/>
+    </StackPanel>
+
+    <controls:DashboardWrapPanel Gap="12">
+      <controls:EntranceFrame Order="0" controls:DashboardWrapPanel.Row="0" controls:DashboardWrapPanel.Weight="2.4" controls:DashboardWrapPanel.MinItemWidth="460">
+        <Border Classes="dash-card dash-hover hero" Padding="0" BorderThickness="0">
+        <Grid>
+          <Canvas IsHitTestVisible="False" ClipToBounds="False">
+            <controls:StatusBlob FillBrush="{DynamicResource AppCookieBrush}" IsRunning="{Binding IsConnected}"/>
+          </Canvas>
+          <Grid Margin="16,12" ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="6">
+            <Border Classes="ad-status-badge" Classes.connected="{Binding IsConnected}" HorizontalAlignment="Left">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                         Fill="{DynamicResource AppMutedBrush}" IsVisible="{Binding !IsConnected}"/>
+                <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                         Fill="{DynamicResource AppPositiveBrush}" IsVisible="{Binding IsConnected}"/>
+                <TextBlock Text="状态" Classes="dash-label" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding OverviewRunText}" Classes="ad-status-text" Classes.connected="{Binding IsConnected}"
+                           FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Border>
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+              <controls:CloverBadge Width="44" Height="40" Fill="{DynamicResource AppCookieBrush}"
+                                    VerticalAlignment="Center" IsVisible="{Binding Dash.HasCountryCode}">
+                <TextBlock Text="{Binding Dash.CountryCodeText}" FontSize="12" FontWeight="Bold"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </controls:CloverBadge>
+              <TextBlock Grid.Column="1" Text="{Binding Dash.ExitIpText}" FontSize="28" FontWeight="SemiBold"
+                         VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+            </Grid>
+            <WrapPanel Orientation="Horizontal">
+              <Border Classes="dash-tag" Margin="0,0,6,0" IsVisible="{Binding Dash.HasExitKind}">
+                <TextBlock Text="{Binding Dash.ExitKindText}"/>
+              </Border>
+              <Border Classes="dash-tag" Margin="0,0,6,0" IsVisible="{Binding Dash.HasExitRegion}">
+                <TextBlock Text="{Binding Dash.ExitRegionText}"/>
+              </Border>
+            </WrapPanel>
+            <Grid ColumnDefinitions="*,*" Margin="0,2,0,0">
+              <StackPanel Spacing="3">
+                <TextBlock Text="运行时长" Classes="dash-label"/>
+                <TextBlock Text="{Binding OverviewDurationText}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+              </StackPanel>
+              <StackPanel Grid.Column="1" Spacing="3">
+                <TextBlock Text="组织" Classes="dash-label"/>
+                <TextBlock Text="{Binding Dash.ExitOrgText}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+          <controls:PowerButton Grid.Column="1" Width="88" Height="88" Margin="18,0,14,0"
+                                VerticalAlignment="Center" HorizontalAlignment="Center"
+                                IsRunning="{Binding IsConnected}" IsConnecting="{Binding IsBusy}"
+                                FaultSignal="{Binding ConnectionFaultSignal}"
+                                AccentBrush="{DynamicResource AppAccentBrush}"
+                                IconBrush="{DynamicResource AppOnAccentBrush}"
+                                AutomationProperties.Name="开始或停止加速"
+                                Click="ToggleConnection_Click"/>
+          </Grid>
+          <Border BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="1" CornerRadius="22"
+                  Background="Transparent" IsHitTestVisible="False"/>
+        </Grid>
+        </Border>
+      </controls:EntranceFrame>
+
+      <controls:EntranceFrame Order="1" controls:DashboardWrapPanel.Row="0" controls:DashboardWrapPanel.Weight="1" controls:DashboardWrapPanel.MinItemWidth="220">
+        <Border Classes="dash-card dash-hover hero">
+          <Grid>
+            <Grid RowDefinitions="Auto,Auto,Auto" VerticalAlignment="Top">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Path Width="16" Height="16" Stretch="Uniform" Fill="{DynamicResource AppAccentBrush}"
+                        Data="{StaticResource RiArrowUpLine}" VerticalAlignment="Center"/>
+                  <TextBlock Text="上传" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock Grid.Column="1" Classes="dash-label" Text="{Binding Dash.UploadPeakText, StringFormat=峰值 {0}}" VerticalAlignment="Center"/>
+              </Grid>
+              <controls:AnimatedFigure Grid.Row="1" Kind="Rate" Value="{Binding Dash.UploadRateValue}" Margin="0,10,0,2"/>
+              <TextBlock Grid.Row="2" Classes="dash-label" Text="{Binding Dash.UploadTotalText, StringFormat=累计 {0}}"/>
+            </Grid>
+            <controls:TrafficSparkline Trace="{Binding Dash.UploadTrace}" Soft="True"
+                                       Stroke="{DynamicResource AppAccentBrush}" Height="34" Opacity="0.55"
+                                       Margin="0,0,-16,-12" VerticalAlignment="Bottom" IsHitTestVisible="False"/>
+          </Grid>
+        </Border>
+      </controls:EntranceFrame>
+
+      <controls:EntranceFrame Order="2" controls:DashboardWrapPanel.Row="0" controls:DashboardWrapPanel.Weight="1" controls:DashboardWrapPanel.MinItemWidth="220">
+        <Border Classes="dash-card dash-hover hero">
+          <Grid>
+            <Grid RowDefinitions="Auto,Auto,Auto" VerticalAlignment="Top">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Path Width="16" Height="16" Stretch="Uniform" Fill="{DynamicResource AppAccentBrush}"
+                        Data="{StaticResource RiArrowDownLine}" VerticalAlignment="Center"/>
+                  <TextBlock Text="下载" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock Grid.Column="1" Classes="dash-label" Text="{Binding Dash.DownloadPeakText, StringFormat=峰值 {0}}" VerticalAlignment="Center"/>
+              </Grid>
+              <controls:AnimatedFigure Grid.Row="1" Kind="Rate" Value="{Binding Dash.DownloadRateValue}" Margin="0,10,0,2"/>
+              <TextBlock Grid.Row="2" Classes="dash-label" Text="{Binding Dash.DownloadTotalText, StringFormat=累计 {0}}"/>
+            </Grid>
+            <controls:TrafficSparkline Trace="{Binding Dash.DownloadTrace}"
+                                       Stroke="{DynamicResource AppAccentBrush}" Height="34" Opacity="0.55"
+                                       Margin="0,0,-16,-12" VerticalAlignment="Bottom" IsHitTestVisible="False"/>
+          </Grid>
+        </Border>
+      </controls:EntranceFrame>
+
+      <controls:EntranceFrame Order="3" controls:DashboardWrapPanel.Row="1" controls:DashboardWrapPanel.Weight="2.4" controls:DashboardWrapPanel.MinItemWidth="460">
+        <Border Classes="ad-pill-card dash-hover">
+          <Grid ColumnDefinitions="Auto,*">
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="2,0,12,0">
+              <Path Width="16" Height="16" Stretch="Uniform" Fill="{DynamicResource AppMutedBrush}"
+                    Data="{StaticResource RiRouteLine}" VerticalAlignment="Center"/>
+              <TextBlock Text="出站模式" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
+            </StackPanel>
+            <Grid Grid.Column="1" Height="46" VerticalAlignment="Center" IsEnabled="{Binding !IsBusy}">
+              <controls:SlidingPillBar SelectedIndex="{Binding ModeIndex}" SegmentCount="3" Gap="6"
+                                     TrackBrush="{DynamicResource AppPageBrush}" AccentBrush="{DynamicResource AppAccentBrush}"/>
+              <Grid ColumnDefinitions="*,6,*,6,*">
+              <Button Grid.Column="0" Classes="ad-segment" Background="Transparent" Classes.selected="{Binding IsRuleMode}" Click="RuleMode_Click" AutomationProperties.Name="规则模式">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Path Width="16" Height="16" Stretch="Uniform"
+                        Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                        Data="{StaticResource RiListUnordered}"/>
+                  <TextBlock Text="规则" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Grid.Column="2" Classes="ad-segment" Background="Transparent" Classes.selected="{Binding IsGlobalMode}" Click="GlobalMode_Click" AutomationProperties.Name="全局模式">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Path Width="16" Height="16" Stretch="Uniform"
+                        Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                        Data="{StaticResource RiGlobalLine}"/>
+                  <TextBlock Text="全局" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Grid.Column="4" Classes="ad-segment" Background="Transparent" Classes.selected="{Binding IsDirectMode}" Click="DirectMode_Click" AutomationProperties.Name="直连模式">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Path Width="16" Height="16" Stretch="Uniform"
+                        Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                        Data="{StaticResource RiFocus3Line}"/>
+                  <TextBlock Text="直连" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              </Grid>
+            </Grid>
+          </Grid>
+        </Border>
+      </controls:EntranceFrame>
+
+      <controls:EntranceFrame Order="4" controls:DashboardWrapPanel.Row="1" controls:DashboardWrapPanel.Weight="1" controls:DashboardWrapPanel.MinItemWidth="220">
+        <Border Classes="ad-pill-card dash-hover">
+          <Grid ColumnDefinitions="Auto,*,Auto">
+            <Grid Width="32" Height="32" VerticalAlignment="Center">
+              <Path Stretch="Uniform" Fill="{DynamicResource AppAccentBrush}" Data="{StaticResource RiHexagonFill}"/>
+              <Path Width="14" Height="14" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Fill="{DynamicResource AppOnAccentBrush}" Data="{StaticResource RiShareLine}"/>
+            </Grid>
+            <StackPanel Grid.Column="1" Margin="10,0" VerticalAlignment="Center" Spacing="0">
+              <TextBlock Text="系统代理" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+              <TextBlock Text="{Binding SystemProxyDetailText}" FontSize="11" Classes="dash-label" TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
+            <controls:AccentSwitch x:Name="SystemProxyToggle" Grid.Column="2" VerticalAlignment="Center"
+                                   IsChecked="{Binding IsSystemProxy}" IsEnabled="{Binding !IsBusy}"
+                                   ToolTip.Tip="开启后关闭虚拟网卡，关闭后不影响虚拟网卡。两者都关闭时核心仍可运行，但不接管系统流量。"
+                                   AutomationProperties.Name="系统代理" Click="SystemProxyToggle_Click"/>
+          </Grid>
+        </Border>
+      </controls:EntranceFrame>
+
+      <controls:EntranceFrame Order="5" controls:DashboardWrapPanel.Row="1" controls:DashboardWrapPanel.Weight="1" controls:DashboardWrapPanel.MinItemWidth="220">
+        <Border Classes="ad-pill-card dash-hover">
+          <Grid ColumnDefinitions="Auto,*,Auto">
+            <Path Width="22" Height="22" Stretch="Uniform" VerticalAlignment="Center"
+                  Fill="{DynamicResource AppMutedBrush}" Data="{StaticResource RiShieldLine}"/>
+            <StackPanel Grid.Column="1" Margin="10,0" VerticalAlignment="Center" Spacing="0">
+              <TextBlock Text="虚拟网卡" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+              <TextBlock Text="{Binding TunDetailText}" FontSize="11" Classes="dash-label"/>
+            </StackPanel>
+            <controls:AccentSwitch x:Name="OverviewTunToggle" Grid.Column="2" VerticalAlignment="Center"
+                                   IsChecked="{Binding TunEnabled}" IsEnabled="{Binding !IsBusy}"
+                                   ToolTip.Tip="开启后关闭系统代理，关闭后不会自动打开系统代理。两者都关闭时核心仍可运行，但不接管系统流量。"
+                                   AutomationProperties.Name="虚拟网卡" Click="TunToggle_Click"/>
+          </Grid>
+        </Border>
+      </controls:EntranceFrame>
+
+      <controls:EntranceFrame Order="6" controls:DashboardWrapPanel.Row="2" controls:DashboardWrapPanel.Weight="1" controls:DashboardWrapPanel.MinItemWidth="240">
+        <Border Classes="dash-card dash-hover mid">
+          <StackPanel Spacing="6">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="内网 IP" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
+              <Button Grid.Column="1" Classes="ad-icon" AutomationProperties.Name="复制内网 IP" ToolTip.Tip="复制内网 IP"
+                      Click="CopyLanAddress_Click">
+                <Path Width="16" Height="16" Stretch="Uniform" Fill="{DynamicResource AppAccentBrush}"
+                      Data="{StaticResource RiFileCopyLine}"/>
+              </Button>
+            </Grid>
+            <TextBlock Text="{Binding LanAddressText}" FontSize="26" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+            <Border Background="{DynamicResource AppSubtleBrush}" CornerRadius="16" Padding="10,8">
+              <Grid ColumnDefinitions="Auto,*,Auto">
+                <Border Width="32" Height="32" CornerRadius="16" Background="{DynamicResource AppSurfaceBrush}">
+                  <Path Width="16" Height="16" Stretch="Uniform" Fill="{DynamicResource AppMutedBrush}"
+                        HorizontalAlignment="Center" VerticalAlignment="Center" Data="{StaticResource RiWifiLine}"/>
+                </Border>
+                <StackPanel Grid.Column="1" Margin="10,0" VerticalAlignment="Center" Spacing="1">
+                  <TextBlock Text="局域网代理" FontSize="13" FontWeight="SemiBold"/>
+                  <TextBlock Text="{Binding AllowLanDetailText}" Classes="dash-label"/>
+                </StackPanel>
+                <controls:AccentSwitch x:Name="AllowLanToggle" Grid.Column="2" VerticalAlignment="Center"
+                                       IsChecked="{Binding AllowLan}" IsEnabled="{Binding !IsBusy}"
+                                       AutomationProperties.Name="局域网代理" Click="AllowLanToggle_Click"/>
+              </Grid>
+            </Border>
+            <TextBlock Text="开启后，同一局域网内的设备可以使用此代理。" TextWrapping="Wrap" FontSize="12"
+                       Foreground="{DynamicResource AppWarningBrush}" IsVisible="{Binding AllowLan}"/>
+          </StackPanel>
+        </Border>
+      </controls:EntranceFrame>
+
+      <controls:EntranceFrame Order="7" controls:DashboardWrapPanel.Row="2" controls:DashboardWrapPanel.Weight="1" controls:DashboardWrapPanel.MinItemWidth="240">
+        <Border Classes="dash-card dash-hover mid">
+          <StackPanel Spacing="6">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+              <Path Width="16" Height="16" Stretch="Uniform" Fill="{DynamicResource AppAccentBrush}"
+                    Data="{StaticResource RiFileLine}" VerticalAlignment="Center"/>
+              <TextBlock Grid.Column="1" Text="配置" Margin="8,0" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
+              <Button Grid.Column="2" Classes="ad-icon" AutomationProperties.Name="更新订阅" ToolTip.Tip="更新订阅"
+                      HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                      IsEnabled="{Binding !IsBusy}" Click="UpdateSubscription_Click">
+                <Grid Width="16" Height="16">
+                  <Viewbox Width="16" Height="16" Stretch="Uniform" IsVisible="{Binding !IsUpdatingSubscription}">
+                    <Path Classes="accent-glyph" Width="24" Height="24" Stretch="None"
+                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                          Data="{StaticResource RiRefreshLine}"/>
+                  </Viewbox>
+                  <ui:AdLoadingIndicator Classes="accent-mark" Width="16" Height="16" Diameter="16" Variant="Bare"
+                                         ShowContainer="False"
+                                         IsVisible="{Binding IsUpdatingSubscription, FallbackValue=False, TargetNullValue=False}"/>
+                </Grid>
+              </Button>
+              <Button Grid.Column="3" Classes="ad-icon" Tag="Configuration" Click="OpenSection_Click"
+                      AutomationProperties.Name="打开配置" ToolTip.Tip="打开配置">
+                <Path Width="16" Height="16" Stretch="Uniform" Fill="{DynamicResource AppMutedBrush}"
+                      Data="{StaticResource RiArrowRightSLine}"/>
+              </Button>
+            </Grid>
+            <TextBlock Text="{Binding SubscriptionName}" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="{Binding ConfigUpdatedText}" Classes="dash-label" VerticalAlignment="Center"/>
+              <Border Classes="dash-tag" Margin="0">
+                <TextBlock Text="{Binding ConfigSourceTag}"/>
+              </Border>
+            </StackPanel>
+            <Grid ColumnDefinitions="*,*,*" Margin="0,2,0,0">
+              <StackPanel Spacing="2">
+                <TextBlock Text="{Binding StrategyGroupCountText}" FontSize="22" FontWeight="SemiBold"/>
+                <TextBlock Text="策略组" Classes="dash-label"/>
+              </StackPanel>
+              <StackPanel Grid.Column="1" Spacing="2">
+                <TextBlock Text="{Binding ProxyNodeCountText}" FontSize="22" FontWeight="SemiBold"/>
+                <TextBlock Text="代理" Classes="dash-label"/>
+              </StackPanel>
+              <StackPanel Grid.Column="2" Spacing="2">
+                <TextBlock Text="{Binding RouteRuleCountText}" FontSize="22" FontWeight="SemiBold"/>
+                <TextBlock Text="规则" Classes="dash-label"/>
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+        </Border>
+      </controls:EntranceFrame>
+
+      <controls:EntranceFrame Order="8" controls:DashboardWrapPanel.Row="2" controls:DashboardWrapPanel.Weight="2" controls:DashboardWrapPanel.MinItemWidth="480">
+        <Border Classes="dash-card dash-hover mid">
+          <StackPanel Spacing="4">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+              <Path Width="16" Height="16" Stretch="Uniform" Fill="{DynamicResource AppAccentBrush}"
+                    Data="{StaticResource RiStarLine}" VerticalAlignment="Center"/>
+              <TextBlock Grid.Column="1" Text="服务状态" Margin="8,0" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
+              <Border Grid.Column="2" Classes="summary-chip" Margin="0,0,4,0" VerticalAlignment="Center"
+                      Classes.all="{Binding Dash.ServicesAllAvailable}" Classes.partial="{Binding Dash.ServicesPartial}"
+                      Classes.down="{Binding Dash.ServicesUnavailable}">
+                <TextBlock Text="{Binding Dash.ServiceSummaryText}" Classes="summary-text"
+                           Classes.all="{Binding Dash.ServicesAllAvailable}" Classes.partial="{Binding Dash.ServicesPartial}"
+                           Classes.down="{Binding Dash.ServicesUnavailable}"/>
+              </Border>
+              <Button Grid.Column="3" Classes="ad-icon" AutomationProperties.Name="重新测试服务"
+                      ToolTip.Tip="{Binding Dash.ServiceTestToolTip}" ToolTip.ShowOnDisabled="True"
+                      HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                      IsEnabled="{Binding Dash.CanTestServices}" Click="RefreshServices_Click">
+                <Viewbox Width="16" Height="16" Stretch="Uniform">
+                  <Path Classes="accent-glyph" Width="24" Height="24" Stretch="None"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Data="{StaticResource RiRefreshLine}"/>
+                </Viewbox>
+              </Button>
+              <Button Grid.Column="4" Classes="ad-icon" Tag="Proxies" Click="OpenSection_Click"
+                      AutomationProperties.Name="打开代理" ToolTip.Tip="打开代理">
+                <Path Width="16" Height="16" Stretch="Uniform" Fill="{DynamicResource AppMutedBrush}"
+                      Data="{StaticResource RiArrowRightSLine}"/>
+              </Button>
+            </Grid>
+            <Grid ColumnDefinitions="*,6,*" RowDefinitions="Auto,6,Auto">
+              <Border Background="{DynamicResource AppSubtleBrush}" CornerRadius="14" Padding="8,4">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Grid Width="28" Height="28">
+                    <Border Width="26" Height="26" CornerRadius="13" Background="{DynamicResource AppSurfaceBrush}" HorizontalAlignment="Left" VerticalAlignment="Top">
+                      <Path Width="16" Height="16" Stretch="Uniform" Fill="{DynamicResource AppStrongTextBrush}"
+                            HorizontalAlignment="Center" VerticalAlignment="Center" Data="{StaticResource RiGoogleFill}"/>
+                    </Border>
+                    <Ellipse Classes="svc-dot" Width="9" Height="9" Stroke="{DynamicResource AppSubtleBrush}" StrokeThickness="2"
+                             HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                             Classes.ok="{Binding Dash.Google.IsOk}" Classes.slow="{Binding Dash.Google.IsSlow}" Classes.down="{Binding Dash.Google.IsDown}"/>
+                  </Grid>
+                  <StackPanel VerticalAlignment="Center" Spacing="1">
+                    <TextBlock Text="Google" FontSize="13" FontWeight="SemiBold"/>
+                    <controls:AnimatedFigure Kind="Milliseconds" Value="{Binding Dash.Google.DelayValue}"/>
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+              <Border Grid.Column="2" Background="{DynamicResource AppSubtleBrush}" CornerRadius="16" Padding="8,4">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Grid Width="28" Height="28">
+                    <Border Width="26" Height="26" CornerRadius="13" Background="{DynamicResource AppSurfaceBrush}" HorizontalAlignment="Left" VerticalAlignment="Top">
+                      <Path Width="16" Height="16" Stretch="Uniform" Fill="{DynamicResource AppStrongTextBrush}"
+                            HorizontalAlignment="Center" VerticalAlignment="Center" Data="{StaticResource RiGithubFill}"/>
+                    </Border>
+                    <Ellipse Classes="svc-dot" Width="9" Height="9" Stroke="{DynamicResource AppSubtleBrush}" StrokeThickness="2"
+                             HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                             Classes.ok="{Binding Dash.GitHub.IsOk}" Classes.slow="{Binding Dash.GitHub.IsSlow}" Classes.down="{Binding Dash.GitHub.IsDown}"/>
+                  </Grid>
+                  <StackPanel VerticalAlignment="Center" Spacing="1">
+                    <TextBlock Text="GitHub" FontSize="13" FontWeight="SemiBold"/>
+                    <controls:AnimatedFigure Kind="Milliseconds" Value="{Binding Dash.GitHub.DelayValue}"/>
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+              <Border Grid.Row="2" Background="{DynamicResource AppSubtleBrush}" CornerRadius="16" Padding="8,4">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Grid Width="28" Height="28">
+                    <Border Width="26" Height="26" CornerRadius="13" Background="{DynamicResource AppSurfaceBrush}" HorizontalAlignment="Left" VerticalAlignment="Top">
+                      <Path Width="16" Height="16" Stretch="Uniform" Fill="{DynamicResource AppStrongTextBrush}"
+                            HorizontalAlignment="Center" VerticalAlignment="Center" Data="{StaticResource RiYoutubeFill}"/>
+                    </Border>
+                    <Ellipse Classes="svc-dot" Width="9" Height="9" Stroke="{DynamicResource AppSubtleBrush}" StrokeThickness="2"
+                             HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                             Classes.ok="{Binding Dash.YouTube.IsOk}" Classes.slow="{Binding Dash.YouTube.IsSlow}" Classes.down="{Binding Dash.YouTube.IsDown}"/>
+                  </Grid>
+                  <StackPanel VerticalAlignment="Center" Spacing="1">
+                    <TextBlock Text="YouTube" FontSize="13" FontWeight="SemiBold"/>
+                    <controls:AnimatedFigure Kind="Milliseconds" Value="{Binding Dash.YouTube.DelayValue}"/>
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+              <Border Grid.Row="2" Grid.Column="2" Background="{DynamicResource AppSubtleBrush}" CornerRadius="16" Padding="8,4">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Grid Width="28" Height="28">
+                    <Border Width="26" Height="26" CornerRadius="13" Background="{DynamicResource AppSurfaceBrush}" HorizontalAlignment="Left" VerticalAlignment="Top">
+                      <Path Width="16" Height="16" Stretch="Uniform" Fill="{DynamicResource AppStrongTextBrush}"
+                            HorizontalAlignment="Center" VerticalAlignment="Center" Data="{StaticResource RiOpenaiFill}"/>
+                    </Border>
+                    <Ellipse Classes="svc-dot" Width="9" Height="9" Stroke="{DynamicResource AppSubtleBrush}" StrokeThickness="2"
+                             HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                             Classes.ok="{Binding Dash.ChatGPT.IsOk}" Classes.slow="{Binding Dash.ChatGPT.IsSlow}" Classes.down="{Binding Dash.ChatGPT.IsDown}"/>
+                  </Grid>
+                  <StackPanel VerticalAlignment="Center" Spacing="1">
+                    <TextBlock Text="ChatGPT" FontSize="13" FontWeight="SemiBold"/>
+                    <controls:AnimatedFigure Kind="Milliseconds" Value="{Binding Dash.ChatGPT.DelayValue}"/>
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+            </Grid>
+          </StackPanel>
+        </Border>
+      </controls:EntranceFrame>
+
+      <controls:EntranceFrame Order="9" controls:DashboardWrapPanel.Row="3" controls:DashboardWrapPanel.Weight="2.35" controls:DashboardWrapPanel.MinItemWidth="560">
+      <Border Classes="dash-card dash-hover">
+        <StackPanel Spacing="10">
+          <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Orientation="Horizontal">
+              <Button Classes="conn-tab" Classes.selected="{Binding Dash.IsLiveTab}" Content="{Binding Dash.LiveTabText}" Tag="0" Click="ConnectionTab_Click"/>
+              <Button Classes="conn-tab" Classes.selected="{Binding Dash.IsRecentTab}" Content="{Binding Dash.RecentTabText}" Tag="1" Click="ConnectionTab_Click"/>
+              <Button Classes="conn-tab" Classes.selected="{Binding Dash.IsDnsTab}" Content="{Binding Dash.DnsTabText}" Tag="2" Click="ConnectionTab_Click"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+              <Border Background="{DynamicResource AppSubtleBrush}" CornerRadius="10" Padding="8,3">
+                <TextBlock Text="{Binding Dash.TcpChipText}" FontSize="12"/>
+              </Border>
+              <Border Background="{DynamicResource AppSubtleBrush}" CornerRadius="10" Padding="8,3">
+                <TextBlock Text="{Binding Dash.UdpChipText}" FontSize="12"/>
+              </Border>
+            </StackPanel>
+          </Grid>
+          <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+            <StackPanel MinWidth="720" Spacing="0">
+              <Grid ColumnDefinitions="140,180,70,140,70,70,70" Margin="0,4,0,0">
+                <TextBlock Text="来源" Classes="dash-label"/>
+                <TextBlock Grid.Column="1" Text="目标" Classes="dash-label"/>
+                <TextBlock Grid.Column="2" Text="协议" Classes="dash-label"/>
+                <TextBlock Grid.Column="3" Text="出口" Classes="dash-label"/>
+                <TextBlock Grid.Column="4" Text="下载" Classes="dash-label"/>
+                <TextBlock Grid.Column="5" Text="上传" Classes="dash-label"/>
+                <TextBlock Grid.Column="6" Text="时长" Classes="dash-label"/>
+              </Grid>
+              <TextBlock Text="{Binding Dash.ConnectionsEmptyText}" Classes="dash-label" Margin="0,28" HorizontalAlignment="Center"
+                         IsVisible="{Binding !Dash.ShowConnectionRows}"/>
+              <ItemsControl ItemsSource="{Binding Dash.VisibleConnections}" IsVisible="{Binding Dash.ShowConnectionRows}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <controls:FadeSlide Fade="{Binding Fade}" Shift="{Binding Shift}">
+                    <Border Classes="conn-row">
+                      <Grid ColumnDefinitions="140,180,70,140,70,70,70">
+                        <TextBlock Text="{Binding Source}" FontSize="13" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="1" Text="{Binding Target}" FontSize="13" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" Text="{Binding Protocol}" FontSize="13" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="3" Text="{Binding Outbound}" FontSize="13" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="4" Text="{Binding Download}" FontSize="13" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="5" Text="{Binding Upload}" FontSize="13" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="6" Text="{Binding Duration}" FontSize="13" VerticalAlignment="Center"/>
+                      </Grid>
+                    </Border>
+                    </controls:FadeSlide>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock Text="{Binding Dash.ConnectionOverflowText}" Classes="dash-label" Margin="0,8,0,0"
+                         IsVisible="{Binding Dash.HasConnectionOverflow}"/>
+            </StackPanel>
+          </ScrollViewer>
+        </StackPanel>
+      </Border>
+      </controls:EntranceFrame>
+
+      <controls:EntranceFrame Order="10" controls:DashboardWrapPanel.Row="3" controls:DashboardWrapPanel.Weight="1.15" controls:DashboardWrapPanel.MinItemWidth="280">
+      <Border Classes="dash-card dash-hover">
+        <StackPanel Spacing="8">
+          <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+              <Path Width="16" Height="16" Stretch="Uniform" Fill="{DynamicResource AppAccentBrush}"
+                    Data="{StaticResource RiStackLine}" VerticalAlignment="Center"/>
+              <TextBlock Text="策略组" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
+            </StackPanel>
+            <Border Grid.Column="1" Margin="8,0,0,0" Background="{DynamicResource AppSubtleBrush}" CornerRadius="10" Padding="8,2" VerticalAlignment="Center">
+              <TextBlock Text="{Binding Dash.GroupCountText}" FontSize="12"/>
+            </Border>
+            <Button Grid.Column="3" Classes="ad-icon" Tag="Proxies" Click="OpenSection_Click"
+                    AutomationProperties.Name="打开策略组" ToolTip.Tip="打开代理">
+              <Path Width="16" Height="16" Stretch="Uniform" Fill="{DynamicResource AppMutedBrush}"
+                    Data="{StaticResource RiArrowRightSLine}"/>
+            </Button>
+          </Grid>
+          <TextBlock Text="{Binding Dash.GroupsEmptyText}" Classes="dash-label" Margin="0,16" HorizontalAlignment="Center"
+                     IsVisible="{Binding Dash.HasNoGroups}"/>
+          <ItemsControl ItemsSource="{Binding Dash.ProxyGroups}" IsVisible="{Binding Dash.HasGroups}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,6">
+                  <Border Width="32" Height="32" CornerRadius="10" Background="{DynamicResource AppSubtleBrush}">
+                    <TextBlock Text="{Binding Badge}" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                  </Border>
+                  <StackPanel Grid.Column="1" Margin="10,0" VerticalAlignment="Center" Spacing="1">
+                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Text="{Binding TypeText}" Classes="dash-label"/>
+                  </StackPanel>
+                  <Border Grid.Column="2" Background="{DynamicResource AppSubtleBrush}" CornerRadius="10" Padding="8,4" VerticalAlignment="Center" MaxWidth="140">
+                    <TextBlock Text="{Binding Now}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                  </Border>
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+      </controls:EntranceFrame>
+    </controls:DashboardWrapPanel>
+  </StackPanel>
+</UserControl>

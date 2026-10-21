@@ -11,6 +11,8 @@ using Avalonia.Threading;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using AsterDock.Host.Services;
+using AsterDock.UI.Motion;
+using AsterDock.UI.Services;
 
 namespace AsterDock.Host.Views;
 
@@ -26,10 +28,13 @@ public partial class MainWindow : Window, IApplicationShell
         Applications,
         Discover,
         Shortcuts,
+        Appearance,
         Update
     }
 
     private readonly ModuleCatalog _catalog = new();
+    private readonly LoadingService _loadingService = new();
+    private readonly UserFeedbackService _feedbackService = new();
     private readonly SharedSystemMetricsService _systemMetrics = new();
     private readonly GitHubUpdateService _updateService = new();
     private readonly GitHubApplicationDiscoveryService _discoveryService = new();
@@ -44,7 +49,11 @@ public partial class MainWindow : Window, IApplicationShell
     private ApplicationUpdate? _availableUpdate;
     private bool _discoveryLoaded;
     private readonly Dictionary<string, DateTimeOffset> _recentApplications = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HostUiSettings _uiSettings;
 
+    public ILoadingService Loading => _loadingService;
+    public IUserFeedbackService Feedback => _feedbackService;
+    internal UserFeedbackService FeedbackService => _feedbackService;
     public ObservableCollection<LoadedApplication> Applications { get; } = [];
     public ObservableCollection<DiscoverableApplication> DiscoverableApplications { get; } = [];
     public ObservableCollection<string> AppCategories { get; } = [];
@@ -59,6 +68,30 @@ public partial class MainWindow : Window, IApplicationShell
     {
         InitializeComponent();
         ConfigureWindowChrome();
+        _loadingService.Changed += OnLoadingServiceChanged;
+        WindowLoadingOverlay.CancelRequested += (_, _) => _loadingService.Cancel();
+        WindowFeedback.Service = _feedbackService;
+        _uiSettings = HostUiSettings.Load();
+        MotionPreferences.ReduceMotion = _uiSettings.ReduceMotion;
+        ReduceMotionSwitch.IsChecked = _uiSettings.ReduceMotion;
+        ReduceMotionSwitch.IsCheckedChanged += (_, _) =>
+        {
+            var enabled = ReduceMotionSwitch.IsChecked == true;
+            if (_uiSettings.ReduceMotion == enabled) return;
+            _uiSettings.ReduceMotion = enabled;
+            MotionPreferences.ReduceMotion = enabled;
+            _uiSettings.Save();
+        };
+        AllowSystemNotificationsSwitch.IsChecked = _uiSettings.AllowSystemNotifications;
+        AllowSystemNotificationsSwitch.IsCheckedChanged += (_, _) =>
+        {
+            var enabled = AllowSystemNotificationsSwitch.IsChecked == true;
+            if (_uiSettings.AllowSystemNotifications == enabled) return;
+            _uiSettings.AllowSystemNotifications = enabled;
+            _uiSettings.Save();
+            _feedbackService.RefreshDelivery();
+        };
+        AttachSystemNotifications();
         DataContext = this;
         AddHandler(InputElement.KeyDownEvent, Window_KeyDown, RoutingStrategies.Tunnel);
         AddHandler(InputElement.KeyUpEvent, Window_KeyUp, RoutingStrategies.Tunnel);
@@ -74,6 +107,8 @@ public partial class MainWindow : Window, IApplicationShell
             _updateCancellation.Dispose();
             _updateService.Dispose();
             _discoveryService.Dispose();
+            _loadingService.Changed -= OnLoadingServiceChanged;
+            if (_feedbackService.SystemNotifications is IDisposable notifications) notifications.Dispose();
         };
         Deactivated += (_, _) => ResetShortcutState();
         CurrentVersionText.Text = $"v{GitHubUpdateService.CurrentVersion}";
@@ -81,7 +116,7 @@ public partial class MainWindow : Window, IApplicationShell
 
     private async void MainWindow_Opened(object? sender, EventArgs e)
     {
-        LoadApplications();
+        if (!_applicationsLoaded) LoadApplications();
         await CheckForUpdatesAsync(silent: true);
     }
 
@@ -113,7 +148,9 @@ public partial class MainWindow : Window, IApplicationShell
         {
             EmptyMessage.Text = result.Failures.Count == 0
                 ? $"请把应用目录或 .appbundle 放入 {UserAppsDirectory} 后重新启动"
-                : result.Failures[0].Message;
+                : "有轻应用未能加载";
+            if (result.Failures.Count > 0)
+                _ = _feedbackService.ShowErrorAsync("轻应用加载失败", result.Failures[0].Message);
             return;
         }
 
@@ -132,30 +169,33 @@ public partial class MainWindow : Window, IApplicationShell
 
     private void OpenApplication(LoadedApplication application)
     {
-        HideAppSwitcher();
-        try
+        using (_loadingService.Begin($"正在打开 {application.Name}"))
         {
-            SettingsPanel.IsVisible = false;
-            HideAppInfo();
-            ApplicationContent.Content = _detachedApplications.ContainsKey(application)
-                ? CreateDetachedPlaceholder(application)
-                : application.GetOrCreateView(this, _systemMetrics);
-            EmptyState.IsVisible = false;
-            SetCurrentApplication(application);
-            UpdateCapsuleState();
-            WindowTitleText.Text = $"星栈  ·  {application.Name}";
-            Title = $"星栈 · {application.Name}";
-            _recentApplications[application.Manifest.Id] = DateTimeOffset.Now;
-            StateChanged?.Invoke(this, EventArgs.Empty);
-        }
-        catch (Exception exception)
-        {
-            ApplicationContent.Content = null;
-            EmptyState.IsVisible = true;
-            DetachApplicationNavigation();
-            _currentApplication = null;
-            UpdateCapsuleState();
-            EmptyMessage.Text = $"{application.Name} 加载失败：{exception.GetBaseException().Message}";
+            HideAppSwitcher();
+            try
+            {
+                SettingsPanel.IsVisible = false;
+                HideAppInfo();
+                ApplicationContent.Content = application.GetOrCreateView(this, _systemMetrics);
+                EmptyState.IsVisible = false;
+                SetCurrentApplication(application);
+                UpdateCapsuleState();
+                WindowTitleText.Text = $"星栈  ·  {application.Name}";
+                Title = $"星栈 · {application.Name}";
+                _recentApplications[application.Manifest.Id] = DateTimeOffset.Now;
+                StateChanged?.Invoke(this, EventArgs.Empty);
+                _feedbackService.RefreshDelivery();
+            }
+            catch (Exception exception)
+            {
+                ApplicationContent.Content = null;
+                EmptyState.IsVisible = true;
+                DetachApplicationNavigation();
+                _currentApplication = null;
+                UpdateCapsuleState();
+                EmptyMessage.Text = $"{application.Name} 未能打开";
+                _ = _feedbackService.ShowErrorAsync("打开失败", $"{application.Name} 加载失败：{exception.GetBaseException().Message}", exception);
+            }
         }
     }
 
@@ -237,6 +277,19 @@ public partial class MainWindow : Window, IApplicationShell
         if (e.ClickCount >= 3) FlyoutBase.ShowAttachedFlyout(TitleLogo);
     }
 
+    private void OnLoadingServiceChanged(object? sender, EventArgs e)
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() => OnLoadingServiceChanged(sender, e));
+            return;
+        }
+
+        WindowLoadingOverlay.Text = _loadingService.Text;
+        WindowLoadingOverlay.IsCancellable = _loadingService.IsCancellable;
+        WindowLoadingOverlay.IsLoading = _loadingService.IsLoading;
+    }
+
     private void SettingsMenuItem_Click(object? sender, RoutedEventArgs e) => PostAfterInput(ShowSettings);
 
     private void ApplicationSwitcherMenuItem_Click(object? sender, RoutedEventArgs e) => PostAfterInput(ShowAppSwitcher);
@@ -313,7 +366,16 @@ public partial class MainWindow : Window, IApplicationShell
     {
         e.Handled = true;
         if (sender is not Button { Tag: LoadedApplication application }) return;
-        PostAfterInput(() => StopRunningApplication(application));
+        PostAfterInput(() => _feedbackService.Run(async () =>
+        {
+            if (!application.IsRunning || application.Manifest.Id == "home") return;
+            var confirmed = await _feedbackService.ConfirmAsync(
+                "结束运行",
+                $"结束「{application.Name}」后，需要重新打开才能继续使用。",
+                "结束运行",
+                danger: true);
+            if (confirmed) StopRunningApplication(application);
+        }, "结束运行失败"));
     }
 
     private void StopRunningApplication(LoadedApplication application)
@@ -330,7 +392,6 @@ public partial class MainWindow : Window, IApplicationShell
                 var home = Applications.FirstOrDefault(item => item.Manifest.Id == "home");
                 if (home is not null) OpenApplication(home);
             }
-            // Prevent the detached-window close handler from restoring a disposed view.
             if (_detachedApplications.TryGetValue(application, out var window))
             {
                 _closingDetachedApplications = true;
@@ -341,8 +402,9 @@ public partial class MainWindow : Window, IApplicationShell
         }
         catch (Exception exception)
         {
-            AppInfoStopError.Text = $"{application.Name} 停止失败：{exception.GetBaseException().Message}";
+            AppInfoStopError.Text = $"{application.Name} 停止失败";
             AppInfoStopError.IsVisible = true;
+            _ = _feedbackService.ShowErrorAsync("停止失败", $"{application.Name} 停止失败：{exception.GetBaseException().Message}", exception);
             // Keep the error visible even when stopping the foreground app returned to Home.
             ++_appInfoAnimationVersion;
             AppInfoOverlay.IsVisible = true;
@@ -441,6 +503,7 @@ public partial class MainWindow : Window, IApplicationShell
         ShowSettingsSection(SettingsSection.Applications);
         WindowTitleText.Text = "星栈  ·  设置";
         Title = "星栈 · 设置";
+        _feedbackService.RefreshDelivery();
     }
 
     private void ApplicationsSettingsNav_Click(object? sender, RoutedEventArgs e)
@@ -458,6 +521,9 @@ public partial class MainWindow : Window, IApplicationShell
     private void ShortcutsSettingsNav_Click(object? sender, RoutedEventArgs e)
         => ShowSettingsSection(SettingsSection.Shortcuts);
 
+    private void AppearanceSettingsNav_Click(object? sender, RoutedEventArgs e)
+        => ShowSettingsSection(SettingsSection.Appearance);
+
     private void UpdateSettingsNav_Click(object? sender, RoutedEventArgs e)
         => ShowSettingsSection(SettingsSection.Update);
 
@@ -467,16 +533,19 @@ public partial class MainWindow : Window, IApplicationShell
         var showDiscover = section == SettingsSection.Discover;
         var showApplicationManagement = showApplications || showDiscover;
         var showShortcuts = section == SettingsSection.Shortcuts;
+        var showAppearance = section == SettingsSection.Appearance;
         var showUpdate = section == SettingsSection.Update;
         SettingsApplicationsSection.IsVisible = showApplications;
         SettingsDiscoverSection.IsVisible = showDiscover;
         SettingsShortcutsSection.IsVisible = showShortcuts;
+        SettingsAppearanceSection.IsVisible = showAppearance;
         SettingsUpdateSection.IsVisible = showUpdate;
         ApplicationManagementTabs.IsVisible = showApplicationManagement;
         SettingsSectionSubtitle.Text = showApplications ? "应用管理 · 已安装" :
-            showDiscover ? "应用管理 · 发现" : showShortcuts ? "快捷键" : "软件更新";
+            showDiscover ? "应用管理 · 发现" : showShortcuts ? "快捷键" : showAppearance ? "外观" : "软件更新";
         ApplicationsSettingsNavButton.Classes.Set("selected", showApplicationManagement);
         ShortcutsSettingsNavButton.Classes.Set("selected", showShortcuts);
+        AppearanceSettingsNavButton.Classes.Set("selected", showAppearance);
         UpdateSettingsNavButton.Classes.Set("selected", showUpdate);
         InstalledApplicationsTabButton.Classes.Set("selected", showApplications);
         DiscoverApplicationsTabButton.Classes.Set("selected", showDiscover);
@@ -504,7 +573,8 @@ public partial class MainWindow : Window, IApplicationShell
         }
         catch (Exception exception)
         {
-            DiscoveryStatusText.Text = $"获取轻应用失败：{exception.GetBaseException().Message}";
+            DiscoveryStatusText.Text = "获取轻应用失败";
+            _ = _feedbackService.ShowErrorAsync("获取轻应用失败", exception.GetBaseException().Message, exception);
         }
         finally
         {
@@ -535,7 +605,8 @@ public partial class MainWindow : Window, IApplicationShell
         }
         catch (Exception exception)
         {
-            DiscoveryStatusText.Text = $"安装失败：{exception.GetBaseException().Message}";
+            DiscoveryStatusText.Text = "安装失败";
+            _ = _feedbackService.ShowErrorAsync("安装失败", exception.GetBaseException().Message, exception);
         }
         finally
         {
@@ -584,7 +655,11 @@ public partial class MainWindow : Window, IApplicationShell
         }
         catch (Exception exception)
         {
-            if (!silent) UpdateStatusText.Text = $"检查更新失败：{exception.GetBaseException().Message}";
+            if (!silent)
+            {
+                UpdateStatusText.Text = "检查更新失败";
+                _ = _feedbackService.ShowErrorAsync("检查更新失败", exception.GetBaseException().Message, exception);
+            }
         }
         finally
         {
@@ -612,7 +687,8 @@ public partial class MainWindow : Window, IApplicationShell
         }
         catch (Exception exception)
         {
-            UpdateStatusText.Text = $"下载更新失败：{exception.GetBaseException().Message}";
+            UpdateStatusText.Text = "下载更新失败";
+            _ = _feedbackService.ShowErrorAsync("下载更新失败", exception.GetBaseException().Message, exception);
             DownloadUpdateButton.IsEnabled = true;
         }
         finally
@@ -754,7 +830,8 @@ public partial class MainWindow : Window, IApplicationShell
         }
         catch (Exception exception)
         {
-            status = $"加载失败：{exception.GetBaseException().Message}";
+            status = "加载失败";
+            _ = _feedbackService.ShowErrorAsync("加载失败", exception.GetBaseException().Message, exception);
         }
         finally
         {
@@ -778,6 +855,8 @@ public partial class MainWindow : Window, IApplicationShell
         base.PropertyChanged += (_, args) =>
         {
             if (args.Property == WindowStateProperty) UpdateMaximizeGlyph();
+            if (args.Property == WindowStateProperty || args.Property == IsVisibleProperty)
+                _feedbackService.RefreshDelivery();
         };
     }
 

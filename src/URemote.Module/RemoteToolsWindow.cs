@@ -1,4 +1,5 @@
 using System.Text;
+using AsterDock.Contracts;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Avalonia;
@@ -28,12 +29,13 @@ public sealed partial class RemoteToolsWindow : Window
     private int terminalStarted;
     private readonly HashSet<string> dataChannels = [];
     public Task Completion { get; private set; } = Task.CompletedTask;
+    private IUserFeedbackService? feedback;
 
     public RemoteToolsWindow() => InitializeComponent();
 
-    public RemoteToolsWindow(UuDevice device, LoginState state, bool terminal) : this()
+    public RemoteToolsWindow(UuDevice device, LoginState state, bool terminal, IUserFeedbackService? feedback = null) : this()
     {
-        this.terminal = terminal; files = new(controller.SendData);
+        this.terminal = terminal; this.feedback = feedback; files = new(controller.SendData);
         Title = device.Name + (terminal ? " · 远程终端" : " · 文件传输");
         disconnect.Click += (_, _) => Close();
         if (terminal)
@@ -86,7 +88,7 @@ public sealed partial class RemoteToolsWindow : Window
             await connection;
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
-        catch { Post(() => status.Text = "连接失败或已断开，请确认设备在线、功能受支持且没有其他控制会话。"); }
+        catch { Post(() => { status.Text = "连接失败或已断开，请确认设备在线、功能受支持且没有其他控制会话。"; feedback.Notify(FeedbackKind.Error, status.Text, "远程工具"); }); }
         finally { stop.Cancel(); try { await connection; } catch { } Post(() => { command.IsEnabled = false; fileActions.IsEnabled = false; }); }
     }
     private void Receive(string channel, byte[] bytes)
@@ -99,7 +101,7 @@ public sealed partial class RemoteToolsWindow : Window
             if (frame.Type == 13)
             {
                 using var json = JsonDocument.Parse(frame.Payload);
-                if (json.RootElement.GetProperty("code").GetInt32() != 0 || frame.SessionId == 0) { terminalOpened.TrySetException(new IOException("终端创建失败")); return; }
+                if (json.RootElement.GetProperty("code").GetInt32() != 0 || frame.SessionId == 0) { feedback.Notify(FeedbackKind.Error, "终端创建失败", "远程终端"); terminalOpened.TrySetException(new IOException("终端创建失败")); return; }
                 sessionId = frame.SessionId; terminalOpened.TrySetResult();
             }
             else if (frame.Type == 5 && frame.SessionId == sessionId)
@@ -111,16 +113,16 @@ public sealed partial class RemoteToolsWindow : Window
                 var clean = new string(text.Where(c => c is '\n' or '\r' or '\t' || !char.IsControl(c)).ToArray());
                 Post(() => { var content = transcript.Text + clean; transcript.Text = content.Length > 262144 ? content[^262144..] : content; transcript.CaretIndex = transcript.Text.Length; });
             }
-            else if (frame.Type is 6 or 8 or 12) Post(() => status.Text = "终端会话已结束或返回错误");
+            else if (frame.Type is 6 or 8 or 12) Post(() => { status.Text = "终端会话已结束或返回错误"; feedback.Notify(FeedbackKind.Error, status.Text, "远程终端"); });
         }
-        catch (Exception e) when (e is FormatException or JsonException or KeyNotFoundException or InvalidOperationException) { Post(() => status.Text = "收到无效终端响应"); }
+        catch (Exception e) when (e is FormatException or JsonException or KeyNotFoundException or InvalidOperationException) { Post(() => { status.Text = "收到无效终端响应"; feedback.Notify(FeedbackKind.Error, status.Text, "远程终端"); }); }
     }
     private bool SendTerminal(byte type, byte[] payload) => controller.SendData("BINARY_DATA_CHANNEL", HostTerminalProtocol.EncodeFrame(type, sessionId, payload));
     private void SendCommand()
     {
         if (!command.IsEnabled || sessionId == 0) return;
         if (SendTerminal(2, Encoding.UTF8.GetBytes((command.Text ?? "") + "\r"))) command.Text = "";
-        else status.Text = "发送失败，请重新连接。";
+        else { status.Text = "发送失败，请重新连接。"; feedback.Notify(FeedbackKind.Error, status.Text, "远程终端"); }
     }
     private async Task ListAsync(string destination, bool remember)
     {
@@ -133,7 +135,7 @@ public sealed partial class RemoteToolsWindow : Window
             listing.ItemsSource = entries.Select(d => new ListBoxItem { Tag = d, Content = (d.Directory ? "▣  " : "▤  ") + d.Name + (d.Directory ? " /" : $"    {d.Size:N0} 字节") }).ToArray();
             status.Text = $"{entries.Count} 项 · 双击目录进入";
         }
-        catch { status.Text = "无法读取目录，请检查路径或权限。"; }
+        catch { status.Text = "无法读取目录，请检查路径或权限。"; feedback.Notify(FeedbackKind.Error, status.Text, "文件传输"); }
         finally { busy = false; fileActions.IsEnabled = !stop.IsCancellationRequested; }
     }
     private async Task UploadAsync()
@@ -165,7 +167,7 @@ public sealed partial class RemoteToolsWindow : Window
         using var cancel = CancellationTokenSource.CreateLinkedTokenSource(stop.Token); transferStop = cancel;
         try { await run(cancel.Token); status.Text = "传输完成"; }
         catch (OperationCanceledException) { status.Text = "传输已取消"; }
-        catch { status.Text = "传输失败，请检查权限、文件是否变化或连接状态。"; }
+        catch { status.Text = "传输失败，请检查权限、文件是否变化或连接状态。"; feedback.Notify(FeedbackKind.Error, status.Text, "文件传输"); }
         finally { transferStop = null; busy = false; fileActions.IsEnabled = !stop.IsCancellationRequested; }
     }
 }

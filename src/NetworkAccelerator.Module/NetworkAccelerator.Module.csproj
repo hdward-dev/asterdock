@@ -8,9 +8,12 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\AsterDock.Contracts\AsterDock.Contracts.csproj" />
+    <ProjectReference Include="..\AsterDock.UI\AsterDock.UI.csproj" Private="false" />
     <ProjectReference Include="..\NetworkAccelerator.Core\NetworkAccelerator.Core.csproj" />
-    <PackageReference Include="Avalonia" Version="12.1.0" />
-    <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
+    <PackageReference Include="Avalonia" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.2" />
+    <PackageReference Include="Fluid.Avalonia.Acrylic" Version="1.4.0" />
   </ItemGroup>
   <ItemGroup>
     <None Update="app.json" CopyToOutputDirectory="PreserveNewest" />

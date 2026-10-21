@@ -1,3 +1,4 @@
+using AsterDock.Contracts;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -13,6 +14,9 @@ public partial class SerialDebuggerView : UserControl
 {
     private double _workspaceHeight = 600;
     private readonly SerialDebuggerViewModel _viewModel;
+    private readonly IUserFeedbackService? _feedback;
+    private readonly bool _ownsModel;
+    private bool _hooked;
     private bool _disposed;
     private SerialPortSessionViewModel? _resizingSession;
     private double _resizeStartX;
@@ -23,23 +27,45 @@ public partial class SerialDebuggerView : UserControl
     {
     }
 
-    public SerialDebuggerView(string dataDirectory)
+    public SerialDebuggerView(string dataDirectory, IUserFeedbackService? feedback = null)
+        : this(new SerialDebuggerViewModel(dataDirectory, feedback), feedback, ownsModel: true)
+    {
+    }
+
+    public SerialDebuggerView(SerialDebuggerViewModel viewModel, IUserFeedbackService? feedback, bool ownsModel = false)
     {
         InitializeComponent();
-        _viewModel = new SerialDebuggerViewModel(dataDirectory);
-        DataContext = _viewModel;
-        _viewModel.Sessions.CollectionChanged += Sessions_CollectionChanged;
-        foreach (var session in _viewModel.Sessions) AttachSession(session);
-        _ = _viewModel.InitializeAsync();
+        _feedback = feedback;
+        _viewModel = viewModel;
+        _ownsModel = ownsModel;
+        DataContext = viewModel;
+        AttachedToVisualTree += (_, _) => Hook();
+        DetachedFromVisualTree += (_, _) => Unhook();
+        _ = viewModel.InitializeAsync();
     }
 
     public void DisposeResources()
     {
         if (_disposed) return;
         _disposed = true;
+        Unhook();
+        if (_ownsModel) _viewModel.Dispose();
+    }
+
+    private void Hook()
+    {
+        if (_hooked || _disposed) return;
+        _hooked = true;
+        _viewModel.Sessions.CollectionChanged += Sessions_CollectionChanged;
+        foreach (var session in _viewModel.Sessions) AttachSession(session);
+    }
+
+    private void Unhook()
+    {
+        if (!_hooked) return;
+        _hooked = false;
         _viewModel.Sessions.CollectionChanged -= Sessions_CollectionChanged;
         foreach (var session in _viewModel.Sessions) DetachSession(session);
-        _viewModel.Dispose();
     }
 
     private void Sessions_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -218,7 +244,10 @@ public partial class SerialDebuggerView : UserControl
 
     private async void RemoveQuickCommand_Click(object? sender, RoutedEventArgs e)
     {
-        if (GetSession(sender) is { } session && session.RemoveQuickCommand()) await _viewModel.SaveAsync();
+        if (GetSession(sender) is not { } session || session.SelectedQuickCommand is not { } command) return;
+        if (_feedback is not null && !await _feedback.ConfirmAsync("删除快捷指令", $"删除「{command.Name}」后无法恢复。", "删除", "取消", danger: true))
+            return;
+        if (session.RemoveQuickCommand()) await _viewModel.SaveAsync();
     }
 
     private async void QuickCommand_Click(object? sender, RoutedEventArgs e)

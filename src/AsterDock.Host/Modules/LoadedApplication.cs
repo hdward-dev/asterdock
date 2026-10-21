@@ -1,5 +1,7 @@
 using AsterDock.Contracts;
 using AsterDock.Host.Services;
+using AsterDock.Host.Views;
+using AsterDock.UI.Services;
 using Avalonia.Controls;
 using Avalonia.Media;
 
@@ -46,6 +48,15 @@ public sealed class LoadedApplication : IDisposable
         if (_view is not null) return _view;
         EnsureInitialized(owner, systemMetrics);
         return _view = _module!.CreateView();
+    }
+
+    /// <summary>
+    /// A second page for an independent window. This is never the control already shown in the host.
+    /// </summary>
+    public Control CreateDetachedView(Window owner, ISystemMetricsService systemMetrics)
+    {
+        EnsureInitialized(owner, systemMetrics);
+        return _module!.CreateView();
     }
 
     public IReadOnlyList<ApplicationQuickAction> GetQuickActions(Window owner, ISystemMetricsService systemMetrics)
@@ -95,7 +106,20 @@ public sealed class LoadedApplication : IDisposable
             ?? throw new InvalidOperationException("无法重新创建轻应用实例");
         if (owner is not IApplicationShell shell)
             throw new InvalidOperationException("宿主窗口未提供应用导航服务");
-        var context = new ApplicationContext(Manifest.Id, owner, shell, systemMetrics);
+        ILoadingService loading = owner is MainWindow main ? main.Loading : new LoadingService();
+        UserFeedbackService windowFeedback;
+        IUserFeedbackService feedback;
+        if (owner is MainWindow hostWindow)
+        {
+            windowFeedback = hostWindow.FeedbackService;
+            feedback = new ModuleFeedbackService(windowFeedback, Manifest.Id);
+        }
+        else
+        {
+            feedback = windowFeedback = new UserFeedbackService();
+        }
+
+        var context = new ApplicationContext(Manifest.Id, owner, shell, systemMetrics, loading, feedback, windowFeedback);
         try
         {
             if (_module is IApplicationContextAware contextAware) contextAware.Initialize(context);

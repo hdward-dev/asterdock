@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Avalonia.Threading;
 using AsterDock.Contracts;
 using Avalonia;
 using Avalonia.Automation;
@@ -15,6 +16,7 @@ namespace VMCube.Module.Views;
 public sealed partial class VMCubeView
 {
     private bool _isLocal = true, _listView, _favoritesOnly, _compact;
+    private int _detailPlacement;
     private int _cardColumns = 2;
     private string? _selectedVmId;
     private readonly List<Button> _navigation = [], _catalogTabs = [];
@@ -64,10 +66,19 @@ public sealed partial class VMCubeView
             }
             _page.Margin = new Thickness(e.NewSize.Width >= 1150 ? 24 : 16);
             if (_compact != compact) {
-                _railDetails.Content = null; _inlineDetails.Content = null;
-                if (compact) _inlineDetails.Content = _details; else _railDetails.Content = _details;
-                inlineCard.IsVisible = compact;
-                _compact = compact;
+                // _details stays inside this window. The parent swap waits until arrange finishes
+                // so it does not invalidate a layout manager that is already walking the tree.
+                var useInline = compact;
+                var generation = ++_detailPlacement;
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (generation != _detailPlacement) return;
+                    _railDetails.Content = null;
+                    _inlineDetails.Content = null;
+                    if (useInline) _inlineDetails.Content = _details; else _railDetails.Content = _details;
+                    inlineCard.IsVisible = useInline;
+                    _compact = useInline;
+                }, DispatcherPriority.Background);
             }
             var columns = e.NewSize.Width >= 1150 ? 2 : 1;
             if (columns != _cardColumns) { _cardColumns = columns; RenderMachines(); }

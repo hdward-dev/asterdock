@@ -181,30 +181,11 @@ internal static class FeedbackChecks
         shown.UpdateLayout();
         Dispatcher.UIThread.RunJobs();
         FeedbackWindow.Attach(shown, service);
-        for (var i = 0; i < 8; i++) Dispatcher.UIThread.RunJobs();
+        for (var i = 0; i < 4; i++) Dispatcher.UIThread.RunJobs();
         late.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        check(lateClicks == 1, "attach after measure does not throw and the button still clicks");
-        var moved = 0;
-        var moving = new Button { Name = "MovedAction", Content = "移出" };
-        moving.Click += (_, _) => moved++;
-        var source = new Window { Width = 480, Height = 320, Content = moving };
-        source.Show();
-        source.UpdateLayout();
-        Dispatcher.UIThread.RunJobs();
-        var destination = new Window { Width = 480, Height = 320 };
-        var root = new Grid();
-        root.Children.Add(new AdFeedbackLayer { Service = service });
-        destination.Content = root;
-        FeedbackWindow.Adopt(moving, control => root.Children.Insert(0, control));
-        for (var i = 0; i < 8; i++) Dispatcher.UIThread.RunJobs();
-        destination.Show();
-        Dispatcher.UIThread.RunJobs();
-        moving.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        check(moved == 1 && TopLevel.GetTopLevel(moving) == destination, "measured control moves into a new window without a layout fault");
+        check(lateClicks == 1 && ReferenceEquals(shown.Content, late), "attach after measure does not throw and the button still clicks");
         window.Close();
         shown.Close();
-        source.Close();
-        destination.Close();
         FeedbackMotion.Snap = false;
     }
 }

@@ -186,8 +186,14 @@ AppBuilder.Configure<UiCheckApp>().UsePlatformDetect().AfterSetup(builder =>
             Click(window.GetVisualDescendants().OfType<Button>().Single(x => x.Name == "DialogSecondary"));
             await Task.Delay(80);
             window.Width = 720; await Task.Delay(200); Capture("narrow.png");
-            window.Width = 1200; await Task.Delay(100);
-            if (TopLevel.GetTopLevel(details) is null || CardCount() != 4) throw new Exception("Responsive detail panel failed to reattach");
+            window.Width = 1200;
+            var reattached = false;
+            for (var i = 0; i < 40 && !reattached; i++)
+            {
+                await Task.Delay(50);
+                reattached = TopLevel.GetTopLevel(details) is not null && CardCount() == 4;
+            }
+            if (!reattached) throw new Exception("Responsive detail panel failed to reattach");
             var importDialog = (Window)typeof(VMCubeView).GetMethod("BuildImportDialog", flags)!.Invoke(view, null)!;
             importDialog.Show(window); await Task.Delay(100);
             if (!importDialog.GetVisualDescendants().OfType<TextBlock>().Any(x => x.Text?.Contains("UEFI / TPM / QEMU") == true)) throw new Exception("Import firmware controls missing");

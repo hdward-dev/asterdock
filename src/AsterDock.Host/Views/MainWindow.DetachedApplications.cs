@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using AsterDock.Contracts;
 using AsterDock.Host.Modules;
 using AsterDock.UI.Controls;
 using Avalonia.Controls;
@@ -35,6 +36,7 @@ public partial class MainWindow
         if (ReferenceEquals(detachedView, page) || FeedbackWindow.HasLayoutManager(detachedView))
         {
             Trace.TraceError("独立窗口需要一个尚未布局的新页面，已取消打开");
+            _feedbackService.Toast(FeedbackKind.Warning, "无法打开独立窗口：该应用未能提供新页面");
             return;
         }
 

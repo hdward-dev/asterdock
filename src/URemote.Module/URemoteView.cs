@@ -48,10 +48,10 @@ public sealed partial class URemoteView : UserControl, IDisposable
         initialize = Task.CompletedTask;
     }
 
-    public URemoteView(string dataDirectory, IApplicationContext? context = null) : this()
+    public URemoteView(string dataDirectory, IApplicationContext? context = null, bool startSession = true) : this()
     {
         appContext = context;
-        if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS()) termination = System.Runtime.InteropServices.PosixSignalRegistration.Create(
+        if (startSession && (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())) termination = System.Runtime.InteropServices.PosixSignalRegistration.Create(
             System.Runtime.InteropServices.PosixSignal.SIGTERM, context =>
             {
                 context.Cancel = true;
@@ -74,10 +74,11 @@ public sealed partial class URemoteView : UserControl, IDisposable
         logout.Click += async (_, _) => await LogoutAsync();
         hostSwitch.PropertyChanged += (_, e) =>
         {
-            if (e.Property != ToggleSwitch.IsCheckedProperty || updatingHostSwitch) return;
+            if (!startSession || e.Property != ToggleSwitch.IsCheckedProperty || updatingHostSwitch) return;
             if (hostSwitch.IsChecked == true) Start(); else Stop();
         };
-        initialize = InitializeAsync();
+        if (!startSession) hostSwitch.IsEnabled = false;
+        initialize = startSession ? InitializeAsync() : Task.CompletedTask;
     }
     private static string FindExecutable(string name)
     {

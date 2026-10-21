@@ -14,6 +14,7 @@ public partial class NetworkAcceleratorView : UserControl
 {
     private readonly IApplicationContext? _context;
     private readonly NetworkAcceleratorViewModel? _viewModel;
+    private readonly bool _ownsModel;
     private bool _initialized;
     private string _selectedSection = "Overview";
 
@@ -94,11 +95,17 @@ public partial class NetworkAcceleratorView : UserControl
         if (_viewModel is not null) _viewModel.NodeSearchText = string.Empty;
     }
 
-    public NetworkAcceleratorView(IApplicationContext context, string moduleDirectory) : this()
+    public NetworkAcceleratorView(IApplicationContext context, string moduleDirectory)
+        : this(context, new NetworkAcceleratorViewModel(context.DataDirectory, moduleDirectory, context.Feedback), ownsModel: true)
+    {
+    }
+
+    public NetworkAcceleratorView(IApplicationContext context, NetworkAcceleratorViewModel viewModel, bool ownsModel = false) : this()
     {
         _context = context;
-        _viewModel = new NetworkAcceleratorViewModel(context.DataDirectory, moduleDirectory, context.Feedback);
-        DataContext = _viewModel;
+        _viewModel = viewModel;
+        _ownsModel = ownsModel;
+        DataContext = viewModel;
         AttachedToVisualTree += (_, _) =>
         {
             if (_initialized || _viewModel is null) return;
@@ -111,7 +118,7 @@ public partial class NetworkAcceleratorView : UserControl
 
     public void DisposeResources()
     {
-        _viewModel?.Dispose();
+        if (_ownsModel) _viewModel?.Dispose();
     }
 
     private async Task InitializeAsync()

@@ -17,6 +17,7 @@ public sealed partial class VMCubeView
 {
     private bool _isLocal = true, _listView, _favoritesOnly, _compact;
     private int _detailPlacement;
+    private int _detailPlacementAttempts;
     private int _cardColumns = 2;
     private string? _selectedVmId;
     private readonly List<Button> _navigation = [], _catalogTabs = [];
@@ -65,20 +66,14 @@ public sealed partial class VMCubeView
                 button.HorizontalContentAlignment = compact ? HorizontalAlignment.Center : HorizontalAlignment.Left;
             }
             _page.Margin = new Thickness(e.NewSize.Width >= 1150 ? 24 : 16);
-            if (_compact != compact) {
+            if (_compact != compact)
+            {
                 // _details stays inside this window. The parent swap waits until arrange finishes
                 // so it does not invalidate a layout manager that is already walking the tree.
-                var useInline = compact;
+                // The posted move reads the width again; a resize that lands before it runs is not dropped.
+                _detailPlacementAttempts = 0;
                 var generation = ++_detailPlacement;
-                Dispatcher.UIThread.Post(() =>
-                {
-                    if (generation != _detailPlacement) return;
-                    _railDetails.Content = null;
-                    _inlineDetails.Content = null;
-                    if (useInline) _inlineDetails.Content = _details; else _railDetails.Content = _details;
-                    inlineCard.IsVisible = useInline;
-                    _compact = useInline;
-                }, DispatcherPriority.Background);
+                Dispatcher.UIThread.Post(() => ApplyDetailPlacement(generation), DispatcherPriority.Background);
             }
             var columns = e.NewSize.Width >= 1150 ? 2 : 1;
             if (columns != _cardColumns) { _cardColumns = columns; RenderMachines(); }
@@ -126,6 +121,55 @@ public sealed partial class VMCubeView
         ShowPage(index); UpdateStats(); Filter();
         if (index == 0 && _connectedUri is null && !_demo) await ConnectAsync();
     }
+    private void ApplyDetailPlacement(int generation)
+    {
+        if (generation != _detailPlacement || _disposed) return;
+        var useInline = Bounds.Width < 850;
+        var target = useInline ? _inlineDetails : _railDetails;
+        var other = useInline ? _railDetails : _inlineDetails;
+        if (!ReferenceEquals(target.Content, _details))
+        {
+            try
+            {
+                if (ReferenceEquals(other.Content, _details)) other.Content = null;
+                if (_details.Parent is null) target.Content = _details;
+            }
+            catch (ArgumentException ex) when (ex.Message.Contains("wrong LayoutManager", StringComparison.Ordinal))
+            {
+                if (_details.Parent is null)
+                {
+                    try { target.Content = _details; }
+                    catch (ArgumentException retry) when (retry.Message.Contains("wrong LayoutManager", StringComparison.Ordinal))
+                    {
+                        RetryDetailPlacement(generation);
+                        return;
+                    }
+                }
+                else
+                {
+                    RetryDetailPlacement(generation);
+                    return;
+                }
+            }
+        }
+
+        if (!ReferenceEquals(target.Content, _details))
+        {
+            RetryDetailPlacement(generation);
+            return;
+        }
+
+        if (ReferenceEquals(other.Content, _details)) other.Content = null;
+        inlineCard.IsVisible = useInline;
+        _compact = useInline;
+    }
+
+    private void RetryDetailPlacement(int generation)
+    {
+        if (generation != _detailPlacement || ++_detailPlacementAttempts > 8) return;
+        Dispatcher.UIThread.Post(() => ApplyDetailPlacement(generation), DispatcherPriority.Background);
+    }
+
     private static void Place(ContentControl host, Control control)
     {
         if (ReferenceEquals(host.Content, control)) return;

@@ -1,5 +1,6 @@
 using AsterDock.Contracts;
 using Avalonia.Controls;
+using DeviceInformation.Module.ViewModels;
 using DeviceInformation.Module.Views;
 
 namespace DeviceInformation.Module;
@@ -9,13 +10,20 @@ public sealed class DeviceInformationApplicationModule :
     IApplicationContextAware,
     IApplicationQuickActionProvider
 {
-    private DeviceInformationView? _view;
+    private readonly List<DeviceInformationView> _views = [];
+    private DeviceInformationViewModel? _model;
     private IApplicationContext? _context;
     private DeviceStatusWidgetWindow? _widgetWindow;
 
     public void Initialize(IApplicationContext context) => _context = context;
 
-    public Control CreateView() => _view ??= new DeviceInformationView(GetSystemMetrics(), ShowWidget, _context?.Feedback);
+    public Control CreateView()
+    {
+        _model ??= new DeviceInformationViewModel(GetSystemMetrics(), _context?.Feedback);
+        var view = new DeviceInformationView(_model, ShowWidget);
+        _views.Add(view);
+        return view;
+    }
 
     public IReadOnlyList<ApplicationQuickAction> GetQuickActions() =>
     [
@@ -29,8 +37,10 @@ public sealed class DeviceInformationApplicationModule :
     {
         _widgetWindow?.Close();
         _widgetWindow = null;
-        _view?.DisposeResources();
-        _view = null;
+        foreach (var view in _views) view.DisposeResources();
+        _views.Clear();
+        _model?.Dispose();
+        _model = null;
         _context = null;
     }
 

@@ -32,7 +32,7 @@ public sealed partial class VMCubeView : UserControl, IDisposable
         _local = null!;
     }
 
-    public VMCubeView(IApplicationContext context) : this()
+    public VMCubeView(IApplicationContext context, bool connectWhenShown = true) : this()
     {
         _context = context;
         _local = new LocalVmService(context.DataDirectory);
@@ -51,7 +51,8 @@ public sealed partial class VMCubeView : UserControl, IDisposable
         _search.TextChanged += (_, _) => Filter();
         _filter.SelectionChanged += (_, _) => Filter();
         UpdateStats(); Filter(); AddLog("VMCUBE 0.7.1 已就绪");
-        AttachedToVisualTree += async (_, _) => { if (!_disposed && IsLocal && _connectedUri is null && !_demo) await ExecuteAsync(ConnectAsync); };
+        if (connectWhenShown)
+            AttachedToVisualTree += async (_, _) => { if (!_disposed && IsLocal && _connectedUri is null && !_demo) await ExecuteAsync(ConnectAsync); };
     }
 
     private async void Refresh_Click(object? sender, RoutedEventArgs e) => await ExecuteAsync(RefreshAsync);

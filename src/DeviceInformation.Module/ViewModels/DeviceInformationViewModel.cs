@@ -77,6 +77,24 @@ public sealed class DeviceInformationViewModel : INotifyPropertyChanged, IDispos
     public IReadOnlyList<double> CpuHistoryValues { get => _cpuHistoryValues; private set => SetField(ref _cpuHistoryValues, value); }
     public IReadOnlyList<double> GpuHistoryValues { get => _gpuHistoryValues; private set => SetField(ref _gpuHistoryValues, value); }
 
+    private int _attachments;
+
+    public Task AttachAsync()
+    {
+        if (_disposed) return Task.CompletedTask;
+        if (Interlocked.Increment(ref _attachments) != 1) return Task.CompletedTask;
+        return StartAsync();
+    }
+
+    public void Detach()
+    {
+        if (_disposed) return;
+        var remaining = Interlocked.Decrement(ref _attachments);
+        if (remaining > 0) return;
+        if (remaining < 0) Interlocked.Exchange(ref _attachments, 0);
+        Stop();
+    }
+
     public async Task StartAsync()
     {
         if (_disposed) return;

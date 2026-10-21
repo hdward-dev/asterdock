@@ -15,6 +15,7 @@ namespace AndroidScreen.Module.Views;
 public partial class AndroidScreenView : UserControl
 {
     private readonly AndroidScreenViewModel? _viewModel;
+    private readonly bool _ownsModel;
     private bool _dragging;
     private (int X, int Y, int Width, int Height)? _lastPosition;
     private bool _copyRequested;
@@ -28,17 +29,30 @@ public partial class AndroidScreenView : UserControl
         DetachedFromVisualTree += (_, _) => ReleaseTouch();
     }
 
-    public AndroidScreenView(string dataDirectory, string moduleDirectory, IUserFeedbackService? feedback = null) : this()
+    public AndroidScreenView(string dataDirectory, string moduleDirectory, IUserFeedbackService? feedback = null)
+        : this(new AndroidScreenViewModel(dataDirectory, moduleDirectory, feedback), ownsModel: true)
     {
-        _viewModel = new(dataDirectory, moduleDirectory, feedback); DataContext = _viewModel;
-        AttachedToVisualTree += async (_, _) => await _viewModel.InitializeAsync();
-        _viewModel.PropertyChanged += ModelChanged;
+    }
+
+    public AndroidScreenView(AndroidScreenViewModel viewModel, bool ownsModel = false) : this()
+    {
+        _viewModel = viewModel;
+        _ownsModel = ownsModel;
+        DataContext = viewModel;
+        AttachedToVisualTree += async (_, _) =>
+        {
+            viewModel.PropertyChanged -= ModelChanged;
+            viewModel.PropertyChanged += ModelChanged;
+            await viewModel.InitializeAsync();
+        };
+        DetachedFromVisualTree += (_, _) => viewModel.PropertyChanged -= ModelChanged;
     }
 
     public void DisposeResources()
     {
         ReleaseTouch();
-        if (_viewModel is not null) { _viewModel.PropertyChanged -= ModelChanged; _viewModel.Dispose(); }
+        if (_viewModel is not null) _viewModel.PropertyChanged -= ModelChanged;
+        if (_ownsModel) _viewModel?.Dispose();
     }
 
     private void UpdateLayoutMode()

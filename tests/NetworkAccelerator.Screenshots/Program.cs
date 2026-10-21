@@ -1,5 +1,6 @@
 using System.Globalization;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Markup.Xaml.Styling;
@@ -29,6 +30,7 @@ Capture("overview-light-populated", ThemeVariant.Light, Populated(allowLan: fals
 Capture("overview-dark-disconnected", ThemeVariant.Dark, Disconnected(), 1360, 1180, output);
 Capture("overview-dark-populated", ThemeVariant.Dark, Populated(allowLan: true), 1360, 1560, output);
 Capture("overview-narrow-populated", ThemeVariant.Light, Populated(allowLan: false), 760, 2200, output);
+CaptureSubscriptionButtons(output);
 if (!args.Contains("--stills"))
 {
     CaptureMotion(Path.Combine(output, "overview-motion"));
@@ -36,6 +38,93 @@ if (!args.Contains("--stills"))
     CaptureNavClip(Path.Combine(output, "nav-and-power"));
 }
 Console.WriteLine("PASS dashboard screenshots in " + output);
+
+static void CaptureSubscriptionButtons(string output)
+{
+    foreach (var theme in new[] { ThemeVariant.Light, ThemeVariant.Dark })
+    {
+        var name = theme == ThemeVariant.Light ? "light" : "dark";
+        DashboardMotion.ReduceMotion = true;
+        Application.Current!.RequestedThemeVariant = theme;
+        var directory = Path.Combine(Path.GetTempPath(), "na-sub-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var viewModel = new NetworkAcceleratorViewModel(directory, directory);
+        Window? window = null;
+        try
+        {
+            viewModel.ShowDashboardPreview(Populated(allowLan: false));
+            var view = new NetworkAcceleratorView
+            {
+                DataContext = viewModel,
+                Width = 980,
+                Height = 760,
+                FontFamily = new FontFamily("WenQuanYi Micro Hei, Droid Sans Fallback, Inter")
+            };
+            view.PreviewNavigate("Configuration");
+            window = new Window
+            {
+                Width = 980,
+                Height = 760,
+                Content = view,
+                Background = Brushes.Transparent,
+                WindowDecorations = WindowDecorations.None,
+                FontFamily = view.FontFamily
+            };
+            window.Show();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick(2);
+            SaveSubscriptionButton(window, Path.Combine(output, $"subscription-update-{name}-idle.png"));
+
+            MotionClock.Manual = true;
+            DashboardMotion.ReduceMotion = false;
+            viewModel.PreviewSubscriptionUpdate(true);
+            MotionClock.Advance(TimeSpan.FromMilliseconds(280));
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick(2);
+
+            foreach (var spin in window.GetVisualDescendants().OfType<RefreshSpin>())
+            {
+                var angle = spin.RenderTransform is RotateTransform rotate ? rotate.Angle : double.NaN;
+                Console.WriteLine($"subscription {name} angle={angle:0.0} spinning={spin.Spinning} width={spin.Bounds.Width:0}");
+            }
+
+            SaveSubscriptionButton(window, Path.Combine(output, $"subscription-update-{name}-busy.png"));
+            viewModel.PreviewSubscriptionUpdate(false);
+            MotionClock.Advance(TimeSpan.FromMilliseconds(16));
+            var reset = window.GetVisualDescendants().OfType<RefreshSpin>()
+                .Where(spin => spin.Bounds.Width > 10)
+                .Select(spin => spin.RenderTransform is RotateTransform rotate ? rotate.Angle : double.NaN)
+                .FirstOrDefault();
+            Console.WriteLine($"subscription {name} reset angle={reset:0.0}");
+        }
+        finally
+        {
+            window?.Close();
+            viewModel.Dispose();
+            Directory.Delete(directory, recursive: true);
+            DashboardMotion.ReduceMotion = true;
+            MotionClock.Manual = false;
+        }
+    }
+}
+
+static void SaveSubscriptionButton(Window window, string path)
+{
+    var button = window.GetVisualDescendants().OfType<Button>()
+        .FirstOrDefault(candidate => AutomationProperties.GetName(candidate) == "更新订阅" && candidate.Bounds.Width > 80);
+    if (button is null) throw new InvalidOperationException("更新订阅 button was not visible");
+    var origin = button.TranslatePoint(new Point(0, 0), window) ?? throw new InvalidOperationException("更新订阅 button has no origin");
+    var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("subscription frame missing");
+    var scale = frame.PixelSize.Width / window.Bounds.Width;
+    const int pad = 18;
+    var x = (int)Math.Max(0, Math.Floor((origin.X - pad) * scale));
+    var y = (int)Math.Max(0, Math.Floor((origin.Y - pad) * scale));
+    var w = (int)Math.Min(frame.PixelSize.Width - x, Math.Ceiling((button.Bounds.Width + pad * 2) * scale));
+    var h = (int)Math.Min(frame.PixelSize.Height - y, Math.Ceiling((button.Bounds.Height + pad * 2) * scale));
+    var zoom = new RenderTargetBitmap(new PixelSize(w * 2, h * 2), new Vector(96, 96));
+    using (var context = zoom.CreateDrawingContext())
+        context.DrawImage(frame, new Rect(x, y, w, h), new Rect(0, 0, w * 2, h * 2));
+    zoom.Save(path, new PngBitmapEncoderOptions());
+    Console.WriteLine(path + $" bounds={button.Bounds.Width:0}x{button.Bounds.Height:0} enabled={button.IsEnabled}");
+}
 
 static void CaptureMotion(string directory)
 {

@@ -149,6 +149,12 @@
     <Style Selector="UserControl.still Button.section-nav">
       <Setter Property="Transitions" Value="{x:Null}"/>
     </Style>
+    <Style Selector="controls|RefreshSpin.accent-glyph">
+      <Setter Property="Fill" Value="{DynamicResource AppAccentBrush}"/>
+    </Style>
+    <Style Selector="Button:disabled controls|RefreshSpin.accent-glyph">
+      <Setter Property="Fill" Value="{DynamicResource AppMutedBrush}"/>
+    </Style>
     <Style Selector="TextBlock.page-title">
       <Setter Property="FontSize" Value="21"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
@@ -463,8 +469,17 @@
                   <TextBlock Text="到期时间" FontSize="12" Foreground="{DynamicResource AppMutedBrush}"/>
                   <TextBlock Grid.Column="1" Text="{Binding ExpiresText}" FontSize="12" HorizontalAlignment="Right"/>
                 </Grid>
-                <Button Content="更新订阅" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Height="36"
-                        IsEnabled="{Binding !IsBusy}" Click="UpdateSubscription_Click"/>
+                <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Height="36"
+                        AutomationProperties.Name="更新订阅"
+                        IsEnabled="{Binding !IsBusy}" Click="UpdateSubscription_Click">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <controls:RefreshSpin Width="16" Height="16" Stretch="Uniform" VerticalAlignment="Center"
+                                          Data="{StaticResource RiRefreshLine}"
+                                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ContentPresenter}}"
+                                          Spinning="{Binding IsUpdatingSubscription}"/>
+                    <TextBlock Text="更新订阅" VerticalAlignment="Center"/>
+                  </StackPanel>
+                </Button>
               </StackPanel>
         </Border>
         </Grid>

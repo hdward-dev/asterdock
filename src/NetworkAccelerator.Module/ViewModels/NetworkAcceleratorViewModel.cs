@@ -24,6 +24,7 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
     private DateTimeOffset _connectedAt;
     private bool _disposed;
     private bool _isBusy;
+    private bool _isUpdatingSubscription;
     private int _connectionFaultSignal;
     private bool _isRefreshingLatencies;
     private string _nodeSearchText = string.Empty;
@@ -76,6 +77,12 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
         {
             if (SetField(ref _isBusy, value)) OnPropertyChanged(nameof(ShowOverviewAlert));
         }
+    }
+
+    public bool IsUpdatingSubscription
+    {
+        get => _isUpdatingSubscription;
+        private set => SetField(ref _isUpdatingSubscription, value);
     }
 
     public int ConnectionFaultSignal
@@ -316,6 +323,7 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
     {
         if (IsBusy) return;
         IsBusy = true;
+        IsUpdatingSubscription = true;
         StatusMessage = "正在更新订阅…";
         try
         {
@@ -339,7 +347,11 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
         }
         finally
         {
-            await Dispatcher.UIThread.InvokeAsync(() => IsBusy = false);
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                IsUpdatingSubscription = false;
+                IsBusy = false;
+            });
         }
     }
 

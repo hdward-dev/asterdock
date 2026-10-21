@@ -105,6 +105,11 @@ public sealed class AcceleratorDashboard : INotifyPropertyChanged
     public bool IsRecentTab => _tab == 1;
     public bool IsDnsTab => _tab == 2;
     public bool CanTestServices => _live && !_testing;
+
+    public string ServiceTestToolTip =>
+        _testing ? "正在测试…"
+        : _live ? "重新测试"
+        : NetworkAcceleratorViewModel.ServiceTestNeedsConnectionMessage;
     public bool ServicesAllAvailable => _summaryLevel == "all";
     public bool ServicesPartial => _summaryLevel == "partial";
     public bool ServicesUnavailable => _summaryLevel == "down";
@@ -179,7 +184,7 @@ public sealed class AcceleratorDashboard : INotifyPropertyChanged
         DnsCount = snapshot.Dns.Count;
         ReplaceGroups(snapshot.Groups);
         RequestConnections();
-        OnPropertyChanged(nameof(CanTestServices));
+        NotifyServiceTest();
     }
 
     public void NudgeTraffic(long upload, long download)
@@ -222,7 +227,7 @@ public sealed class AcceleratorDashboard : INotifyPropertyChanged
         ReplaceGroups([]);
         RefreshVisible();
         UpdateSummary();
-        OnPropertyChanged(nameof(CanTestServices));
+        NotifyServiceTest();
     }
 
     public void BeginServiceTest()
@@ -230,7 +235,7 @@ public sealed class AcceleratorDashboard : INotifyPropertyChanged
         if (!_live) return;
         _testing = true;
         SetSummary("检测中", "idle");
-        OnPropertyChanged(nameof(CanTestServices));
+        NotifyServiceTest();
     }
 
     public void ApplyServiceResults(IReadOnlyList<int?> delays)
@@ -239,7 +244,7 @@ public sealed class AcceleratorDashboard : INotifyPropertyChanged
         for (var i = 0; i < _probes.Length; i++)
             _probes[i].Apply(i < delays.Count ? delays[i] : null, true);
         UpdateSummary();
-        OnPropertyChanged(nameof(CanTestServices));
+        NotifyServiceTest();
     }
 
     public void ApplyExit(ExitIpInfo? info)
@@ -279,6 +284,12 @@ public sealed class AcceleratorDashboard : INotifyPropertyChanged
             preview.Groups), recordSample: false);
         ApplyServiceResults(preview.ServiceDelays);
         ApplyExit(preview.Exit);
+    }
+
+    private void NotifyServiceTest()
+    {
+        OnPropertyChanged(nameof(CanTestServices));
+        OnPropertyChanged(nameof(ServiceTestToolTip));
     }
 
     private void ReplaceGroups(IReadOnlyList<ProxyGroupInfo> groups)

@@ -189,6 +189,8 @@
     <Setter Property="BorderThickness" Value="0"/>
     <Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
     <Setter Property="CornerRadius" Value="7"/>
+    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
   </Style>
   <Style Selector="Button.ad-icon:pointerover /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource AppCaptionHoverBrush}"/>

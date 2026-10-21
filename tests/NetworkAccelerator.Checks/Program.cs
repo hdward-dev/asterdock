@@ -1,7 +1,9 @@
 using System.Buffers.Binary;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using AsterDock.Contracts;
+using Avalonia.Threading;
 using NetworkAccelerator.Core.Models;
 using NetworkAccelerator.Core.Services;
 using NetworkAccelerator.Module.ViewModels;
@@ -446,7 +448,90 @@ Check(feedback.Errors.Count == 1
 
 ModuleInteractionChecks.RunMotionClockChecks(Check);
 ModuleInteractionChecks.RunInteractionChecks(Check);
+
+var feedbackRoot = Directory.CreateTempSubdirectory("na-feedback");
+var session = new RecordingFeedback();
+var model = new NetworkAcceleratorViewModel(feedbackRoot.FullName, feedbackRoot.FullName, feedback: session);
+try
+{
+    Check(model.Dash.ServiceTestToolTip == NetworkAcceleratorViewModel.ServiceTestNeedsConnectionMessage
+          && !model.Dash.CanTestServices, "disconnected service refresh explains why it is disabled");
+    model.Dash.ApplyRealtime(new RealtimeSnapshot(0, 0, 0, 0, [], [], [], 0, 0, []));
+    Check(model.Dash.CanTestServices && model.Dash.ServiceTestToolTip == "重新测试", "live service refresh offers a retest");
+    model.Dash.BeginServiceTest();
+    Check(!model.Dash.CanTestServices && model.Dash.ServiceTestToolTip == "正在测试…", "service refresh is busy while probes run");
+    model.Dash.ResetLive();
+
+    model.PreviewSetConnection(false, false);
+    Pump(model.RefreshServiceStatusAsync());
+    Check(session.Warnings.Contains(NetworkAcceleratorViewModel.ServiceTestNeedsConnectionMessage)
+          && !session.Warnings.Contains(NetworkAcceleratorViewModel.ServiceProbeFailedMessage)
+          && !session.Warnings.Contains("节点延迟测试失败"),
+        "service latency while disconnected asks to start acceleration");
+
+    session.Warnings.Clear();
+    model.PreviewSetConnection(true, false);
+    Pump(model.RefreshServiceStatusAsync(), 20000);
+    Check(session.Warnings.Contains(NetworkAcceleratorViewModel.ServiceProbeFailedMessage)
+          && !session.Warnings.Contains(NetworkAcceleratorViewModel.ServiceTestNeedsConnectionMessage),
+        "failed service probes surface a warning");
+
+    session.ErrorToasts.Clear();
+    var faults = model.ConnectionFaultSignal;
+    model.PreviewEngineExit();
+    PumpPosted();
+    Check(session.ErrorToasts.Count == 1
+          && session.ErrorToasts[0] == NetworkAcceleratorViewModel.CoreExitedMessage
+          && model.StatusMessage == NetworkAcceleratorViewModel.CoreExitedMessage
+          && !model.IsConnected
+          && model.ShowOverviewAlert
+          && model.ConnectionFaultSignal == faults + 1,
+        "an unexpected core exit explains that acceleration stopped");
+
+    session.ErrorToasts.Clear();
+    model.PreviewSetConnection(true, false);
+    var suppress = typeof(NetworkAcceleratorViewModel).GetField("_suppressCoreExitNotice", BindingFlags.Instance | BindingFlags.NonPublic);
+    suppress!.SetValue(model, 1);
+    model.PreviewEngineExit();
+    PumpPosted();
+    Check(session.ErrorToasts.Count == 0
+          && !model.IsConnected
+          && model.StatusMessage == "网络加速已停止",
+        "an intentional stop does not report a core exit");
+
+    session.ErrorToasts.Clear();
+    model.PreviewSetConnection(true, true);
+    Pump(model.PreviewIntentionalStopAsync());
+    PumpPosted();
+    Check(session.ErrorToasts.Count == 0 && !model.IsConnected && model.StatusMessage == "网络加速已停止",
+        "stopping the engine does not toast a core exit");
+}
+finally
+{
+    model.Dispose();
+    feedbackRoot.Delete(recursive: true);
+}
+
 Console.WriteLine($"PASS network accelerator dashboard checks ({passed})");
+
+static void Pump(Task task, int milliseconds = 5000)
+{
+    var deadline = Environment.TickCount64 + milliseconds;
+    while (!task.IsCompleted && Environment.TickCount64 < deadline)
+    {
+        Dispatcher.UIThread.RunJobs(DispatcherPriority.Background);
+        Thread.Sleep(5);
+    }
+
+    Dispatcher.UIThread.RunJobs(DispatcherPriority.Background);
+    if (!task.IsCompleted) throw new TimeoutException("dispatcher work did not finish");
+    task.GetAwaiter().GetResult();
+}
+
+static void PumpPosted()
+{
+    for (var i = 0; i < 4; i++) Dispatcher.UIThread.RunJobs(DispatcherPriority.Background);
+}
 
 sealed class FakeCommands : ILinuxCommandResolver
 {
@@ -473,9 +558,11 @@ sealed class RecordingFeedback : IUserFeedbackService
         return Task.CompletedTask;
     }
     public Task<bool> ConfirmAsync(string title, string message, string confirmText = "确定", string cancelText = "取消", bool danger = false, CancellationToken cancellationToken = default) => Task.FromResult(true);
+    public List<string> ErrorToasts { get; } = [];
     public void Toast(FeedbackKind kind, string message, string? title = null, string? actionText = null, Action? action = null, TimeSpan? duration = null)
     {
         if (kind == FeedbackKind.Warning) Warnings.Add(message);
+        else if (kind == FeedbackKind.Error) ErrorToasts.Add(message);
     }
     public Task RunAsync(Func<Task> action, string? errorTitle = null) => action();
     public void Run(Func<Task> action, string? errorTitle = null) => _ = action();

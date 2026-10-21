@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -6,9 +7,13 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Markup.Xaml.Styling;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using NetworkAccelerator.Core.Models;
 using NetworkAccelerator.Module.Controls;
+using NetworkAccelerator.Module.ViewModels;
 using NetworkAccelerator.Module.Views;
 using Semi.Avalonia;
 using Ursa.Themes.Semi;
@@ -79,6 +84,7 @@ static class ModuleInteractionChecks
             CheckPageSurvivesDetach(check);
             CheckSwitchSurvivesDetach(check);
             CheckCustomHitTargets(check);
+            CheckRefreshIconsCentered(check);
             CheckClosedViewCanBeCollected(check);
         }
         finally
@@ -277,6 +283,95 @@ static class ModuleInteractionChecks
     }
 
     private static void Click(Window window, Control control) => Click(window, control, Center(control));
+
+    private static void CheckRefreshIconsCentered(Action<bool, string> check)
+    {
+        var root = Directory.CreateTempSubdirectory("na-refresh-icon");
+        var model = new NetworkAcceleratorViewModel(root.FullName, root.FullName);
+        Window? window = null;
+        try
+        {
+            model.PreviewSetConnection(true, false);
+            model.Dash.ApplyRealtime(new RealtimeSnapshot(0, 0, 0, 0, [], [], [], 0, 0, []));
+            var view = new OverviewDashboardView
+            {
+                DataContext = model,
+                Width = 1100,
+                Height = 820
+            };
+            window = new Window
+            {
+                Width = 1100,
+                Height = 820,
+                Content = view,
+                WindowDecorations = WindowDecorations.None
+            };
+            window.Show();
+            Settle(window);
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick(1);
+
+            var service = NamedButton(view, "重新测试服务");
+            var subscription = NamedButton(view, "更新订阅");
+            check(service.GetVisualDescendants().OfType<Viewbox>().Any(box => box.Stretch == Stretch.Uniform),
+                "service refresh glyph sits in a uniform viewbox");
+            check(subscription.GetVisualDescendants().OfType<Viewbox>().Any(box => box.Stretch == Stretch.Uniform),
+                "subscription refresh glyph sits in a uniform viewbox");
+            var spinner = subscription.GetVisualDescendants().OfType<AsterDock.UI.Controls.AdLoadingIndicator>().Single();
+            check(!spinner.IsVisible, "subscription refresh hides its spinner until an update starts");
+            CheckInkCentered(check, service, "service refresh icon is centered in its button");
+            CheckInkCentered(check, subscription, "subscription refresh icon is centered in its button");
+        }
+        finally
+        {
+            window?.Close();
+            model.Dispose();
+            root.Delete(recursive: true);
+        }
+    }
+
+    private static Button NamedButton(Control root, string name) =>
+        root.GetVisualDescendants().OfType<Button>().Single(button => AutomationProperties.GetName(button) == name);
+
+    private static void CheckInkCentered(Action<bool, string> check, Control control, string message)
+    {
+        var width = Math.Max(1, (int)Math.Round(control.Bounds.Width));
+        var height = Math.Max(1, (int)Math.Round(control.Bounds.Height));
+        using var bitmap = new RenderTargetBitmap(new PixelSize(width, height), new Vector(96, 96));
+        bitmap.Render(control);
+        var stride = width * 4;
+        var pixels = new byte[stride * height];
+        var pin = GCHandle.Alloc(pixels, GCHandleType.Pinned);
+        try
+        {
+            bitmap.CopyPixels(new PixelRect(0, 0, width, height), pin.AddrOfPinnedObject(), pixels.Length, stride);
+        }
+        finally
+        {
+            pin.Free();
+        }
+
+        double weight = 0;
+        double x = 0;
+        double y = 0;
+        for (var row = 0; row < height; row++)
+        {
+            for (var column = 0; column < width; column++)
+            {
+                var alpha = pixels[(row * stride) + (column * 4) + 3];
+                if (alpha < 24) continue;
+                weight += alpha;
+                x += column * alpha;
+                y += row * alpha;
+            }
+        }
+
+        var centerX = (width - 1) / 2d;
+        var centerY = (height - 1) / 2d;
+        check(weight > 0
+              && Math.Abs(x / weight - centerX) <= 2
+              && Math.Abs(y / weight - centerY) <= 2,
+            message);
+    }
 
     private static void Click(Window window, Control control, Point local)
     {

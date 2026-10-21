@@ -19,7 +19,12 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
     private readonly SingBoxConfigurationService _configurationService;
     private readonly SingBoxEngineService _engine;
     private readonly SingBoxInstallerService _installer;
+    public const string CoreExitedMessage = "加速核心已退出";
+    public const string ServiceTestNeedsConnectionMessage = "请先开始加速后再测服务延迟";
+    public const string ServiceProbeFailedMessage = "服务延迟测试失败";
+
     private readonly IUserFeedbackService? _feedback;
+    private int _suppressCoreExitNotice;
     private NetworkAcceleratorSettings _settings = new();
     private SubscriptionProfile? _profile;
     private PeriodicTimer? _durationTimer;
@@ -285,7 +290,7 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
         {
             if (stopping)
             {
-                await _engine.StopAsync().ConfigureAwait(false);
+                await StopEngineAsync().ConfigureAwait(false);
                 await Dispatcher.UIThread.InvokeAsync(ApplyDisconnectedState);
                 return;
             }
@@ -430,7 +435,7 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
         await Dispatcher.UIThread.InvokeAsync(() => IsBusy = true);
         try
         {
-            await _engine.StopAsync().ConfigureAwait(false);
+            await StopEngineAsync().ConfigureAwait(false);
             await Dispatcher.UIThread.InvokeAsync(ApplyDisconnectedState);
             await StartCoreAsync().ConfigureAwait(false);
         }
@@ -694,7 +699,7 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
 
     private async Task RestartAsync()
     {
-        await _engine.StopAsync().ConfigureAwait(false);
+        await StopEngineAsync().ConfigureAwait(false);
         await Dispatcher.UIThread.InvokeAsync(ApplyDisconnectedState);
         await ToggleConnectionAsync().ConfigureAwait(false);
     }
@@ -707,7 +712,7 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
         {
             if (reconnect)
             {
-                await _engine.StopAsync().ConfigureAwait(false);
+                await StopEngineAsync().ConfigureAwait(false);
                 await Dispatcher.UIThread.InvokeAsync(ApplyDisconnectedState);
             }
 
@@ -962,9 +967,45 @@ public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(HasNoLogs));
         });
 
+    private async Task StopEngineAsync()
+    {
+        Interlocked.Increment(ref _suppressCoreExitNotice);
+        try
+        {
+            await _engine.StopAsync().ConfigureAwait(false);
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (!_disposed && IsConnected) ApplyDisconnectedState();
+            });
+        }
+        finally
+        {
+            // The process exit is posted at normal priority. Clearing afterwards,
+            // and only after the connected flag is already false, keeps that exit
+            // from looking like the core quit on its own.
+            Dispatcher.UIThread.Post(
+                () => Interlocked.Decrement(ref _suppressCoreExitNotice),
+                DispatcherPriority.Background);
+        }
+    }
+
+    public Task PreviewIntentionalStopAsync() => StopEngineAsync();
+
+    public void PreviewEngineExit() => Engine_StateChanged(_engine, EventArgs.Empty);
+
     private void Engine_StateChanged(object? sender, EventArgs e)
     {
-        if (!_engine.IsRunning) Dispatcher.UIThread.Post(ApplyDisconnectedState);
+        if (_engine.IsRunning) return;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_disposed) return;
+            var unexpected = IsConnected && Volatile.Read(ref _suppressCoreExitNotice) == 0;
+            ApplyDisconnectedState();
+            if (!unexpected) return;
+            StatusMessage = CoreExitedMessage;
+            ConnectionFaultSignal++;
+            _feedback.Notify(FeedbackKind.Error, CoreExitedMessage);
+        });
     }
 
     private static string SanitizeLog(string message)

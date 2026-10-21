@@ -1,3 +1,4 @@
+using AsterDock.Contracts;
 using Avalonia.Threading;
 using NetworkAccelerator.Core.Models;
 using NetworkAccelerator.Core.Services;
@@ -42,7 +43,8 @@ public sealed partial class NetworkAcceleratorViewModel
         IsBusy ||
         StatusMessage.Contains("失败", StringComparison.Ordinal) ||
         StatusMessage.Contains("管理员", StringComparison.Ordinal) ||
-        StatusMessage.Contains("授权", StringComparison.Ordinal);
+        StatusMessage.Contains("授权", StringComparison.Ordinal) ||
+        StatusMessage.Contains(CoreExitedMessage, StringComparison.Ordinal);
 
     public bool AllowLan
     {
@@ -132,27 +134,52 @@ public sealed partial class NetworkAcceleratorViewModel
 
     public async Task RefreshServiceStatusAsync()
     {
-        if (_disposed || !IsConnected) return;
+        if (_disposed) return;
+        if (!IsConnected)
+        {
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (_disposed) return;
+                _feedback.Notify(FeedbackKind.Warning, ServiceTestNeedsConnectionMessage);
+            });
+            return;
+        }
+
         var version = Interlocked.Increment(ref _serviceTestVersion);
         var secret = _settings.ApiSecret;
         await Dispatcher.UIThread.InvokeAsync(() => _dash.BeginServiceTest());
         var results = new int?[ServiceProbeCatalog.All.Count];
+        Exception? failure = null;
         try
         {
             using var api = new ClashApiClient(secret);
             await Task.WhenAll(ServiceProbeCatalog.All.Select((probe, index) =>
                 MeasureServiceAsync(api, probe.Url, results, index))).ConfigureAwait(false);
         }
-        catch
+        catch (Exception exception)
         {
-            // Individual probes already record a timeout.
+            failure = exception;
         }
 
         if (_disposed || version != _serviceTestVersion) return;
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            if (_disposed || !IsConnected || version != _serviceTestVersion) return;
+            if (_disposed || version != _serviceTestVersion) return;
             _dash.ApplyServiceResults(results);
+            if (!IsConnected)
+            {
+                _feedback.Notify(FeedbackKind.Warning, ServiceTestNeedsConnectionMessage);
+                return;
+            }
+
+            if (failure is not null)
+            {
+                Fail("服务状态测试失败", failure);
+                return;
+            }
+
+            if (results.Length > 0 && Array.TrueForAll(results, static delay => delay is null))
+                _feedback.Notify(FeedbackKind.Warning, ServiceProbeFailedMessage);
         });
     }
 

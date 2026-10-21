@@ -234,7 +234,7 @@ static void RunOverlayChecks(Action<bool, string> check)
     var scrim = overlay.GetVisualDescendants().OfType<Border>().FirstOrDefault(item => item.Name == "PART_Scrim");
     check(scrim is { IsVisible: true }, "scrim is shown with the overlay");
     check(overlay.CornerRadius == new CornerRadius(18), "overlay corner follows the wrapped card");
-    check(overlay.IsHitTestVisible, "visible overlay blocks input");
+    check(overlay.IsHitTestVisible && scrim is { IsHitTestVisible: true }, "scrim captures input while the overlay stays hit-testable");
     overlay.IsCancellable = true;
     var clicks = 0;
     overlay.CancelRequested += (_, _) => clicks++;
@@ -250,7 +250,7 @@ static void RunOverlayChecks(Action<bool, string> check)
     LoadingClock.TickAll();
     check(scrim is { IsVisible: false }, "fade completes and hides the scrim");
     LoadingClock.Resume();
-    check(!overlay.IsHitTestVisible, "hidden overlay releases input");
+    check(overlay.IsHitTestVisible, "hidden overlay leaves children hit-testable");
     window.Close();
 
     var held = new AdLoadingOverlay { Width = 120, Height = 80, DelayMs = 0, MinimumVisibleMs = 300, Content = new Border() };

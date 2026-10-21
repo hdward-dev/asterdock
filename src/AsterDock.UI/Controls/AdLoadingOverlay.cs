@@ -197,7 +197,6 @@ public class AdLoadingOverlay : ContentControl, ILoadingClockClient
         if (presented)
         {
             _scrim.IsVisible = true;
-            IsHitTestVisible = true;
             ApplyBlur(true);
             if (!animate || MotionPreferences.ReduceMotion)
             {
@@ -217,7 +216,6 @@ public class AdLoadingOverlay : ContentControl, ILoadingClockClient
             return;
         }
 
-        IsHitTestVisible = false;
         if (!animate || MotionPreferences.ReduceMotion || !_scrim.IsVisible)
         {
             HideImmediate();
@@ -264,7 +262,7 @@ public class AdLoadingOverlay : ContentControl, ILoadingClockClient
         }
 
         SetScale(1);
-        IsHitTestVisible = false;
+        // Leave this control hit-testable. IsHitTestVisible=false would also block children such as the remote video.
     }
 
     private void ApplyBlur(bool enabled)

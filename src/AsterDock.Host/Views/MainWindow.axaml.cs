@@ -176,7 +176,9 @@ public partial class MainWindow : Window, IApplicationShell
             {
                 SettingsPanel.IsVisible = false;
                 HideAppInfo();
-                ApplicationContent.Content = application.GetOrCreateView(this, _systemMetrics);
+                ApplicationContent.Content = _transferredPages.ContainsKey(application)
+                    ? CreateDetachedPlaceholder(application)
+                    : application.GetOrCreateView(this, _systemMetrics);
                 EmptyState.IsVisible = false;
                 SetCurrentApplication(application);
                 UpdateCapsuleState();

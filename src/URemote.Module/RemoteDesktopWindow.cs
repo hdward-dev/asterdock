@@ -46,6 +46,8 @@ public sealed partial class RemoteDesktopWindow : Window
         Title = device.Name + " · U远程";
         status.Text = device.Name;
         disconnect.Click += (_, _) => Close();
+        quality.SelectionChanged += (_, _) => ApplyQuality();
+        ApplyQuality();
         fullScreen.Click += (_, _) => { WindowState = WindowState == WindowState.FullScreen ? WindowState.Normal : WindowState.FullScreen; video.Focus(); };
         display.SelectionChanged += (_, _) => {
             ReleaseInputs(); if (display.SelectedIndex >= 0 && display.SelectedIndex < displayIds.Length) {
@@ -58,7 +60,7 @@ public sealed partial class RemoteDesktopWindow : Window
         controller.Status += value => Dispatcher.UIThread.Post(() => { if (!closed) ApplyConnectionStatus(value switch {
             "joining" => "正在请求连接…", "signaling" => "正在连接设备…", "negotiating" or "answer-received" => "正在建立画面通道…",
             "ice-checking" => "正在尝试直连或中转…", "ice-failed" or "peer-failed" => FailChannel(),
-            "control-ready" or "peer-connected" => "已连接，等待画面…", "peer-disconnected" => "连接中断…", "closed" => "连接已结束", _ => status.Text },
+            "control-ready" or "peer-connected" => Connected(), "peer-disconnected" => "连接中断…", "closed" => "连接已结束", _ => status.Text },
             value is "ice-failed" or "peer-failed" or "closed"); });
         controller.Displays += ids => Dispatcher.UIThread.Post(() => {
             if (closed) return; displayIds = ids; display.ItemsSource = ids.Select(x => "显示屏 " + (x + 1)).ToArray();
@@ -86,6 +88,17 @@ public sealed partial class RemoteDesktopWindow : Window
         video.LostFocus += (_, _) => ReleaseInputs(); Deactivated += (_, _) => ReleaseInputs();
         Opened += (_, _) => { paintTimer.Start(); Completion = RunAsync(state, device.Id, ffmpeg, assistance); };
         Closed += (_, _) => { closed = true; ReleaseInputs(); stop.Cancel(); paintTimer.Stop(); video.Source = null; bitmap?.Dispose(); lock (frameGate) latest.Clear(); };
+    }
+    // Combo order is HostVideoSettings 1–5: fluent, HD, ultra, original, automatic.
+    private void ApplyQuality()
+    {
+        var level = quality.SelectedIndex + 1;
+        if (level is >= 1 and <= 5) controller.SetQuality(level);
+    }
+    private string Connected()
+    {
+        ApplyQuality();
+        return "已连接，等待画面…";
     }
     private bool Send(object value)
     {

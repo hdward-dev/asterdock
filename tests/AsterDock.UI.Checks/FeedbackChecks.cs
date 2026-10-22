@@ -20,6 +20,7 @@ internal static class FeedbackChecks
         RunCards(check);
         RunLayer(check);
         RunAttach(check);
+        RunAdopt(check);
         MotionPreferences.ReduceMotion = false;
         FeedbackMotion.Snap = false;
     }
@@ -186,6 +187,41 @@ internal static class FeedbackChecks
         check(lateClicks == 1 && ReferenceEquals(shown.Content, late), "attach after measure does not throw and the button still clicks");
         window.Close();
         shown.Close();
+        FeedbackMotion.Snap = false;
+    }
+
+    private static void RunAdopt(Action<bool, string> check)
+    {
+        FeedbackMotion.Snap = true;
+        var service = new UserFeedbackService(action => Dispatcher.UIThread.Post(action));
+        var clicks = 0;
+        var button = new Button { Name = "LiveAction", Content = "当前会话" };
+        button.Click += (_, _) => clicks++;
+        var source = new Window { Width = 640, Height = 480, Content = button };
+        source.Show();
+        source.UpdateLayout();
+        Dispatcher.UIThread.RunJobs();
+        check(FeedbackWindow.Detach(button), "live page detaches from its window");
+        var target = new Window { Width = 640, Height = 480 };
+        check(FeedbackWindow.Adopt(target, button, service), "live page is adopted with the feedback layer");
+        target.Show();
+        target.UpdateLayout();
+        Dispatcher.UIThread.RunJobs();
+        button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        service.Toast(FeedbackKind.Success, "已转移");
+        for (var i = 0; i < 6; i++) Dispatcher.UIThread.RunJobs();
+        check(clicks == 1, "adopted page button still clicks");
+        check(target.GetVisualDescendants().OfType<AdFeedbackLayer>().Any(), "adopted window hosts the feedback layer");
+        check(target.GetVisualDescendants().OfType<TextBlock>().Any(item => item.Name == "ToastMessage" && item.Text == "已转移"),
+            "toast renders on the adopted window");
+        target.Close();
+        for (var i = 0; i < 4; i++) Dispatcher.UIThread.RunJobs();
+        check(FeedbackWindow.Release(button), "adopted page can be released");
+        source.Content = button;
+        source.UpdateLayout();
+        button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        check(clicks == 2 && ReferenceEquals(source.Content, button), "released page returns and still clicks");
+        source.Close();
         FeedbackMotion.Snap = false;
     }
 }

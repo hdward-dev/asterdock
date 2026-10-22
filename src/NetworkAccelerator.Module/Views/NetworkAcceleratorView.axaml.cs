@@ -14,6 +14,7 @@ public partial class NetworkAcceleratorView : UserControl
 {
     private readonly IApplicationContext? _context;
     private readonly NetworkAcceleratorViewModel? _viewModel;
+    private readonly bool _ownsModel;
     private bool _initialized;
     private string _selectedSection = "Overview";
 
@@ -94,11 +95,17 @@ public partial class NetworkAcceleratorView : UserControl
         if (_viewModel is not null) _viewModel.NodeSearchText = string.Empty;
     }
 
-    public NetworkAcceleratorView(IApplicationContext context, string moduleDirectory) : this()
+    public NetworkAcceleratorView(IApplicationContext context, string moduleDirectory)
+        : this(context, new NetworkAcceleratorViewModel(context.DataDirectory, moduleDirectory, context.Feedback), ownsModel: true)
+    {
+    }
+
+    public NetworkAcceleratorView(IApplicationContext context, NetworkAcceleratorViewModel viewModel, bool ownsModel = false) : this()
     {
         _context = context;
-        _viewModel = new NetworkAcceleratorViewModel(context.DataDirectory, moduleDirectory);
-        DataContext = _viewModel;
+        _viewModel = viewModel;
+        _ownsModel = ownsModel;
+        DataContext = viewModel;
         AttachedToVisualTree += (_, _) =>
         {
             if (_initialized || _viewModel is null) return;
@@ -111,7 +118,7 @@ public partial class NetworkAcceleratorView : UserControl
 
     public void DisposeResources()
     {
-        _viewModel?.Dispose();
+        if (_ownsModel) _viewModel?.Dispose();
     }
 
     private async Task InitializeAsync()
@@ -132,9 +139,9 @@ public partial class NetworkAcceleratorView : UserControl
             ? $"$env:HTTP_PROXY='http://127.0.0.1:{port}'; $env:HTTPS_PROXY='http://127.0.0.1:{port}'; $env:ALL_PROXY='socks5://127.0.0.1:{port}'; $env:NO_PROXY='localhost,127.0.0.1'"
             : $"export HTTP_PROXY='http://127.0.0.1:{port}' HTTPS_PROXY='http://127.0.0.1:{port}' ALL_PROXY='socks5://127.0.0.1:{port}' NO_PROXY='localhost,127.0.0.1'";
         await clipboard.SetTextAsync(command);
-        _viewModel.ShowStatusMessage(OperatingSystem.IsWindows()
-            ? "已复制 PowerShell 代理命令"
-            : "已复制终端代理命令");
+        var copied = OperatingSystem.IsWindows() ? "已复制 PowerShell 代理命令" : "已复制终端代理命令";
+        _viewModel.ShowStatusMessage(copied);
+        _context?.Feedback.Notify(FeedbackKind.Success, copied);
     }
 
     private async void RuleMode_Click(object? sender, RoutedEventArgs e) => await SetModeAsync(ProxyMode.Rule);
@@ -173,7 +180,24 @@ public partial class NetworkAcceleratorView : UserControl
 
     private async void TunToggle_Click(object? sender, RoutedEventArgs e)
     {
-        if (_viewModel is not null) await _viewModel.SetTunEnabledAsync(TunToggle.IsChecked == true);
+        if (_viewModel is null) return;
+        var enable = TunToggle.IsChecked == true;
+        if (enable && _context?.Feedback is { } feedback)
+        {
+            var accepted = await feedback.ConfirmAsync(
+                "启用 TUN",
+                "TUN 模式会接管系统网络流量，并可能请求管理员权限。确认启用？",
+                "启用",
+                "取消",
+                danger: true);
+            if (!accepted)
+            {
+                _viewModel.TunEnabled = false;
+                return;
+            }
+        }
+
+        await _viewModel.SetTunEnabledAsync(enable);
     }
 
     private async void Node_Click(object? sender, RoutedEventArgs e)

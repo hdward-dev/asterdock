@@ -10,6 +10,8 @@ public partial class DeviceInformationView : UserControl
     private readonly Action? _showWidget;
     private readonly ISystemMetricsService? _systemMetrics;
     private readonly DeviceInformationViewModel? _viewModel;
+    private readonly bool _ownsModel;
+    private bool _observing;
     private DeviceStatusWidgetWindow? _standaloneWidget;
 
     public DeviceInformationView()
@@ -17,22 +19,44 @@ public partial class DeviceInformationView : UserControl
         InitializeComponent();
     }
 
-    public DeviceInformationView(ISystemMetricsService systemMetrics, Action? showWidget)
+    public DeviceInformationView(ISystemMetricsService systemMetrics, Action? showWidget, IUserFeedbackService? feedback = null)
+        : this(new DeviceInformationViewModel(systemMetrics, feedback), showWidget, ownsModel: true)
+    {
+        _systemMetrics = systemMetrics;
+    }
+
+    public DeviceInformationView(DeviceInformationViewModel viewModel, Action? showWidget, bool ownsModel = false)
     {
         InitializeComponent();
-        _systemMetrics = systemMetrics;
         _showWidget = showWidget;
-        _viewModel = new DeviceInformationViewModel(systemMetrics);
-        DataContext = _viewModel;
-        AttachedToVisualTree += (_, _) => _ = _viewModel.StartAsync();
-        DetachedFromVisualTree += (_, _) => _viewModel.Stop();
+        _viewModel = viewModel;
+        _ownsModel = ownsModel;
+        DataContext = viewModel;
+        AttachedToVisualTree += async (_, _) =>
+        {
+            if (_observing || _viewModel is null) return;
+            _observing = true;
+            await _viewModel.AttachAsync();
+        };
+        DetachedFromVisualTree += (_, _) =>
+        {
+            if (!_observing || _viewModel is null) return;
+            _observing = false;
+            _viewModel.Detach();
+        };
     }
 
     public void DisposeResources()
     {
         _standaloneWidget?.Close();
         _standaloneWidget = null;
-        _viewModel?.Dispose();
+        if (_observing && _viewModel is not null)
+        {
+            _observing = false;
+            _viewModel.Detach();
+        }
+
+        if (_ownsModel) _viewModel?.Dispose();
     }
 
     private void OpenWidget_Click(object? sender, RoutedEventArgs e)

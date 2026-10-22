@@ -95,6 +95,8 @@ public sealed partial class ConsoleWindow
     private async Task ShowFileHelpAsync()
     {
         if (closed) return;
-        await new GuestToolsWindow().ShowDialog(this);
+        var help = new GuestToolsWindow(feedback);
+        AsterDock.UI.Controls.FeedbackWindow.Attach(help, feedback);
+        await help.ShowDialog(this);
     }
 }

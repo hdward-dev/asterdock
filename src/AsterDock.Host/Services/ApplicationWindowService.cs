@@ -1,4 +1,6 @@
 using AsterDock.Contracts;
+using AsterDock.UI.Controls;
+using AsterDock.UI.Services;
 using Avalonia.Controls;
 
 namespace AsterDock.Host.Services;
@@ -6,14 +8,21 @@ namespace AsterDock.Host.Services;
 internal sealed class ApplicationWindowService : IWindowService, IDisposable
 {
     private Window _owner;
+    private readonly UserFeedbackService? _feedback;
     private readonly HashSet<Window> _windows = [];
     private readonly Dictionary<string, Window> _keyedWindows = new(StringComparer.OrdinalIgnoreCase);
 
-    public ApplicationWindowService(Window owner) => _owner = owner;
+    public ApplicationWindowService(Window owner, UserFeedbackService? feedback = null)
+    {
+        _owner = owner;
+        _feedback = feedback;
+    }
     public void SetOwner(Window owner) => _owner = owner;
 
     public void Show(Window window, bool owned = true)
     {
+        // Wrap once, before the first show. Attach does nothing after the window is visible.
+        FeedbackWindow.Attach(window, _feedback);
         Track(window);
         try
         {
@@ -55,6 +64,7 @@ internal sealed class ApplicationWindowService : IWindowService, IDisposable
 
     public async Task<TResult> ShowDialogAsync<TResult>(Window window)
     {
+        FeedbackWindow.Attach(window, _feedback);
         Track(window);
         try
         {

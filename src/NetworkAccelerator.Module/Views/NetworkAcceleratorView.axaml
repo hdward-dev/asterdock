@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:models="using:NetworkAccelerator.Module.Models"
+             xmlns:ui="using:AsterDock.UI.Controls"
              x:Class="NetworkAccelerator.Module.Views.NetworkAcceleratorView"
              x:CompileBindings="False" Background="{DynamicResource AppPageBrush}">
   <UserControl.Styles>
@@ -94,19 +95,6 @@
     </Style>
     <Style Selector="PathIcon.core-state.ready">
       <Setter Property="Foreground" Value="{DynamicResource AppPositiveBrush}"/>
-    </Style>
-    <Style Selector="Path.latency-spinner">
-      <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
-      <Style.Animations>
-        <Animation Duration="0:0:0.75" IterationCount="Infinite">
-          <KeyFrame Cue="0%">
-            <Setter Property="RotateTransform.Angle" Value="0"/>
-          </KeyFrame>
-          <KeyFrame Cue="100%">
-            <Setter Property="RotateTransform.Angle" Value="360"/>
-          </KeyFrame>
-        </Animation>
-      </Style.Animations>
     </Style>
     <Style Selector="Button.section-nav">
       <Setter Property="Height" Value="68"/>
@@ -322,16 +310,9 @@
                                            Text="{Binding LatencyText}"
                                            VerticalAlignment="Center" HorizontalAlignment="Center"
                                            IsVisible="{Binding !IsMeasuringLatency}"/>
-                                <Path Classes="latency-spinner"
-                                      Data="M 8,1 A 7,7 0 1 1 1,8"
-                                      Width="16" Height="16" Fill="Transparent"
-                                      Stroke="{DynamicResource AppAccentBrush}" StrokeThickness="2"
-                                      VerticalAlignment="Center" HorizontalAlignment="Center"
-                                      IsVisible="{Binding IsMeasuringLatency}">
-                                  <Path.RenderTransform>
-                                    <RotateTransform/>
-                                  </Path.RenderTransform>
-                                </Path>
+                                <ui:AdLoadingIndicator Diameter="16" ShowContainer="False"
+                                                       VerticalAlignment="Center" HorizontalAlignment="Center"
+                                                       IsVisible="{Binding IsMeasuringLatency}"/>
                               </Grid>
                             </Border>
                             <Border Grid.Column="3" Width="18" Height="18" CornerRadius="9" BorderBrush="{DynamicResource AppControlBorderBrush}"

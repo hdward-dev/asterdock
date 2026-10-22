@@ -1,3 +1,4 @@
+using AsterDock.Contracts;
 using System.ComponentModel;
 using AndroidScreen.Module.Services;
 using AndroidScreen.Module.ViewModels;
@@ -14,6 +15,7 @@ namespace AndroidScreen.Module.Views;
 public partial class AndroidScreenView : UserControl
 {
     private readonly AndroidScreenViewModel? _viewModel;
+    private readonly bool _ownsModel;
     private bool _dragging;
     private (int X, int Y, int Width, int Height)? _lastPosition;
     private bool _copyRequested;
@@ -27,17 +29,30 @@ public partial class AndroidScreenView : UserControl
         DetachedFromVisualTree += (_, _) => ReleaseTouch();
     }
 
-    public AndroidScreenView(string dataDirectory, string moduleDirectory) : this()
+    public AndroidScreenView(string dataDirectory, string moduleDirectory, IUserFeedbackService? feedback = null)
+        : this(new AndroidScreenViewModel(dataDirectory, moduleDirectory, feedback), ownsModel: true)
     {
-        _viewModel = new(dataDirectory, moduleDirectory); DataContext = _viewModel;
-        AttachedToVisualTree += async (_, _) => await _viewModel.InitializeAsync();
-        _viewModel.PropertyChanged += ModelChanged;
+    }
+
+    public AndroidScreenView(AndroidScreenViewModel viewModel, bool ownsModel = false) : this()
+    {
+        _viewModel = viewModel;
+        _ownsModel = ownsModel;
+        DataContext = viewModel;
+        AttachedToVisualTree += async (_, _) =>
+        {
+            viewModel.PropertyChanged -= ModelChanged;
+            viewModel.PropertyChanged += ModelChanged;
+            await viewModel.InitializeAsync();
+        };
+        DetachedFromVisualTree += (_, _) => viewModel.PropertyChanged -= ModelChanged;
     }
 
     public void DisposeResources()
     {
         ReleaseTouch();
-        if (_viewModel is not null) { _viewModel.PropertyChanged -= ModelChanged; _viewModel.Dispose(); }
+        if (_viewModel is not null) _viewModel.PropertyChanged -= ModelChanged;
+        if (_ownsModel) _viewModel?.Dispose();
     }
 
     private void UpdateLayoutMode()
@@ -118,13 +133,13 @@ public partial class AndroidScreenView : UserControl
     {
         if (Model?.IsRunning != true || string.IsNullOrEmpty(e.Text)) return;
         try { Model.Send(e.Text.All(x => x < 128) ? ScrcpyProtocol.Text(e.Text) : ScrcpyProtocol.Clipboard(e.Text, true)); e.Handled = true; }
-        catch (ArgumentException ex) { Model.ShowMessage(ex.Message); }
+        catch (ArgumentException ex) { Model.ShowMessage(ex.Message, FeedbackKind.Error); }
     }
     private async Task PasteAsync()
     {
         if (Model?.IsRunning != true || TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard) return;
         try { var text = await clipboard.TryGetTextAsync(); if (!string.IsNullOrEmpty(text)) Model.Send(ScrcpyProtocol.Clipboard(text, true)); }
-        catch (Exception ex) { Model.ShowMessage("粘贴失败：" + ex.Message); }
+        catch (Exception ex) { Model.ShowMessage("粘贴失败：" + ex.Message, FeedbackKind.Error); }
     }
     private async void Paste_Click(object? sender, RoutedEventArgs e) => await PasteAsync();
     private void Copy_Click(object? sender, RoutedEventArgs e) { _copyRequested = true; Model?.Send([8, 0]); }
@@ -137,9 +152,9 @@ public partial class AndroidScreenView : UserControl
         try
         {
             if (TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
-            { await clipboard.SetTextAsync(text); Model.ShowMessage("已复制手机剪贴板。"); }
+            { await clipboard.SetTextAsync(text); Model.ShowMessage("已复制手机剪贴板。", FeedbackKind.Success); }
         }
-        catch (Exception ex) { Model?.ShowMessage("复制失败：" + ex.Message); }
+        catch (Exception ex) { Model?.ShowMessage("复制失败：" + ex.Message, FeedbackKind.Error); }
     }
     private async void Screenshot_Click(object? sender, RoutedEventArgs e)
     {
@@ -153,8 +168,8 @@ public partial class AndroidScreenView : UserControl
                 FileTypeChoices = [new FilePickerFileType("PNG 图片") { Patterns = ["*.png"] }] });
             if (file is null) return;
             await using var output = await file.OpenWriteAsync(); await snapshot.CopyToAsync(output);
-            Model.ShowMessage("截图已保存。");
+            Model.ShowMessage("截图已保存。", FeedbackKind.Success);
         }
-        catch (Exception ex) { Model?.ShowMessage("截图保存失败：" + ex.Message); }
+        catch (Exception ex) { Model?.ShowMessage("截图保存失败：" + ex.Message, FeedbackKind.Error); }
     }
 }

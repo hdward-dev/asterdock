@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Avalonia.Threading;
+using AsterDock.Contracts;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -14,6 +16,8 @@ namespace VMCube.Module.Views;
 public sealed partial class VMCubeView
 {
     private bool _isLocal = true, _listView, _favoritesOnly, _compact;
+    private int _detailPlacement;
+    private int _detailPlacementAttempts;
     private int _cardColumns = 2;
     private string? _selectedVmId;
     private readonly List<Button> _navigation = [], _catalogTabs = [];
@@ -33,7 +37,11 @@ public sealed partial class VMCubeView
     private void WireInterface()
     {
         try { if (File.Exists(FavoritesPath)) foreach (var key in JsonSerializer.Deserialize<string[]>(File.ReadAllText(FavoritesPath)) ?? []) _favorites.Add(key); }
-        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException) { AddLog("收藏读取失败：" + ex.Message); }
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+        {
+            AddLog("收藏读取失败：" + ex.Message);
+            _context.Feedback.Notify(FeedbackKind.Error, "收藏读取失败：" + ex.Message);
+        }
         _navigation.AddRange([navMachines, navRemote, navDirect, navHistory, navSettings]);
         _catalogTabs.AddRange([tabAll, tabFavorites]);
         _pages = [libraryPage, libraryPage, directPage, logPage, settingsPage];
@@ -58,11 +66,14 @@ public sealed partial class VMCubeView
                 button.HorizontalContentAlignment = compact ? HorizontalAlignment.Center : HorizontalAlignment.Left;
             }
             _page.Margin = new Thickness(e.NewSize.Width >= 1150 ? 24 : 16);
-            if (_compact != compact) {
-                _railDetails.Content = null; _inlineDetails.Content = null;
-                if (compact) _inlineDetails.Content = _details; else _railDetails.Content = _details;
-                inlineCard.IsVisible = compact;
-                _compact = compact;
+            if (_compact != compact)
+            {
+                // _details stays inside this window. The parent swap waits until arrange finishes
+                // so it does not invalidate a layout manager that is already walking the tree.
+                // The posted move reads the width again; a resize that lands before it runs is not dropped.
+                _detailPlacementAttempts = 0;
+                var generation = ++_detailPlacement;
+                Dispatcher.UIThread.Post(() => ApplyDetailPlacement(generation), DispatcherPriority.Background);
             }
             var columns = e.NewSize.Width >= 1150 ? 2 : 1;
             if (columns != _cardColumns) { _cardColumns = columns; RenderMachines(); }
@@ -103,13 +114,62 @@ public sealed partial class VMCubeView
     private async Task NavigateAsync(int index)
     {
         if (index is 0 or 1 && IsLocal != (index == 0)) {
-            _isLocal = index == 0; _machines.Clear(); _connectedUri = null; _selectedVmId = null; _demo = false; _confirmation = null;
+            _isLocal = index == 0; _machines.Clear(); _connectedUri = null; _selectedVmId = null; _demo = false;
             _consolePassword.Text = "";
             if (!IsLocal && (_uri.Text?.StartsWith("qemu:///", StringComparison.Ordinal) ?? false)) _uri.Text = "qemu+ssh://user@host/system";
         }
         ShowPage(index); UpdateStats(); Filter();
         if (index == 0 && _connectedUri is null && !_demo) await ConnectAsync();
     }
+    private void ApplyDetailPlacement(int generation)
+    {
+        if (generation != _detailPlacement || _disposed) return;
+        var useInline = Bounds.Width < 850;
+        var target = useInline ? _inlineDetails : _railDetails;
+        var other = useInline ? _railDetails : _inlineDetails;
+        if (!ReferenceEquals(target.Content, _details))
+        {
+            try
+            {
+                if (ReferenceEquals(other.Content, _details)) other.Content = null;
+                if (_details.Parent is null) target.Content = _details;
+            }
+            catch (ArgumentException ex) when (ex.Message.Contains("wrong LayoutManager", StringComparison.Ordinal))
+            {
+                if (_details.Parent is null)
+                {
+                    try { target.Content = _details; }
+                    catch (ArgumentException retry) when (retry.Message.Contains("wrong LayoutManager", StringComparison.Ordinal))
+                    {
+                        RetryDetailPlacement(generation);
+                        return;
+                    }
+                }
+                else
+                {
+                    RetryDetailPlacement(generation);
+                    return;
+                }
+            }
+        }
+
+        if (!ReferenceEquals(target.Content, _details))
+        {
+            RetryDetailPlacement(generation);
+            return;
+        }
+
+        if (ReferenceEquals(other.Content, _details)) other.Content = null;
+        inlineCard.IsVisible = useInline;
+        _compact = useInline;
+    }
+
+    private void RetryDetailPlacement(int generation)
+    {
+        if (generation != _detailPlacement || ++_detailPlacementAttempts > 8) return;
+        Dispatcher.UIThread.Post(() => ApplyDetailPlacement(generation), DispatcherPriority.Background);
+    }
+
     private static void Place(ContentControl host, Control control)
     {
         if (ReferenceEquals(host.Content, control)) return;
@@ -139,11 +199,15 @@ public sealed partial class VMCubeView
             var temp = FavoritesPath + ".tmp"; await File.WriteAllTextAsync(temp, JsonSerializer.Serialize(_favorites), _lifetime.Token);
             File.Move(temp, FavoritesPath, overwrite: true);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { AddLog("收藏暂存于本次会话，保存失败：" + ex.Message); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AddLog("收藏暂存于本次会话，保存失败：" + ex.Message);
+            _context.Feedback.Notify(FeedbackKind.Error, "收藏保存失败：" + ex.Message);
+        }
     }
     private void SelectVm(VirtualMachine vm)
     {
-        _selectedVmId = vm.Id; _confirmation = null; _consolePassword.Text = ""; RenderMachines();
+        _selectedVmId = vm.Id; _consolePassword.Text = ""; RenderMachines();
     }
     private void RenderMachines()
     {
@@ -158,7 +222,7 @@ public sealed partial class VMCubeView
         var columns = _listView ? 1 : _cardColumns;
         _machineCards.ColumnDefinitions = new(columns == 2 && matches.Length > 0 ? "*,*" : "*");
         _machineCards.RowDefinitions = new(string.Join(",", Enumerable.Repeat("Auto", Math.Max(1, (matches.Length + columns - 1) / columns))));
-        if (!matches.Any(x => x.Id == _selectedVmId)) { _selectedVmId = matches.FirstOrDefault()?.Id; _confirmation = null; _consolePassword.Text = ""; }
+        if (!matches.Any(x => x.Id == _selectedVmId)) { _selectedVmId = matches.FirstOrDefault()?.Id; _consolePassword.Text = ""; }
         if (matches.Length == 0) {
             _machineCards.Children.Add(new EmptyMachineCard { DataContext = new EmptyMachineModel {
                 Title = _machines.Count == 0 ? IsLocal ? "创建你的第一台虚拟机" : "连接你的 KVM 主机" : "没有符合条件的虚拟机",
@@ -196,7 +260,7 @@ public sealed partial class VMCubeView
             OpenPreview = () => ExecuteAsync(async () => { SelectVm(vm); if (vm.State == "running") await ConnectConsoleAsync(vm); }),
             Primary = () => ExecuteAsync(async () => { SelectVm(vm); if (vm.State == "running") await ConnectConsoleAsync(vm); else await ActAsync(vm, vm.State == "paused" ? "resume" : "start"); }),
             Pause = () => ExecuteAsync(async () => { SelectVm(vm); await ActAsync(vm, "suspend"); }),
-            Power = () => ExecuteAsync(() => { SelectVm(vm); _confirmation = vm.Id; RenderDetails(); RevealDetails(); return Task.CompletedTask; }),
+            Power = () => ExecuteAsync(async () => { SelectVm(vm); RevealDetails(); await ConfirmPowerAsync(vm, force: false); }),
             Favorite = () => ExecuteAsync(() => ToggleFavoriteAsync(vm)),
             Details = () => { SelectVm(vm); RevealDetails(); }
         } };

@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using AsterDock.Contracts;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
@@ -30,30 +31,35 @@ public sealed partial class RemoteDesktopWindow : Window
     private int inputSent;
     private bool inputFailed;
     private bool mac;
+    private IUserFeedbackService? feedback;
     public Task Completion { get; private set; } = Task.CompletedTask;
     public RemoteDesktopWindow()
     {
         InitializeComponent();
     }
 
-    public RemoteDesktopWindow(UuDevice device, LoginState state, string ffmpeg, AssistanceRequest? assistance = null) : this()
+    public RemoteDesktopWindow(UuDevice device, LoginState state, string ffmpeg, AssistanceRequest? assistance = null, IUserFeedbackService? feedback = null) : this()
     {
+        this.feedback = feedback;
         mac = device.Platform == 4;
         controller.TargetPlatform += platform => mac = platform == 4;
         Title = device.Name + " · U远程";
+        status.Text = device.Name;
         disconnect.Click += (_, _) => Close();
         fullScreen.Click += (_, _) => { WindowState = WindowState == WindowState.FullScreen ? WindowState.Normal : WindowState.FullScreen; video.Focus(); };
         display.SelectionChanged += (_, _) => {
             ReleaseInputs(); if (display.SelectedIndex >= 0 && display.SelectedIndex < displayIds.Length) {
                 activeDisplay = displayIds[display.SelectedIndex]; controller.SelectDisplay(activeDisplay);
                 video.Source = null; painted = null; status.Text = "正在切换显示屏…";
+                connectingOverlay.Text = "正在切换显示屏…"; connectingOverlay.IsLoading = true;
             }
         };
         controller.Status += value => Console.WriteLine("controller-" + value);
-        controller.Status += value => Dispatcher.UIThread.Post(() => { if (!closed) status.Text = value switch {
+        controller.Status += value => Dispatcher.UIThread.Post(() => { if (!closed) ApplyConnectionStatus(value switch {
             "joining" => "正在请求连接…", "signaling" => "正在连接设备…", "negotiating" or "answer-received" => "正在建立画面通道…",
-            "ice-checking" => "正在尝试直连或中转…", "ice-failed" or "peer-failed" => "网络通道建立失败，请检查双方网络后重试。",
-            "control-ready" or "peer-connected" => "已连接，等待画面…", "peer-disconnected" => "连接中断…", "closed" => "连接已结束", _ => status.Text }; });
+            "ice-checking" => "正在尝试直连或中转…", "ice-failed" or "peer-failed" => FailChannel(),
+            "control-ready" or "peer-connected" => "已连接，等待画面…", "peer-disconnected" => "连接中断…", "closed" => "连接已结束", _ => status.Text },
+            value is "ice-failed" or "peer-failed" or "closed"); });
         controller.Displays += ids => Dispatcher.UIThread.Post(() => {
             if (closed) return; displayIds = ids; display.ItemsSource = ids.Select(x => "显示屏 " + (x + 1)).ToArray();
             display.IsEnabled = ids.Length > 1; display.SelectedIndex = Math.Max(0, Array.IndexOf(ids, activeDisplay));
@@ -113,7 +119,20 @@ public sealed partial class RemoteDesktopWindow : Window
             video.Source = null; bitmap?.Dispose(); bitmap = new WriteableBitmap(new PixelSize(frame.Width, frame.Height), new Vector(96, 96), PixelFormat.Rgba8888, AlphaFormat.Opaque); video.Source = bitmap;
         }
         using (var fb = bitmap.Lock()) for (int y = 0; y < frame.Height; y++) Marshal.Copy(frame.Pixels, y * frame.Width * 4, fb.Address + y * fb.RowBytes, frame.Width * 4);
-        painted = frame; video.InvalidateVisual(); status.Text = $"已连接 · {frame.Width} × {frame.Height}";
+        painted = frame; video.InvalidateVisual(); connectingOverlay.IsLoading = false; status.Text = $"已连接 · {frame.Width} × {frame.Height}";
+    }
+    private string FailChannel()
+    {
+        const string message = "网络通道建立失败，请检查双方网络后重试。";
+        feedback.Notify(FeedbackKind.Error, message, "远程桌面");
+        return message;
+    }
+    private void ApplyConnectionStatus(string label, bool terminal)
+    {
+        if (terminal || painted is not null) { connectingOverlay.IsLoading = false; status.Text = label; return; }
+        connectingOverlay.IsLoading = true;
+        connectingOverlay.Text = label;
+        status.Text = label;
     }
     private async Task RunAsync(LoginState state, string target, string ffmpeg, AssistanceRequest? assistance = null)
     {
@@ -121,7 +140,12 @@ public sealed partial class RemoteDesktopWindow : Window
         catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
         catch (Exception e) {
             Console.WriteLine("controller-failed;type=" + e.GetType().Name);
-            if (!closed) status.Text = "连接失败，请确认设备在线、允许被控；协助连接还需检查协助码和验证码，或对方是否要求确认。关闭窗口后可重试。";
+            if (!closed)
+            {
+                connectingOverlay.IsLoading = false;
+                status.Text = "连接失败，请确认设备在线、允许被控；协助连接还需检查协助码和验证码，或对方是否要求确认。关闭窗口后可重试。";
+                feedback.Report("连接失败", e);
+            }
         }
         finally { if (!closed) { paintTimer.Stop(); ReleaseInputs(); } }
     }

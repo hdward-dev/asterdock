@@ -23,7 +23,6 @@ public sealed partial class VMCubeView : UserControl, IDisposable
     private List<VirtualMachine> _machines = [];
     private string? _connectedUri;
     private bool _demo, _busy, _disposed;
-    private string? _confirmation;
     private string SettingsPath => Path.Combine(_context.DataDirectory, "connection.json");
 
     public VMCubeView()
@@ -33,7 +32,7 @@ public sealed partial class VMCubeView : UserControl, IDisposable
         _local = null!;
     }
 
-    public VMCubeView(IApplicationContext context) : this()
+    public VMCubeView(IApplicationContext context, bool connectWhenShown = true) : this()
     {
         _context = context;
         _local = new LocalVmService(context.DataDirectory);
@@ -42,13 +41,18 @@ public sealed partial class VMCubeView : UserControl, IDisposable
             _engineDirectory.Text = QemuEngineInstaller.GetInstalledDirectory(context.DataDirectory);
             if (File.Exists(SettingsPath)) _uri.Text = JsonSerializer.Deserialize<string>(File.ReadAllText(SettingsPath)) ?? _uri.Text;
         }
-        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException) { _status.Text = "连接配置读取失败，请重新输入 URI。"; }
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+        {
+            _status.Text = "连接配置读取失败，请重新输入 URI。";
+            _context.Feedback.Notify(FeedbackKind.Error, _status.Text, "连接配置");
+        }
         _log.ItemsSource = _logItems;
         WireInterface();
         _search.TextChanged += (_, _) => Filter();
         _filter.SelectionChanged += (_, _) => Filter();
         UpdateStats(); Filter(); AddLog("VMCUBE 0.7.1 已就绪");
-        AttachedToVisualTree += async (_, _) => { if (!_disposed && IsLocal && _connectedUri is null && !_demo) await ExecuteAsync(ConnectAsync); };
+        if (connectWhenShown)
+            AttachedToVisualTree += async (_, _) => { if (!_disposed && IsLocal && _connectedUri is null && !_demo) await ExecuteAsync(ConnectAsync); };
     }
 
     private async void Refresh_Click(object? sender, RoutedEventArgs e) => await ExecuteAsync(RefreshAsync);
@@ -69,8 +73,8 @@ public sealed partial class VMCubeView : UserControl, IDisposable
         catch (Exception ex)
         {
             if (_disposed) return;
-            _confirmation = null;
             _status.Text = "操作失败 · " + ex.Message; AddLog(_status.Text); UpdateStats(); Filter();
+            _context.Feedback.Report("操作失败", ex);
         }
         finally
         {
@@ -81,7 +85,7 @@ public sealed partial class VMCubeView : UserControl, IDisposable
     private async Task ConnectAsync()
     {
         if (_demo) { _machines.Clear(); _connectedUri = null; }
-        _demo = false; _confirmation = null;
+        _demo = false;
         if (IsLocal)
         {
             RefreshEngineStatus();
@@ -157,20 +161,15 @@ public sealed partial class VMCubeView : UserControl, IDisposable
             ShowResume = vm.State == "paused",
             ShowForce = _connectedUri == "local" && vm.State is "running" or "paused",
             ActionsEnabled = !_busy,
-            ShowShutdownConfirm = _confirmation == vm.Id,
-            ShowForceConfirm = _confirmation == "force/" + vm.Id,
             ShowLocalNote = _connectedUri == "local",
             Footer = _demo ? "演示操作不会连接真实服务器。" : "操作后读取实际状态。正常关机请求可能不会立即完成。",
             Start = () => ExecuteAsync(() => ActAsync(vm, "start")),
             Eject = () => ExecuteAsync(async () => { await _local.DetachIsoAsync(vm.Id, _lifetime.Token); AddLog(vm.Name + " · 已移除安装 ISO，磁盘保留"); }),
             Connect = () => ExecuteAsync(() => ConnectConsoleAsync(vm)),
             Pause = () => ExecuteAsync(() => ActAsync(vm, "suspend")),
-            Shutdown = () => ExecuteAsync(() => { _confirmation = vm.Id; RenderDetails(); return Task.CompletedTask; }),
+            Shutdown = () => ExecuteAsync(() => ConfirmPowerAsync(vm, force: false)),
             Resume = () => ExecuteAsync(() => ActAsync(vm, "resume")),
-            Force = () => ExecuteAsync(() => { _confirmation = "force/" + vm.Id; RenderDetails(); return Task.CompletedTask; }),
-            ConfirmShutdown = () => ExecuteAsync(() => ActAsync(vm, "shutdown")),
-            ConfirmForce = () => ExecuteAsync(() => ActAsync(vm, "destroy")),
-            CancelConfirm = () => ExecuteAsync(() => { _confirmation = null; RenderDetails(); return Task.CompletedTask; })
+            Force = () => ExecuteAsync(() => ConfirmPowerAsync(vm, force: true)),
         } };
         _details.Children.Add(view);
         if (showRemote)
@@ -199,7 +198,7 @@ public sealed partial class VMCubeView : UserControl, IDisposable
             OpenConsole(key, vm.Name, options, uri == "local" ? null : token => ConsoleTunnel.OpenAsync(uri, endpoint, token), endpoint.Protocol, endpoint.UseTls);
         }
         catch (OperationCanceledException) when (_disposed) { }
-        catch (Exception ex) { if (!_disposed) { _status.Text = "控制台连接失败 · " + ex.Message; AddLog(_status.Text); } }
+        catch (Exception ex) { if (!_disposed) { _status.Text = "控制台连接失败 · " + ex.Message; AddLog(_status.Text); _context.Feedback.Report("控制台连接失败", ex); } }
     }
     private bool RefreshEngineStatus()
     {
@@ -249,7 +248,7 @@ public sealed partial class VMCubeView : UserControl, IDisposable
         _local.EngineDirectory = _engineDirectory.Text?.Trim();
         _ = _local.ResolveEngine("qemu-img");
         var supportsSpice = await _local.SupportsSpiceAsync(_lifetime.Token);
-        var dialog = new CreateVmWindow(_local, supportsSpice, _lifetime.Token, () => !_disposed);
+        var dialog = new CreateVmWindow(_local, supportsSpice, _lifetime.Token, () => !_disposed, _context.Feedback);
         var result = await _context.Windows.ShowDialogAsync<LocalVmDefinition?>(dialog);
         if (result is not null && !_disposed) { AddLog(result.Name + " · 本机虚拟机已创建"); await ConnectAsync(); }
     }
@@ -259,7 +258,7 @@ public sealed partial class VMCubeView : UserControl, IDisposable
         var result = await _context.Windows.ShowDialogAsync<LocalVmDefinition?>(BuildImportDialog());
         if (result is not null && !_disposed) { AddLog(result.Name + " · 已导入，保留原有磁盘与固件状态"); await ConnectAsync(); }
     }
-    private Window BuildImportDialog() => new ImportVmWindow(_local, _lifetime.Token);
+    private Window BuildImportDialog() => new ImportVmWindow(_local, _lifetime.Token, _context.Feedback);
     private void OpenConsole(string key, string name, LocalDesktopOptions options, Func<CancellationToken, Task<ConsoleTunnel>>? tunnel = null, ConsoleProtocol consoleProtocol = ConsoleProtocol.Vnc, bool useTls = false, string? caFile = null)
     {
         if (_consoles.TryGetValue(key, out var existing))
@@ -267,7 +266,7 @@ public sealed partial class VMCubeView : UserControl, IDisposable
             if (!existing.Completion.IsCompleted) { existing.Activate(); return; }
             existing.Close();
         }
-        var window = new ConsoleWindow(name, options, tunnel, consoleProtocol, useTls, caFile);
+        var window = new ConsoleWindow(name, options, tunnel, consoleProtocol, useTls, caFile, _context.Feedback);
         _consoles[key] = window;
         if (!key.StartsWith("direct/", StringComparison.Ordinal)) {
             window.FramePresented += frame => UpdatePreview(key, frame);
@@ -278,9 +277,18 @@ public sealed partial class VMCubeView : UserControl, IDisposable
         _context.Windows.Show(window);
         AddLog(name + " · 正在打开控制台");
     }
+    private async Task ConfirmPowerAsync(VirtualMachine vm, bool force)
+    {
+        var title = force ? "强制关机" : "正常关机";
+        var message = force
+            ? $"强制关机相当于断电，未保存数据可能丢失。确认停止「{vm.Name}」？"
+            : $"确认向「{vm.Name}」发送正常关机请求？完成时间取决于来宾系统，请刷新确认状态。";
+        var confirm = force ? "确认强制关机" : "确认关机";
+        if (!await _context.Feedback.ConfirmAsync(title, message, confirm, "取消", danger: force)) return;
+        await ActAsync(vm, force ? "destroy" : "shutdown");
+    }
     private async Task ActAsync(VirtualMachine vm, string action)
     {
-        _confirmation = null;
         if (_demo)
         {
             var index = _machines.FindIndex(x => x.Id == vm.Id);

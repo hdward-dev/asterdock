@@ -91,9 +91,6 @@ public sealed class VmDetailsModel
     public bool ShowResume { get; init; }
     public bool ShowForce { get; init; }
     public bool ActionsEnabled { get; init; } = true;
-    public bool ShowShutdownConfirm { get; init; }
-    public bool ShowForceConfirm { get; init; }
-    public bool ShowAnyConfirm => ShowShutdownConfirm || ShowForceConfirm;
     public bool ShowLocalNote { get; init; }
     public string Footer { get; init; } = "";
     public Func<Task> Start { get; init; } = () => Task.CompletedTask;
@@ -103,7 +100,4 @@ public sealed class VmDetailsModel
     public Func<Task> Shutdown { get; init; } = () => Task.CompletedTask;
     public Func<Task> Resume { get; init; } = () => Task.CompletedTask;
     public Func<Task> Force { get; init; } = () => Task.CompletedTask;
-    public Func<Task> ConfirmShutdown { get; init; } = () => Task.CompletedTask;
-    public Func<Task> ConfirmForce { get; init; } = () => Task.CompletedTask;
-    public Func<Task> CancelConfirm { get; init; } = () => Task.CompletedTask;
 }

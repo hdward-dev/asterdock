@@ -59,7 +59,7 @@ public sealed partial class URemoteView
                 HostAssistance.SetEnabled(device, enabled);
                 UpdateAssistanceState();
             }
-            catch { assistanceHint.Text = "开关设置保存失败，请重试。"; assistanceSwitch.IsChecked = allowAssistance; }
+            catch { assistanceHint.Text = "开关设置保存失败，请重试。"; assistanceSwitch.IsChecked = allowAssistance; ReportFailure(assistanceHint.Text, "远程协助"); }
         };
         static Avalonia.Controls.Shapes.Path ButtonIcon(Button button) =>
             (Avalonia.Controls.Shapes.Path)((Canvas)((Viewbox)button.Content!).Child!).Children[0];
@@ -137,7 +137,7 @@ public sealed partial class URemoteView
     {
         if(!allowAssistance || assistanceDevice is null || string.IsNullOrEmpty(value)) return;
         try { if(TopLevel.GetTopLevel(this)?.Clipboard is { } c) await c.SetTextAsync(value); }
-        catch { assistanceHint.Text = "复制失败，请手动选择并复制。"; }
+        catch { assistanceHint.Text = "复制失败，请手动选择并复制。"; ReportFailure(assistanceHint.Text, "复制协助码"); }
     }
     private async Task RefreshAssistanceAsync()
     {
@@ -155,6 +155,6 @@ public sealed partial class URemoteView
             UpdateAssistanceState();
         }
         catch(OperationCanceledException) when(lifetime.IsCancellationRequested) { }
-        catch { if(!disposed && !loggingOut && generation == accountGeneration) { assistanceDevice = null; assistanceId.Text = "未获取"; assistanceCode.Text = ""; assistanceHint.Text = "协助信息获取失败，请检查登录状态后重新获取。"; } }
+        catch { if(!disposed && !loggingOut && generation == accountGeneration) { assistanceDevice = null; assistanceId.Text = "未获取"; assistanceCode.Text = ""; assistanceHint.Text = "协助信息获取失败，请检查登录状态后重新获取。"; ReportFailure(assistanceHint.Text, "远程协助"); } }
     }
 }

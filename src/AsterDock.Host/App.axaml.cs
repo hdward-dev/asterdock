@@ -26,6 +26,7 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+        LayoutManagerGuard.Install();
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;

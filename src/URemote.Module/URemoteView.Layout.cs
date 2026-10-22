@@ -211,7 +211,7 @@ public sealed partial class URemoteView
         var query = search.Text?.Trim() ?? "";
         var matches = devices.Where(d => (query.Length == 0 || (d.Name + " " + d.PlatformName + " " + d.Id).Contains(query, StringComparison.OrdinalIgnoreCase))
             && (deviceTab == 0 || favorites.Contains(d.Id)) && (filter.SelectedIndex switch { 1 => d.Online, 2 => favorites.Contains(d.Id), 3 => d.Category == "desktop", 4 => d.Category == "mobile", _ => true }))
-            .OrderByDescending(d => d.IsCurrent).ThenByDescending(d => d.Online).ThenBy(d => d.Name, StringComparer.CurrentCulture).ToArray();
+            .OrderByDescending(d => d.Online).ThenByDescending(d => d.IsCurrent).ThenBy(d => d.Name, StringComparer.CurrentCulture).ToArray();
         catalogCount.Text = devices.Count > 0 ? $"我的设备  {matches.Length}" : "我的设备";
         if (matches.Length == 0)
         {

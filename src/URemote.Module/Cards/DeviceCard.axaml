@@ -4,12 +4,22 @@
         x:Class="URemote.Module.DeviceCard"
         x:DataType="local:DeviceCardModel"
         x:CompileBindings="True"
-        Classes="ad-card"
+        Classes="ad-card device-card"
         Classes.selected="{Binding IsSelected}"
+        Background="{DynamicResource AppSurfaceBrush}"
+        BorderBrush="{DynamicResource AppBorderBrush}"
+        BorderThickness="1"
+        CornerRadius="12"
         Padding="4"
         ClipToBounds="True">
   <Border.Styles>
-    <Style Selector="Border.selected">
+    <Style Selector="Border.device-card">
+      <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource AppBorderBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="12"/>
+    </Style>
+    <Style Selector="Border.device-card.selected">
       <Setter Property="BorderBrush" Value="{DynamicResource AppAccentBrush}"/>
     </Style>
   </Border.Styles>

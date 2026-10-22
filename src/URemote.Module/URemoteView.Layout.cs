@@ -28,7 +28,6 @@ public sealed partial class URemoteView
         logoutHint.IsVisible = authenticated;
         logout.IsVisible = authenticated; loginPanel.IsVisible = !authenticated;
     }
-    private int deviceColumns = 2;
     private int _hostPanelPlacement;
     private bool listView;
     private int deviceTab;
@@ -109,8 +108,6 @@ public sealed partial class URemoteView
                     hostPanel.Margin = new Thickness(14, 12);
                 }
             }, DispatcherPriority.Background);
-            var columns = e.NewSize.Width >= 1150 ? 2 : 1;
-            if (columns != deviceColumns) { deviceColumns = columns; RenderDevices(); }
         };
         ShowPage(0); RenderDevices();
         try { UpdateAccountDisplay(DesktopHostSession.ReadIdentity(identity.Text ?? "")); }
@@ -219,7 +216,7 @@ public sealed partial class URemoteView
     private void RenderDevices()
     {
         deviceRows.Children.Clear();
-        deviceRows.ColumnDefinitions = new("*"); deviceRows.RowDefinitions = new("Auto");
+        deviceRows.SingleColumn = listView;
         var query = search.Text?.Trim() ?? "";
         var matches = devices.Where(d => (query.Length == 0 || (d.Name + " " + d.PlatformName + " " + d.Id).Contains(query, StringComparison.OrdinalIgnoreCase))
             && (deviceTab == 0 || favorites.Contains(d.Id)) && (filter.SelectedIndex switch { 1 => d.Online, 2 => favorites.Contains(d.Id), 3 => d.Category == "desktop", 4 => d.Category == "mobile", _ => true }))
@@ -232,14 +229,7 @@ public sealed partial class URemoteView
                 Message = devices.Count == 0 ? "登录后点击刷新，即可查看同一 UU 账号下的电脑和移动设备。" : "试试其他关键词，或将筛选切换为“全部设备”。" } });
             return;
         }
-        var columns = listView ? 1 : deviceColumns;
-        deviceRows.ColumnDefinitions = new ColumnDefinitions(columns == 2 ? "*,*" : "*");
-        deviceRows.RowDefinitions = new RowDefinitions(string.Join(",", Enumerable.Repeat("Auto", (matches.Length + columns - 1) / columns)));
-        for (var i = 0; i < matches.Length; i++)
-        {
-            var card = BuildPreviewCard(matches[i]);
-            Grid.SetColumn(card, i % columns); Grid.SetRow(card, i / columns); deviceRows.Children.Add(card);
-        }
+        foreach (var device in matches) deviceRows.Children.Add(BuildPreviewCard(device));
     }
 
     private void ReplaceScreens(uint[] ids, Func<int, bool> isChecked, string? emptyHint)

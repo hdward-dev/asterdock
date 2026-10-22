@@ -44,7 +44,7 @@ AppBuilder.Configure<App>().UsePlatformDetect().WithInterFont().AfterSetup(build
                 new("fixture-ios", "iPhone", "mobile", 3, "DISCONNECTED", false, false, "4.41.0", false) });
             type.GetMethod("RenderDevices", flags)!.Invoke(view, null);
             var filter = (Avalonia.Controls.ComboBox)type.GetField("filter", flags)!.GetValue(view)!;
-            var rows = (Avalonia.Controls.Grid)type.GetField("deviceRows", flags)!.GetValue(view)!;
+            var rows = (URemote.Module.DeviceCardWrap)type.GetField("deviceRows", flags)!.GetValue(view)!;
             var onlineOrder = rows.Children.OfType<URemote.Module.DeviceCard>()
                 .Select(card => ((URemote.Module.DeviceCardModel)card.DataContext!).Online).ToArray();
             if (onlineOrder is not [true, true, false, false])

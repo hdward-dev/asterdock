@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "0 14 * * *"
   workflow_dispatch:
+  push:
+    tags:
+      # Full-string semver only. Nightly tags such as v1.0.68-nightly-… must not match,
+      # or creating a nightly release would start this workflow again.
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "!v*-nightly-*"
 
 permissions:
   contents: write
@@ -42,17 +48,27 @@ jobs:
           commit_timestamp="$(git log -1 --format=%ct)"
           commit_date="$(TZ=Asia/Shanghai date -d "@$commit_timestamp" +%Y%m%d)"
           short_sha="${GITHUB_SHA:0:7}"
-          version="1.0.${GITHUB_RUN_NUMBER}"
-          # Existing clients parse the numeric prefix before the first hyphen.
-          tag="v${version}-nightly-${release_date}-${short_sha}"
           should_release="false"
 
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" || "$commit_date" == "$release_date" ]]; then
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF_NAME}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            version="${BASH_REMATCH[1]}"
+            # Clean tags have no hyphen, so clients keep the full numeric version.
+            tag="v${version}"
             should_release="true"
-          fi
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
-             gh release view "nightly-${release_date}-${short_sha}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            should_release="false"
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              should_release="false"
+            fi
+          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" || "${GITHUB_EVENT_NAME}" == "schedule" ]]; then
+            version="1.0.${GITHUB_RUN_NUMBER}"
+            # Existing clients parse the numeric prefix before the first hyphen.
+            tag="v${version}-nightly-${release_date}-${short_sha}"
+            if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" || "$commit_date" == "$release_date" ]]; then
+              should_release="true"
+            fi
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+               gh release view "nightly-${release_date}-${short_sha}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              should_release="false"
+            fi
           fi
 
           echo "should_release=$should_release" >> "$GITHUB_OUTPUT"
@@ -292,9 +308,25 @@ jobs:
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
           RELEASE_DATE: ${{ needs.prepare.outputs.release_date }}
         run: |
+          if [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            version="${RELEASE_TAG#v}"
+            title="AsterDock ${version}"
+            notes="$(printf '%s\n' \
+              "正式发布 ${version}（当前 main）。" \
+              "" \
+              "- URemote：画质档位、会话弹出窗口（pop-out）、设备卡片随视口缩放，以及 Plasma 锁屏/黑屏后的采集恢复" \
+              "- 统一组件：窗口内对话框、Toast、系统通知与加载状态" \
+              "- U远程与 VMCUBE 界面统一为 AXAML，并接入星栈主题" \
+              "" \
+              "安装包：Windows x64/arm64 MSI、macOS x64/arm64 DMG、Linux x64/arm64 deb/rpm，以及适用于所有受支持宿主的通用轻应用包。macOS 包尚未签名和公证。")"
+          else
+            title="AsterDock Nightly ${RELEASE_DATE}"
+            notes="自动构建：Windows x64/arm64 MSI、macOS x64/arm64 DMG、Linux x64/arm64 deb/rpm，以及适用于所有受支持宿主的通用轻应用包。macOS 包尚未签名和公证。"
+          fi
+
           gh release create "$RELEASE_TAG" release-assets/* \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --latest \
-            --title "AsterDock Nightly $RELEASE_DATE" \
-            --notes "自动构建：Windows x64/arm64 MSI、macOS x64/arm64 DMG、Linux x64/arm64 deb/rpm，以及适用于所有受支持宿主的通用轻应用包。macOS 包尚未签名和公证。"
+            --title "$title" \
+            --notes "$notes"

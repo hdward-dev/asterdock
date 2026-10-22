@@ -8,11 +8,19 @@
         FontFamily="Microsoft YaHei, PingFang SC, Noto Sans CJK SC, Segoe UI">
   <Grid RowDefinitions="Auto,*,Auto">
     <Border Background="{DynamicResource AppChromeBrush}" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1">
-      <Grid Margin="16,10" ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="12">
+      <Grid Margin="16,10" ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="12">
         <TextBlock x:Name="status" Text="准备连接" VerticalAlignment="Center" TextWrapping="Wrap" Foreground="{DynamicResource AppStrongTextBrush}"/>
-        <ComboBox x:Name="display" Grid.Column="1" MinWidth="130" PlaceholderText="显示屏" IsEnabled="False" VerticalAlignment="Center"/>
-        <Button x:Name="fullScreen" Grid.Column="2" Content="全屏" VerticalAlignment="Center"/>
-        <Button x:Name="disconnect" Grid.Column="3" Content="断开连接" VerticalAlignment="Center"/>
+        <ComboBox x:Name="quality" Grid.Column="1" MinWidth="108" SelectedIndex="4" VerticalAlignment="Center"
+                  AutomationProperties.Name="画质调节" ToolTip.Tip="画质调节">
+          <ComboBoxItem>流畅</ComboBoxItem>
+          <ComboBoxItem>高清</ComboBoxItem>
+          <ComboBoxItem>超清</ComboBoxItem>
+          <ComboBoxItem>原画</ComboBoxItem>
+          <ComboBoxItem>自动</ComboBoxItem>
+        </ComboBox>
+        <ComboBox x:Name="display" Grid.Column="2" MinWidth="130" PlaceholderText="显示屏" IsEnabled="False" VerticalAlignment="Center"/>
+        <Button x:Name="fullScreen" Grid.Column="3" Content="全屏" VerticalAlignment="Center"/>
+        <Button x:Name="disconnect" Grid.Column="4" Content="断开连接" VerticalAlignment="Center"/>
       </Grid>
     </Border>
     <ui:AdLoadingOverlay x:Name="connectingOverlay" Grid.Row="1" IsLoading="True" Text="正在连接…"

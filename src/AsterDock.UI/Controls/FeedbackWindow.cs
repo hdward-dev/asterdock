@@ -2,6 +2,7 @@ using System.Diagnostics;
 using AsterDock.Contracts;
 using AsterDock.UI.Services;
 using Avalonia.Controls;
+using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
 
 namespace AsterDock.UI.Controls;
@@ -48,6 +49,76 @@ public static class FeedbackWindow
         layer.SetValue(Panel.ZIndexProperty, 300);
         root.Children.Add(layer);
         return root;
+    }
+
+    /// <summary>
+    /// Removes a live page from its current parent so it can move into another window.
+    /// </summary>
+    public static bool Detach(Control page) => TryRemove(page) && IsFree(page);
+
+    /// <summary>
+    /// Puts an already detached page into a window that is not shown yet, with the feedback layer beside it.
+    /// </summary>
+    public static bool Adopt(Window window, Control page, UserFeedbackService service)
+    {
+        try
+        {
+            if (window.IsVisible || !IsFree(page))
+            {
+                Log(new InvalidOperationException("只能把已经卸下的页面放进尚未显示的窗口"));
+                return false;
+            }
+
+            window.Content = CreateHost(page, service);
+            return ReferenceEquals(page.Parent, window.Content);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            Log(exception);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Removes a page from the host created by <see cref="Adopt"/> or <see cref="CreateHost"/>.
+    /// </summary>
+    public static bool Release(Control page) => TryRemove(page) && IsFree(page);
+
+    private static bool IsFree(Control page)
+        => page.Parent is null && page.GetVisualParent() is null && !page.IsAttachedToVisualTree();
+
+    private static bool TryRemove(Control page)
+    {
+        try
+        {
+            switch (page.Parent)
+            {
+                case null:
+                    return true;
+                case Panel panel when panel.Children.Contains(page):
+                    panel.Children.Remove(page);
+                    return true;
+                case Decorator decorator when ReferenceEquals(decorator.Child, page):
+                    decorator.Child = null;
+                    return true;
+                case ContentControl content when ReferenceEquals(content.Content, page):
+                    content.Content = null;
+                    return true;
+            }
+
+            if (page.GetLogicalAncestors().OfType<ContentControl>().FirstOrDefault(content => ReferenceEquals(content.Content, page)) is { } owner)
+            {
+                owner.Content = null;
+                return true;
+            }
+
+            return false;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            Log(exception);
+            return false;
+        }
     }
 
     private static bool ContainsLayer(Control? control) => control switch

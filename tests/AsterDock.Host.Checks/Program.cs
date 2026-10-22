@@ -107,12 +107,29 @@ host.Applications.Add(cachedApp);
 Call("OpenApplication", cachedApp);
 host.Activate();
 Dispatcher.UIThread.RunJobs();
+var cachedPage = (Control)host.FindControl<ContentControl>("ApplicationContent")!.Content!;
 Call("OpenDetachedApplication", cachedApp);
 Dispatcher.UIThread.RunJobs();
-Check(!detached.ContainsKey(cachedApp), "cached page does not open a detached window");
-Check(host.FeedbackService.VisibleToasts.Any(item => item.Message.Contains("无法打开独立窗口", StringComparison.Ordinal)),
-    "canceling pop-out explains that the page was not new");
-foreach (var toast in host.FeedbackService.VisibleToasts.ToArray()) host.FeedbackService.DismissToast(toast.Id);
+host.UpdateLayout();
+Check(detached.ContainsKey(cachedApp), "cached page transfers into a detached window");
+var cachedWindow = detached[cachedApp];
+cachedWindow.UpdateLayout();
+Check(cachedWindow.GetVisualDescendants().Contains(cachedPage), "detached window keeps the live page");
+Check(!ReferenceEquals(host.FindControl<ContentControl>("ApplicationContent")!.Content, cachedPage),
+    "main window releases the transferred page");
+Call("OpenApplication", home);
+Call("OpenApplication", cachedApp);
+Dispatcher.UIThread.RunJobs();
+Check(detached.ContainsKey(cachedApp) && cachedWindow.GetVisualDescendants().Contains(cachedPage),
+    "leaving and reopening the app keeps the live page in the detached window");
+Check(!ReferenceEquals(host.FindControl<ContentControl>("ApplicationContent")!.Content, cachedPage),
+    "reopening a transferred app does not attach the live page twice");
+cachedWindow.Close();
+for (var i = 0; i < 6; i++) Dispatcher.UIThread.RunJobs();
+host.UpdateLayout();
+Check(!detached.ContainsKey(cachedApp), "closing the detached window ends the transfer");
+Check(ReferenceEquals(host.FindControl<ContentControl>("ApplicationContent")!.Content, cachedPage),
+    "the live page returns to the main window");
 var freshModule = new FreshPageModule();
 var freshApp = ModuleApp("fresh-page", freshModule);
 host.Applications.Add(freshApp);

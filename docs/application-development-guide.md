@@ -234,6 +234,8 @@ _context.Windows.ShowOrActivate(
 | `ShowDialogAsync<TResult>(window)` | 打开模态窗口并返回结果 |
 | `CloseAll()` | 关闭当前应用通过服务打开的全部窗口 |
 
+提示、确认和失败不要再自建提示窗口，也不要只写在容易被忽略的状态文字里。通过 `IApplicationContext.Feedback` 使用容器内的对话框和通知，详见 [对话框与通知](user-feedback.md)。
+
 ### 7.2 容器导航与应用状态
 
 容器通过 `IApplicationContext.Shell` 向应用提供受控导航。应用不得通过查找主窗口控件或反射 Host 类型来切换页面。

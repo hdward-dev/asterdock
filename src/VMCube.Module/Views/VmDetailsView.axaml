@@ -53,11 +53,6 @@
           <Path Width="18" Height="18" Stretch="Uniform" StrokeThickness="1.5" Stroke="{DynamicResource AppDangerBrush}" Data="M5,5 H19 V19 H5 Z"/>
         </Button>
       </WrapPanel>
-      <TextBlock Text="确认向此虚拟机发送正常关机请求？完成时间取决于来宾系统，请刷新确认状态。" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource AppStrongTextBrush}" IsVisible="{Binding ShowShutdownConfirm}"/>
-      <Button Content="确认关机" Padding="14,9" CornerRadius="8" HorizontalAlignment="Left" IsVisible="{Binding ShowShutdownConfirm}" Click="ConfirmShutdown_Click"/>
-      <TextBlock Text="强制关机相当于断电，未保存数据可能丢失。确认停止此虚拟机？" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource AppStrongTextBrush}" IsVisible="{Binding ShowForceConfirm}"/>
-      <Button Content="确认强制关机" Padding="14,9" CornerRadius="8" HorizontalAlignment="Left" IsVisible="{Binding ShowForceConfirm}" Click="ConfirmForce_Click"/>
-      <Button Content="取消" Padding="14,9" CornerRadius="8" HorizontalAlignment="Left" IsVisible="{Binding ShowAnyConfirm}" Click="Cancel_Click"/>
       <TextBlock Text="关闭控制台或退出 VMCUBE 后，虚拟机会继续运行；请通过正常关机停止。" FontSize="12" TextWrapping="Wrap" Classes="ad-muted" IsVisible="{Binding ShowLocalNote}"/>
       <TextBlock Text="{Binding Footer}" FontSize="12" TextWrapping="Wrap" Classes="ad-muted"/>
     </StackPanel>

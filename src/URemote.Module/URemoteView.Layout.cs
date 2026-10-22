@@ -28,6 +28,7 @@ public sealed partial class URemoteView
         logoutHint.IsVisible = authenticated;
         logout.IsVisible = authenticated; loginPanel.IsVisible = !authenticated;
     }
+    private int _hostPanelPlacement;
     private bool listView;
     private int deviceTab;
     private readonly List<Button> navigation = [];
@@ -86,20 +87,27 @@ public sealed partial class URemoteView
         SizeChanged += (_, e) =>
         {
             var wide = e.NewSize.Width >= 1150;
-            body.ColumnDefinitions = new(wide ? "300,*,190" : "270,*,150");
-            page.Margin = new Thickness(wide ? 24 : 14);
-            if (e.NewSize.Width < 850)
+            var narrow = e.NewSize.Width < 850;
+            body.ColumnDefinitions = new(narrow ? "0,*,130" : wide ? "300,*,190" : "270,*,150");
+            page.Margin = new Thickness(wide && !narrow ? 24 : 14);
+            hostBorder.IsVisible = !narrow;
+            // hostPanel moves between two parents of this same window. Do it after the
+            // current arrange, so the move is not inside the layout pass that raised SizeChanged.
+            var generation = ++_hostPanelPlacement;
+            Dispatcher.UIThread.Post(() =>
             {
-                body.ColumnDefinitions = new("0,*,130"); hostBorder.IsVisible = false;
-                hostPanel.Margin = new Thickness(0);
-                if (!hostPage.Children.Contains(hostPanel)) { hostScroll.Content = null; hostPage.Children.Insert(2, hostPanel); }
-            }
-            else
-            {
-                if (hostPage.Children.Contains(hostPanel)) { hostPage.Children.Remove(hostPanel); hostScroll.Content = hostPanel; }
-                hostPanel.Margin = new Thickness(14, 12);
-                hostBorder.IsVisible = true;
-            }
+                if (generation != _hostPanelPlacement) return;
+                if (narrow)
+                {
+                    hostPanel.Margin = new Thickness(0);
+                    if (!hostPage.Children.Contains(hostPanel)) { hostScroll.Content = null; hostPage.Children.Insert(2, hostPanel); }
+                }
+                else
+                {
+                    if (hostPage.Children.Contains(hostPanel)) { hostPage.Children.Remove(hostPanel); hostScroll.Content = hostPanel; }
+                    hostPanel.Margin = new Thickness(14, 12);
+                }
+            }, DispatcherPriority.Background);
         };
         ShowPage(0); RenderDevices();
         try { UpdateAccountDisplay(DesktopHostSession.ReadIdentity(identity.Text ?? "")); }
@@ -197,7 +205,11 @@ public sealed partial class URemoteView
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch
         {
-            if (!disposed && !loggingOut && generation == accountGeneration) catalogHint.Text = devices.Count > 0 ? "刷新失败，保留上次设备列表。请检查网络后重试。" : "暂时无法获取设备，请在“账号与设置”检查登录状态，或点击刷新重试。";
+            if (!disposed && !loggingOut && generation == accountGeneration)
+            {
+                catalogHint.Text = devices.Count > 0 ? "刷新失败，保留上次设备列表。请检查网络后重试。" : "暂时无法获取设备，请在“账号与设置”检查登录状态，或点击刷新重试。";
+                ReportFailure(catalogHint.Text, "设备列表");
+            }
         }
         finally { refreshing = false; if (!disposed) { refresh.IsEnabled = true; refresh.Content = "刷新"; } }
     }
@@ -208,7 +220,7 @@ public sealed partial class URemoteView
         var query = search.Text?.Trim() ?? "";
         var matches = devices.Where(d => (query.Length == 0 || (d.Name + " " + d.PlatformName + " " + d.Id).Contains(query, StringComparison.OrdinalIgnoreCase))
             && (deviceTab == 0 || favorites.Contains(d.Id)) && (filter.SelectedIndex switch { 1 => d.Online, 2 => favorites.Contains(d.Id), 3 => d.Category == "desktop", 4 => d.Category == "mobile", _ => true }))
-            .OrderByDescending(d => d.IsCurrent).ThenByDescending(d => d.Online).ThenBy(d => d.Name, StringComparer.CurrentCulture).ToArray();
+            .OrderByDescending(d => d.Online).ThenByDescending(d => d.IsCurrent).ThenBy(d => d.Name, StringComparer.CurrentCulture).ToArray();
         catalogCount.Text = devices.Count > 0 ? $"我的设备  {matches.Length}" : "我的设备";
         if (matches.Length == 0)
         {
@@ -274,12 +286,12 @@ public sealed partial class URemoteView
         {
             var state = DesktopHostSession.ReadIdentity(identity.Text ?? "").State;
             if (!state.IsAuthenticated || !File.Exists(appliedEncoder)) throw new InvalidOperationException();
-            var window = new RemoteDesktopWindow(device, state, appliedEncoder);
+            var window = new RemoteDesktopWindow(device, state, appliedEncoder, feedback: appContext?.Feedback);
             remoteWindows.Add(device.Id, window);
             window.Closed += async (_, _) => { try { await window.Completion; } finally { remoteWindows.Remove(device.Id); } };
-            window.Show();
+            ShowManaged(window);
         }
-        catch { catalogHint.Text = "无法打开远控窗口，请检查登录状态与视频解码器路径。"; }
+        catch { catalogHint.Text = "无法打开远控窗口，请检查登录状态与视频解码器路径。"; ReportFailure(catalogHint.Text, "远程桌面"); }
     }
     private void OpenTool(UuDevice device, bool terminal)
     {
@@ -290,11 +302,11 @@ public sealed partial class URemoteView
         {
             var state = DesktopHostSession.ReadIdentity(identity.Text ?? "").State;
             if (!state.IsAuthenticated) throw new InvalidOperationException();
-            var window = new RemoteToolsWindow(device, state, terminal); toolWindows.Add(device.Id, window);
+            var window = new RemoteToolsWindow(device, state, terminal, appContext?.Feedback); toolWindows.Add(device.Id, window);
             window.Closed += async (_, _) => { try { await window.Completion; } finally { toolWindows.Remove(device.Id); } };
-            window.Show();
+            ShowManaged(window);
         }
-        catch { catalogHint.Text = "无法打开工具窗口，请检查登录状态。"; }
+        catch { catalogHint.Text = "无法打开工具窗口，请检查登录状态。"; ReportFailure(catalogHint.Text, "远程工具"); }
     }
     private void SaveFavorites()
     {
@@ -306,7 +318,7 @@ public sealed partial class URemoteView
         selectedDeviceId = device.Id;
         deviceDetail.IsVisible = true;
         deviceDetail.Children.Clear();
-        var detailView = new DeviceDetailView { DataContext = new DeviceDetailModel {
+        var detailView = new DeviceDetailView { Feedback = appContext?.Feedback, DataContext = new DeviceDetailModel {
             Name = device.Name,
             Summary = $"{device.PlatformName} · {device.StatusName}",
             Identifier = "设备编号  " + device.Id,

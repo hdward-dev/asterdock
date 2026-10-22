@@ -10,6 +10,7 @@ public sealed class DeviceInformationViewModel : INotifyPropertyChanged, IDispos
 {
     private const int HistoryLength = 48;
     private readonly ISystemMetricsService _service;
+    private readonly IUserFeedbackService? _feedback;
     private readonly CancellationTokenSource _cancellation = new();
     private readonly Queue<double> _cpuHistory = new();
     private readonly Queue<double> _gpuHistory = new();
@@ -42,7 +43,11 @@ public sealed class DeviceInformationViewModel : INotifyPropertyChanged, IDispos
     private IReadOnlyList<double> _cpuHistoryValues = Array.Empty<double>();
     private IReadOnlyList<double> _gpuHistoryValues = Array.Empty<double>();
 
-    public DeviceInformationViewModel(ISystemMetricsService service) => _service = service;
+    public DeviceInformationViewModel(ISystemMetricsService service, IUserFeedbackService? feedback = null)
+    {
+        _service = service;
+        _feedback = feedback;
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -72,6 +77,24 @@ public sealed class DeviceInformationViewModel : INotifyPropertyChanged, IDispos
     public IReadOnlyList<double> CpuHistoryValues { get => _cpuHistoryValues; private set => SetField(ref _cpuHistoryValues, value); }
     public IReadOnlyList<double> GpuHistoryValues { get => _gpuHistoryValues; private set => SetField(ref _gpuHistoryValues, value); }
 
+    private int _attachments;
+
+    public Task AttachAsync()
+    {
+        if (_disposed) return Task.CompletedTask;
+        if (Interlocked.Increment(ref _attachments) != 1) return Task.CompletedTask;
+        return StartAsync();
+    }
+
+    public void Detach()
+    {
+        if (_disposed) return;
+        var remaining = Interlocked.Decrement(ref _attachments);
+        if (remaining > 0) return;
+        if (remaining < 0) Interlocked.Exchange(ref _attachments, 0);
+        Stop();
+    }
+
     public async Task StartAsync()
     {
         if (_disposed) return;
@@ -90,7 +113,11 @@ public sealed class DeviceInformationViewModel : INotifyPropertyChanged, IDispos
         }
         catch (Exception exception)
         {
-            await Dispatcher.UIThread.InvokeAsync(() => StatusText = $"读取失败：{exception.GetBaseException().Message}");
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                StatusText = $"读取失败：{exception.GetBaseException().Message}";
+                _feedback.Report("读取失败", exception);
+            });
         }
     }
 
@@ -116,7 +143,10 @@ public sealed class DeviceInformationViewModel : INotifyPropertyChanged, IDispos
     private void ReceiveError(Exception exception)
     {
         Dispatcher.UIThread.Post(() =>
-            StatusText = $"监控已暂停：{exception.GetBaseException().Message}");
+        {
+            StatusText = $"监控已暂停：{exception.GetBaseException().Message}";
+            _feedback.Report("监控已暂停", exception);
+        });
     }
 
     private void ApplyDetails(SystemDeviceDetails details)

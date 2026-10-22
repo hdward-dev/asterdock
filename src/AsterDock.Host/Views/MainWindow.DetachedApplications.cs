@@ -1,8 +1,9 @@
+using System.Diagnostics;
+using AsterDock.Contracts;
 using AsterDock.Host.Modules;
-using Avalonia;
+using AsterDock.UI.Controls;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using Avalonia.Layout;
 
 namespace AsterDock.Host.Views;
 
@@ -23,11 +24,22 @@ public partial class MainWindow
         if (_detachedApplications.TryGetValue(application, out var existing))
         {
             if (existing.WindowState == WindowState.Minimized) existing.WindowState = WindowState.Normal;
+            if (!existing.IsVisible) existing.Show();
             existing.Activate();
             return;
         }
 
-        var view = application.GetOrCreateView(this, _systemMetrics);
+        // The page already measured inside the main window stays there. The independent
+        // window gets a new view so the two windows never share a layout manager.
+        var detachedView = application.CreateDetachedView(this, _systemMetrics);
+        var page = application.GetOrCreateView(this, _systemMetrics);
+        if (ReferenceEquals(detachedView, page) || FeedbackWindow.HasLayoutManager(detachedView))
+        {
+            Trace.TraceError("独立窗口需要一个尚未布局的新页面，已取消打开");
+            _feedbackService.Toast(FeedbackKind.Warning, "无法打开独立窗口：该应用未能提供新页面");
+            return;
+        }
+
         var window = new Window
         {
             Title = $"{application.Name} · 星栈",
@@ -35,61 +47,39 @@ public partial class MainWindow
             Height = Math.Max(640, Bounds.Height - 40),
             MinWidth = 640,
             MinHeight = 480,
-            WindowStartupLocation = WindowStartupLocation.CenterScreen
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            Content = FeedbackWindow.CreateHost(detachedView, _feedbackService)
         };
-        if (ReferenceEquals(ApplicationContent.Content, view)) ApplicationContent.Content = null;
-        window.Content = view;
-        _detachedApplications.Add(application, window);
-        application.SetWindowOwner(window);
+        window.Activated += (_, _) => _feedbackService.RefreshDelivery();
+        window.PropertyChanged += (_, args) =>
+        {
+            if (args.Property == Window.WindowStateProperty || args.Property == Window.IsVisibleProperty)
+                _feedbackService.RefreshDelivery();
+        };
         window.Closed += (_, _) =>
         {
-            window.Content = null;
             _detachedApplications.Remove(application);
-            application.SetWindowOwner(this);
-            if (_closingDetachedApplications) return;
-            if (ReferenceEquals(_currentApplication, application))
-                ApplicationContent.Content = view;
+            if (!_closingDetachedApplications) application.SetWindowOwner(this);
+            _feedbackService.RefreshDelivery();
         };
-
+        _detachedApplications.Add(application, window);
+        application.SetWindowOwner(window);
         try
         {
             window.Show();
-            if (ReferenceEquals(_currentApplication, application))
-                ApplicationContent.Content = CreateDetachedPlaceholder(application);
             HideAppInfo();
         }
-        catch
+        catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            window.Content = null;
+            Trace.TraceError("独立窗口未能打开: " + exception);
             _detachedApplications.Remove(application);
             application.SetWindowOwner(this);
-            if (ReferenceEquals(_currentApplication, application)) ApplicationContent.Content = view;
-            window.Close();
-        }
-    }
-
-    private Control CreateDetachedPlaceholder(LoadedApplication application)
-    {
-        var activate = new Button { Content = "显示独立窗口", HorizontalAlignment = HorizontalAlignment.Center };
-        activate.Classes.Add("accent");
-        activate.Click += (_, _) => OpenDetachedApplication(application);
-        var restore = new Button { Content = "移回主窗口", HorizontalAlignment = HorizontalAlignment.Center };
-        restore.Click += (_, _) =>
-        {
-            if (_detachedApplications.TryGetValue(application, out var window)) window.Close();
-        };
-        return new StackPanel
-        {
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            Spacing = 16,
-            Children =
+            try { window.Close(); }
+            catch (Exception close) when (close is not OutOfMemoryException)
             {
-                new TextBlock { Text = $"{application.Name}已在独立窗口打开", FontSize = 20 },
-                activate,
-                restore
+                Trace.TraceError("独立窗口未能关闭: " + close);
             }
-        };
+        }
     }
 
     private void CloseDetachedApplications()

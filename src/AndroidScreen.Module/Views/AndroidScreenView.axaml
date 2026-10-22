@@ -110,12 +110,6 @@
                   <Border Background="#202D40" CornerRadius="12" Padding="12,6" HorizontalAlignment="Center">
                     <TextBlock Text="USB / 无线连接" Foreground="#A5BCDF" FontSize="11"/>
                   </Border>
-                  <Border IsVisible="{Binding HasError}" Background="#402727" BorderBrush="#9D5151" BorderThickness="1" CornerRadius="10" Padding="12">
-                    <StackPanel Spacing="6">
-                      <TextBlock Text="投屏未能启动" Foreground="#FFB4AB" FontWeight="SemiBold" TextAlignment="Center"/>
-                      <TextBlock Text="{Binding StatusMessage}" Foreground="#EDD4D2" FontSize="12" TextWrapping="Wrap" TextAlignment="Center" MaxHeight="72"/>
-                    </StackPanel>
-                  </Border>
                 </StackPanel>
               </Grid>
               <Border x:Name="VideoSurface" Background="Transparent" Focusable="True"
@@ -139,14 +133,7 @@
     </Grid>
     </ScrollViewer>
     <Border Grid.Row="2" Background="{DynamicResource AppChromeBrush}" BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,1,0,0" Padding="24,11">
-      <StackPanel Spacing="6">
-        <TextBlock Text="{Binding StatusMessage}" FontSize="12" Classes="muted" TextWrapping="Wrap" MaxHeight="64"/>
-        <Expander Header="错误详情" IsVisible="{Binding HasError}" HorizontalAlignment="Stretch">
-          <ScrollViewer MaxHeight="160" HorizontalScrollBarVisibility="Disabled">
-            <SelectableTextBlock Text="{Binding ErrorDetails}" TextWrapping="Wrap" FontSize="11"/>
-          </ScrollViewer>
-        </Expander>
-      </StackPanel>
+      <TextBlock Text="{Binding StatusMessage}" FontSize="12" Classes="muted" TextWrapping="Wrap" MaxHeight="64"/>
     </Border>
   </Grid>
 </UserControl>

@@ -1,11 +1,13 @@
 using System.Buffers.Binary;
+using System.Globalization;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Channels;
 
 namespace URemote.Core;
 
-/// <summary>RFB 3.3/3.7/3.8 client with raw, CopyRect and DesktopSize updates.</summary>
+/// <summary>RFB 3.3/3.7/3.8 client, including Apple Remote Desktop authentication, with raw, CopyRect and DesktopSize updates.</summary>
 public sealed class VncDesktopSession : ILocalDesktopSession
 {
     private readonly Channel<byte[]> input = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(512) { FullMode = BoundedChannelFullMode.Wait });
@@ -31,7 +33,7 @@ public sealed class VncDesktopSession : ILocalDesktopSession
                 deadline.CancelAfter(TimeSpan.FromSeconds(20));
                 await client.ConnectAsync(options.Host, options.Port, deadline.Token);
                 var stream = client.GetStream();
-                await HandshakeAsync(stream, options.Password, deadline.Token);
+                await HandshakeAsync(stream, options.Username, options.Password, deadline.Token);
             }
             var network = client.GetStream();
             ready = true;
@@ -74,34 +76,49 @@ public sealed class VncDesktopSession : ILocalDesktopSession
         }
     }
 
-    private async Task HandshakeAsync(NetworkStream stream, string password, CancellationToken token)
+    private async Task HandshakeAsync(NetworkStream stream, string username, string password, CancellationToken token)
     {
-        var version = Encoding.ASCII.GetString(await ReadAsync(stream, 12, token));
-        var minor = version switch { "RFB 003.003\n" => 3, "RFB 003.007\n" => 7, "RFB 003.008\n" => 8,
-            _ => throw new NotSupportedException("仅支持 RFB 3.3、3.7 和 3.8 的 VNC 服务。") };
-        await stream.WriteAsync(Encoding.ASCII.GetBytes(version), token);
+        // macOS Screen Sharing sends RFB 003.889 and speaks 3.8 once the client answers 003.008.
+        var banner = Encoding.ASCII.GetString(await ReadAsync(stream, 12, token));
+        var protocol = Protocol(banner);
+        var reply = protocol switch { 3 => "RFB 003.003\n", 7 => "RFB 003.007\n", _ => "RFB 003.008\n" };
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(reply), token);
         uint security;
-        if (minor == 3) security = BinaryPrimitives.ReadUInt32BigEndian(await ReadAsync(stream, 4, token));
+        if (protocol == 3)
+        {
+            security = BinaryPrimitives.ReadUInt32BigEndian(await ReadAsync(stream, 4, token));
+            if (security == 0) throw Reject(await ReadReasonAsync(stream, token));
+        }
         else
         {
             var count = (await ReadAsync(stream, 1, token))[0];
-            if (count == 0) throw new InvalidOperationException("VNC 服务拒绝连接。");
+            if (count == 0) throw Reject(await ReadReasonAsync(stream, token));
             var types = await ReadAsync(stream, count, token);
-            security = types.Contains((byte)2) ? 2u : types.Contains((byte)1) ? 1u : 0u;
-            if (security == 0) throw new NotSupportedException("该 VNC 服务需要暂不支持的认证方式；请选择 VNC 密码认证。");
+            security = ChooseSecurity(types, username);
             await stream.WriteAsync(new[] { (byte)security }, token);
         }
-        if (security is not (1 or 2)) throw new NotSupportedException("不支持该 VNC 认证方式。");
-        if (security == 2)
+        if (security == 30)
+        {
+            if (string.IsNullOrWhiteSpace(username))
+                throw new InvalidOperationException("连接 macOS 屏幕共享需要这台 Mac 的用户名和密码。");
+            await AuthenticateAppleAsync(stream, username, password, token);
+        }
+        else if (security == 2)
         {
             var challenge = await ReadAsync(stream, 16, token);
             var response = VncAuthentication.Respond(password, challenge);
             await stream.WriteAsync(response, token);
-            System.Security.Cryptography.CryptographicOperations.ZeroMemory(response);
+            CryptographicOperations.ZeroMemory(response);
         }
-        if (security == 2 || minor == 8)
+        else if (security != 1) throw new NotSupportedException("不支持该 VNC 认证方式。");
+        if (security != 1 || protocol == 8)
+        {
             if (BinaryPrimitives.ReadUInt32BigEndian(await ReadAsync(stream, 4, token)) != 0)
-                throw new InvalidOperationException("VNC 认证失败，请检查密码。");
+            {
+                var reason = protocol == 8 ? await ReadReasonAsync(stream, token) : "";
+                throw new InvalidOperationException(string.IsNullOrWhiteSpace(reason) ? "VNC 认证失败，请检查密码。" : "VNC 认证失败：" + reason);
+            }
+        }
         await stream.WriteAsync(new byte[] { 1 }, token); // Shared connection
         var init = await ReadAsync(stream, 24, token);
         Resize(BinaryPrimitives.ReadUInt16BigEndian(init), BinaryPrimitives.ReadUInt16BigEndian(init.AsSpan(2)));
@@ -116,6 +133,58 @@ public sealed class VncDesktopSession : ILocalDesktopSession
         BinaryPrimitives.WriteInt32BigEndian(encodings.AsSpan(12), -223);
         await stream.WriteAsync(encodings, token);
     }
+
+    private static int Protocol(string banner)
+    {
+        if (banner.Length == 12 && banner.StartsWith("RFB ", StringComparison.Ordinal) && banner[7] == '.' && banner[11] == '\n'
+            && int.TryParse(banner.AsSpan(4, 3), NumberStyles.None, CultureInfo.InvariantCulture, out var major)
+            && int.TryParse(banner.AsSpan(8, 3), NumberStyles.None, CultureInfo.InvariantCulture, out var minor)
+            && major == 3 && minor is 3 or 7 or >= 8)
+            return minor >= 8 ? 8 : minor;
+        throw new NotSupportedException("仅支持 RFB 3.3、3.7 和 3.8 的 VNC 服务。");
+    }
+
+    private static uint ChooseSecurity(ReadOnlySpan<byte> types, string username)
+    {
+        var apple = types.Contains((byte)30);
+        if (apple && !string.IsNullOrWhiteSpace(username)) return 30;
+        if (types.Contains((byte)2)) return 2;
+        if (types.Contains((byte)1)) return 1;
+        if (apple) throw new InvalidOperationException("连接 macOS 屏幕共享需要这台 Mac 的用户名和密码。");
+        throw new NotSupportedException("该 VNC 服务需要暂不支持的认证方式；请选择 VNC 密码认证。");
+    }
+
+    private async Task AuthenticateAppleAsync(NetworkStream stream, string username, string password, CancellationToken token)
+    {
+        var header = await ReadAsync(stream, 4, token);
+        var generator = BinaryPrimitives.ReadUInt16BigEndian(header);
+        var keyLength = BinaryPrimitives.ReadUInt16BigEndian(header.AsSpan(2));
+        if (generator < 2 || keyLength is < 16 or > 512) throw new InvalidDataException("macOS 屏幕共享的密钥参数无效。");
+        var prime = await ReadAsync(stream, keyLength, token);
+        var serverPublic = await ReadAsync(stream, keyLength, token);
+        var (ciphertext, clientPublic) = VncAuthentication.AppleRemoteDesktop(username, password, generator, prime, serverPublic);
+        try
+        {
+            await stream.WriteAsync(ciphertext, token);
+            await stream.WriteAsync(clientPublic, token);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(ciphertext);
+            CryptographicOperations.ZeroMemory(clientPublic);
+        }
+    }
+
+    private static async Task<string> ReadReasonAsync(NetworkStream stream, CancellationToken token)
+    {
+        var length = BinaryPrimitives.ReadUInt32BigEndian(await ReadAsync(stream, 4, token));
+        if (length > 4096) throw new InvalidDataException("VNC 错误说明过长。");
+        if (length == 0) return "";
+        return Encoding.UTF8.GetString(await ReadAsync(stream, (int)length, token)).Trim();
+    }
+
+    private static InvalidOperationException Reject(string reason) =>
+        new(string.IsNullOrWhiteSpace(reason) ? "VNC 服务拒绝连接。" : "VNC 服务拒绝连接：" + reason);
 
     private void Resize(int w, int h)
     {

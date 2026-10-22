@@ -49,6 +49,7 @@ Check(LocalDesktopKeys.Map(Key.A, KeyModifiers.Shift, LocalDesktopProtocol.Vnc) 
 
 foreach (var version in new[] { 3, 7, 8 })
     foreach (var authenticated in new[] { false, true }) await VncLoopback(version, authenticated);
+await MacScreenSharingChecks.Run(Check);
 await InvalidRectangle();
 await RdpFailure();
 if (args.Contains("--rdp-server")) await RdpLoopback();

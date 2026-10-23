@@ -137,13 +137,15 @@ VMCUBE 是星栈内的虚拟机轻应用，默认打开本机工作区，同时�
 - `scripts/build-vmcube-native.sh` 构建 SPICE 工作进程；`scripts/bundle-vmcube-native.py` 收集共享库、可选 QEMU 引擎和 x86 BIOS 固件。
 - 原生文件放在 `Native/bin/<RID>/`，模块构建复制到 `native/<RID>/`。
 - 官方通用应用包包含各平台 SPICE 客户端；较大的 QEMU 引擎拆成 `VMCUBE-QEMU-<RID>.zip`，在应用内按需安装，避免超出容器包体限制。
-- 引擎安装只接受官方 AsterDock Release 资产，验证 GitHub 提供的 SHA-256，限制下载/解压大小与路径；安装到应用数据目录，不修改系统。
-- 尚未发布对应引擎资产时，安装按钮会说明原因；仍可选择已有 QEMU 引擎目录。当前本地 Linux 开发包直接包含引擎。
+- 打包同时发布 `VMCUBE-SPICE-<RID>.zip`（仅 `vmcube-spice` 与随包动态库，不含 QEMU）。通用包里的 SPICE 文件保持原位；该 zip 用于当前 RID 组件缺失或损坏时的一键修复。
+- 打开 SPICE 控制台时若找不到组件，会弹出「安装 SPICE 组件」，而不是只抛出未包含组件的异常。「引擎与设置」里有同样的按钮。已就绪时按钮为「重新检测 SPICE」，不会重复下载。
+- 引擎和 SPICE 安装都只接受官方 AsterDock Release 资产，验证 GitHub 提供的 SHA-256，限制下载/解压大小与路径；安装到应用数据目录，不修改系统。SPICE 安装目录记录在 `spice-directory.json`，且必须位于应用数据目录内。
+- 尚未发布对应引擎或 SPICE 资产时，安装按钮会说明原因；仍可选择已有 QEMU 引擎目录。当前本地 Linux 开发包直接包含引擎。
 - CI 配置包含 Linux x64/arm64、macOS x64/arm64、Windows x64 原生构建。跨平台构建配置不等于已在目标系统实测；本次实测平台为 Linux x64。
 
 ## 验证
 
-- `dotnet run --project tests/VMCube.Checks`：参数、解析、命令白名单、SSH、归档路径与 VNC 回环测试。
+- `dotnet run --project tests/VMCube.Checks`：参数、解析、命令白名单、SSH、归档路径、SPICE 组件包校验与 VNC 回环测试。linux-x64 上缺少 `vmcube-spice` 时，打开 SPICE 控制台应出现「安装 SPICE 组件」；QEMU「安装本机引擎」仍只在找不到 QEMU 时下载。
 - 加上 `--spice-helper <路径> --qemu <路径>`：启动本机临时 QEMU，测试真实 SPICE 密码认证、画面和键鼠，以及本机 qcow2/生命周期/重新接管。
 - 再加 `--uefi-code <CODE> --uefi-vars <VARS 模板> --swtpm <程序>`：使用临时固件副本和新建测试 TPM 验证 UEFI/TPM 导入、原磁盘不变、运行中磁盘拒绝、SPICE 画面、独立 .NET 进程重新接管、重复启动保护、启动失败具体诊断与重启后 TPM 清理。
 - `tests/VMCube.UiChecks`：在虚拟显示环境打开实际 Avalonia 页面，验证选择、搜索、筛选及亮暗/窄窗口布局并生成截图。

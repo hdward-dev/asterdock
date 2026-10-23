@@ -57,6 +57,7 @@ public sealed partial class VMCubeView : UserControl, IDisposable
 
     private async void Refresh_Click(object? sender, RoutedEventArgs e) => await ExecuteAsync(RefreshAsync);
     private async void CheckEngine_Click(object? sender, RoutedEventArgs e) => await ExecuteAsync(CheckOrInstallEngineAsync);
+    private async void InstallSpice_Click(object? sender, RoutedEventArgs e) => await ExecuteAsync(InstallSpiceComponentAsync);
     private async void ChooseEngine_Click(object? sender, RoutedEventArgs e) => await ExecuteAsync(ChooseEngineAsync);
     private async void CreateVm_Click(object? sender, RoutedEventArgs e) => await ExecuteAsync(CreateLocalVmAsync);
     private async void ImportVm_Click(object? sender, RoutedEventArgs e) => await ExecuteAsync(ImportLocalVmAsync);
@@ -67,7 +68,7 @@ public sealed partial class VMCubeView : UserControl, IDisposable
     private async Task ExecuteAsync(Func<Task> action)
     {
         if (_busy || _disposed) return;
-        _busy = true; _connection.IsEnabled = false; _engineControls.IsEnabled = false; _refresh.IsEnabled = false; _libraryActions.IsEnabled = false; RenderMachines();
+        _busy = true; _connection.IsEnabled = false; _engineControls.IsEnabled = false; _spiceControls.IsEnabled = false; _refresh.IsEnabled = false; _libraryActions.IsEnabled = false; RenderMachines();
         try { await action(); }
         catch (OperationCanceledException) when (_disposed) { }
         catch (Exception ex)
@@ -79,7 +80,7 @@ public sealed partial class VMCubeView : UserControl, IDisposable
         finally
         {
             _busy = false;
-            if (!_disposed) { _connection.IsEnabled = true; _engineControls.IsEnabled = true; _refresh.IsEnabled = _demo || _connectedUri is not null; _libraryActions.IsEnabled = true; RenderMachines(); }
+            if (!_disposed) { _connection.IsEnabled = true; _engineControls.IsEnabled = true; _spiceControls.IsEnabled = true; _refresh.IsEnabled = _demo || _connectedUri is not null; _libraryActions.IsEnabled = true; RenderMachines(); }
         }
     }
     private async Task ConnectAsync()
@@ -195,9 +196,11 @@ public sealed partial class VMCubeView : UserControl, IDisposable
             _consolePassword.Text = "";
             if (endpoint.UseTls && uri != "local" && new Uri(uri).Scheme == "qemu+ssh")
                 throw new NotSupportedException("此 SPICE 控制台仅开放 TLS 端口，请用“直接连接桌面”填写证书对应主机名和 TLS 端口，避免隧道地址导致主机名校验失败。");
+            if (endpoint.Protocol == ConsoleProtocol.Spice && !await EnsureSpiceComponentAsync()) return;
             OpenConsole(key, vm.Name, options, uri == "local" ? null : token => ConsoleTunnel.OpenAsync(uri, endpoint, token), endpoint.Protocol, endpoint.UseTls);
         }
         catch (OperationCanceledException) when (_disposed) { }
+        catch (SpiceComponentMissingException ex) { if (!_disposed) { _status.Text = ex.Message; AddLog(ex.Message); RefreshSpiceStatus(); _ = _context.Feedback.ShowWarningAsync("缺少 SPICE 组件", ex.Message); } }
         catch (Exception ex) { if (!_disposed) { _status.Text = "控制台连接失败 · " + ex.Message; AddLog(_status.Text); _context.Feedback.Report("控制台连接失败", ex); } }
     }
     private bool RefreshEngineStatus()
@@ -236,6 +239,48 @@ public sealed partial class VMCubeView : UserControl, IDisposable
         catch (OperationCanceledException) when (_disposed) { }
         catch (Exception ex) { if (!_disposed) { _status.Text = ex.Message; AddLog(ex.Message); } }
     }
+    private bool RefreshSpiceStatus()
+    {
+        var helper = SpiceDesktopSession.TryFindHelper(_context.DataDirectory);
+        if (helper is null)
+        {
+            _spiceStatus.Text = SpiceDesktopSession.MissingComponentMessage(System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier);
+            ToolTip.SetTip(_spiceStatus, null); _installSpice.Content = "安装 SPICE 组件";
+            return false;
+        }
+        var module = Path.GetDirectoryName(typeof(SpiceDesktopSession).Assembly.Location)!;
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var bundled = helper.StartsWith(Path.Combine(module, "native") + Path.DirectorySeparatorChar, comparison)
+            || helper.StartsWith(Path.Combine(AppContext.BaseDirectory, "native") + Path.DirectorySeparatorChar, comparison);
+        _spiceStatus.Text = bundled ? "SPICE 已就绪 · 使用应用内置组件，无需另行安装" : "SPICE 已就绪 · 使用已安装的本机组件";
+        ToolTip.SetTip(_spiceStatus, helper); _installSpice.Content = "重新检测 SPICE";
+        return true;
+    }
+    private async Task<bool> EnsureSpiceComponentAsync()
+    {
+        if (SpiceDesktopSession.TryFindHelper(_context.DataDirectory) is not null) return true;
+        var message = SpiceDesktopSession.MissingComponentMessage(System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier);
+        if (!await _context.Feedback.ConfirmAsync("安装 SPICE 组件", message, "安装 SPICE 组件", "取消"))
+        {
+            _status.Text = message; AddLog(message); RefreshSpiceStatus(); return false;
+        }
+        await InstallSpiceComponentAsync();
+        if (_disposed) return false;
+        if (SpiceDesktopSession.TryFindHelper(_context.DataDirectory) is null)
+            throw new SpiceComponentMissingException(System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier);
+        return true;
+    }
+    private async Task InstallSpiceComponentAsync()
+    {
+        if (RefreshSpiceStatus())
+        {
+            _status.Text = "本机 SPICE 组件已就绪，无需重复安装。";
+            AddLog(_status.Text); return;
+        }
+        var installer = new SpiceComponentInstaller();
+        var directory = await installer.InstallAsync(_context.DataDirectory, new Progress<string>(value => { if (!_disposed) _status.Text = value; }), _lifetime.Token);
+        if (!_disposed) { RefreshSpiceStatus(); AddLog("SPICE 组件已安装并校验 · " + directory); }
+    }
     private async Task ChooseEngineAsync()
     {
         var storage = TopLevel.GetTopLevel(this)?.StorageProvider;
@@ -266,7 +311,7 @@ public sealed partial class VMCubeView : UserControl, IDisposable
             if (!existing.Completion.IsCompleted) { existing.Activate(); return; }
             existing.Close();
         }
-        var window = new ConsoleWindow(name, options, tunnel, consoleProtocol, useTls, caFile, _context.Feedback);
+        var window = new ConsoleWindow(name, options, tunnel, consoleProtocol, useTls, caFile, _context.Feedback, _context.DataDirectory);
         _consoles[key] = window;
         if (!key.StartsWith("direct/", StringComparison.Ordinal)) {
             window.FramePresented += frame => UpdatePreview(key, frame);

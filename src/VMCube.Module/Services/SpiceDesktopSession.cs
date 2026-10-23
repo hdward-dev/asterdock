@@ -6,21 +6,49 @@ using System.Threading.Channels;
 using URemote.Core;
 namespace VMCube.Module.Services;
 
+/// <summary>Thrown when this RID has no bundled or installed <c>vmcube-spice</c> helper.</summary>
+public sealed class SpiceComponentMissingException(string runtimeIdentifier) : NotSupportedException(SpiceDesktopSession.MissingComponentMessage(runtimeIdentifier))
+{
+    public string RuntimeIdentifier { get; } = runtimeIdentifier;
+}
+
 /// <summary>Managed transport for the bundled, isolated spice-client-glib worker.</summary>
-public sealed partial class SpiceDesktopSession(bool useTls = false, string? caFile = null, string? helperPath = null) : ILocalDesktopSession
+public sealed partial class SpiceDesktopSession(bool useTls = false, string? caFile = null, string? helperPath = null, string? dataDirectory = null) : ILocalDesktopSession
 {
     private readonly Channel<byte[]> _input = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(512) { FullMode = BoundedChannelFullMode.Wait });
     private volatile bool _ready;
     public event Action<LocalDesktopFrame>? Frame;
     public event Action<string>? Status;
-    public static string FindHelper()
+    public static string HelperFileName { get; } = OperatingSystem.IsWindows() ? "vmcube-spice.exe" : "vmcube-spice";
+    public static string MissingComponentMessage(string rid) =>
+        $"此应用包未包含 {rid} 的 SPICE 组件。请点击「安装 SPICE 组件」下载并校验官方组件，或使用包含对应平台组件的 VMCUBE 安装包。";
+    public static IReadOnlyList<string> HelperCandidates(string? dataDirectory = null)
     {
-        var file = OperatingSystem.IsWindows() ? "vmcube-spice.exe" : "vmcube-spice";
+        var file = HelperFileName;
         var rid = RuntimeInformation.RuntimeIdentifier;
         var module = Path.GetDirectoryName(typeof(SpiceDesktopSession).Assembly.Location)!;
-        var paths = new[] { Path.Combine(module, "native", rid, file), Path.Combine(AppContext.BaseDirectory, "native", rid, file) };
-        var executable = paths.FirstOrDefault(File.Exists) ?? throw new NotSupportedException($"此应用包未包含 {rid} 的 SPICE 组件，请使用包含对应平台组件的 VMCUBE 安装包。");
+        var paths = new List<string> { Path.Combine(module, "native", rid, file), Path.Combine(AppContext.BaseDirectory, "native", rid, file) };
+        if (InstalledHelper(dataDirectory, file) is { } installed) paths.Add(installed);
+        return paths;
+    }
+    public static string? TryFindHelper(string? dataDirectory = null) =>
+        HelperCandidates(dataDirectory).FirstOrDefault(File.Exists);
+    public static string FindHelper(string? dataDirectory = null)
+    {
+        var executable = TryFindHelper(dataDirectory) ?? throw new SpiceComponentMissingException(RuntimeInformation.RuntimeIdentifier);
         PrepareExecutable(executable); return executable;
+    }
+    private static string? InstalledHelper(string? dataDirectory, string file)
+    {
+        if (string.IsNullOrWhiteSpace(dataDirectory)) return null;
+        string? directory;
+        try { directory = SpiceComponentInstaller.GetInstalledDirectory(dataDirectory); }
+        catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException or UnauthorizedAccessException) { return null; }
+        if (string.IsNullOrWhiteSpace(directory)) return null;
+        var helper = Path.GetFullPath(Path.Combine(directory, file));
+        var root = Path.GetFullPath(dataDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        if (!helper.StartsWith(root, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)) return null;
+        return helper;
     }
     public static void PrepareExecutable(string path)
     {
@@ -31,7 +59,7 @@ public sealed partial class SpiceDesktopSession(bool useTls = false, string? caF
     public async Task RunAsync(LocalDesktopOptions options, CancellationToken cancellationToken)
     {
         options.Validate();
-        var executable = helperPath ?? FindHelper();
+        var executable = helperPath ?? FindHelper(dataDirectory);
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _transportStop = stop;
         var info = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true };

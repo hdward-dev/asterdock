@@ -45,6 +45,8 @@ foreach ($application in $applications) {
         } | Copy-Item -Destination $stagingDirectory -Recurse
 
         # QEMU engines are installed per platform on demand; keep the universal app below 512 MB.
+        # SPICE stays in the universal bundle. After QEMU is removed, also publish
+        # VMCUBE-SPICE-<RID>.zip (helper + relocated libs only) so a missing helper can be repaired.
         if ($application.Name -eq "vmcube") {
             $nativeDirectory = Join-Path $stagingDirectory "native"
             if (Test-Path $nativeDirectory) {
@@ -55,6 +57,15 @@ foreach ($application in $applications) {
                         if (Test-Path $engineBundle) { [System.IO.File]::Delete($engineBundle) }
                         [System.IO.Compression.ZipFile]::CreateFromDirectory($engine, $engineBundle, [System.IO.Compression.CompressionLevel]::Optimal, $false)
                         Remove-Item -LiteralPath $engine -Recurse -Force
+                    }
+                    $helperName = "vmcube-spice"
+                    if ($platform.Name -like "win-*") { $helperName = "vmcube-spice.exe" }
+                    $helper = Join-Path $platform.FullName $helperName
+                    if (Test-Path -LiteralPath $helper) {
+                        $spiceBundle = Join-Path $OutputDirectory "VMCUBE-SPICE-$($platform.Name).zip"
+                        if (Test-Path $spiceBundle) { [System.IO.File]::Delete($spiceBundle) }
+                        [System.IO.Compression.ZipFile]::CreateFromDirectory($platform.FullName, $spiceBundle, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+                        Write-Output $spiceBundle
                     }
                 }
             }

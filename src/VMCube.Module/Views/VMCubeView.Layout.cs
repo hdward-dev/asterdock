@@ -47,6 +47,7 @@ public sealed partial class VMCubeView
         _pages = [libraryPage, libraryPage, directPage, logPage, settingsPage];
         Place(_railDetails, _details);
         workspacePath.Text = _context.DataDirectory;
+        RefreshSpiceStatus();
         directTls.IsCheckedChanged += (_, _) => directCa.IsVisible = directProtocol.SelectedIndex == 0 && directTls.IsChecked == true;
         directProtocol.SelectionChanged += (_, _) => { directTls.IsVisible = directProtocol.SelectedIndex == 0; directCa.IsVisible = directProtocol.SelectedIndex == 0 && directTls.IsChecked == true; };
         _status.PropertyChanged += (_, e) => { if (e.Property == TextBlock.TextProperty) {
@@ -93,7 +94,7 @@ public sealed partial class VMCubeView
     {
         _favoritesOnly = sender == tabFavorites; UpdateTabs(); RenderMachines();
     }
-    private async void DirectConnect_Click(object? sender, RoutedEventArgs e) => await ExecuteAsync(() =>
+    private async void DirectConnect_Click(object? sender, RoutedEventArgs e) => await ExecuteAsync(async () =>
     {
         try {
             var options = new LocalDesktopOptions(LocalDesktopProtocol.Vnc, directHost.Text?.Trim() ?? "", (int)(directPort.Value ?? 5900), Password: directPassword.Text ?? ""); options.Validate();
@@ -101,10 +102,11 @@ public sealed partial class VMCubeView
             var ca = directCa.Text?.Trim();
             if (endpoint.UseTls && !string.IsNullOrWhiteSpace(ca) && !File.Exists(ca)) throw new ArgumentException("CA 证书文件不存在。");
             directPassword.Text = ""; directError.Text = "";
+            if (endpoint.Protocol == ConsoleProtocol.Spice && !await EnsureSpiceComponentAsync()) { directError.Text = _status.Text ?? ""; return; }
             OpenConsole($"direct/{endpoint.Protocol}/{endpoint.Host}:{endpoint.Port}/{endpoint.UseTls}", $"{endpoint.Host}:{endpoint.Port}", options, consoleProtocol: endpoint.Protocol, useTls: endpoint.UseTls, caFile: endpoint.UseTls ? ca : null);
         }
+        catch (SpiceComponentMissingException ex) { directError.Text = ex.Message; _status.Text = ex.Message; AddLog(ex.Message); RefreshSpiceStatus(); _ = _context.Feedback.ShowWarningAsync("缺少 SPICE 组件", ex.Message); }
         catch (ArgumentException ex) { directError.Text = ex.Message; }
-        return Task.CompletedTask;
     });
 
     private void UpdateTabs()
@@ -118,7 +120,7 @@ public sealed partial class VMCubeView
             _consolePassword.Text = "";
             if (!IsLocal && (_uri.Text?.StartsWith("qemu:///", StringComparison.Ordinal) ?? false)) _uri.Text = "qemu+ssh://user@host/system";
         }
-        ShowPage(index); UpdateStats(); Filter();
+        ShowPage(index); if (index == 4) RefreshSpiceStatus(); UpdateStats(); Filter();
         if (index == 0 && _connectedUri is null && !_demo) await ConnectAsync();
     }
     private void ApplyDetailPlacement(int generation)

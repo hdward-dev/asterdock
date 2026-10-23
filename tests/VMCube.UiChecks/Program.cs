@@ -171,6 +171,8 @@ AppBuilder.Configure<UiCheckApp>().UsePlatformDetect().AfterSetup(builder =>
             Click(navigation[3]); await Task.Delay(80); Capture("history.png");
             Click(navigation[4]); await Task.Delay(80);
             if (!page.GetVisualDescendants().OfType<TextBox>().Any(x => x.PlaceholderText?.Contains("QEMU 引擎目录") == true)) throw new Exception("Engine settings missing");
+            var spiceInstall = page.GetVisualDescendants().OfType<Button>().Single(x => x.Name == "_installSpice");
+            if (spiceInstall.Content is not string spiceAction || !spiceAction.Contains("SPICE", StringComparison.Ordinal)) throw new Exception("SPICE install action missing");
             Capture("settings.png");
             Click(navigation[0]); await Task.Delay(200);
             await (Task)typeof(VMCubeView).GetMethod("DemoAsync", flags)!.Invoke(view, null)!;

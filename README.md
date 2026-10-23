@@ -18,7 +18,12 @@
 
 容器启动后每天至多静默检查一次 AsterDock 官方 GitHub Releases，也可以在“设置 → 软件更新”中手动检查。发现新版本后会按当前系统与架构下载对应的 MSI 或 DMG；安装包必须带有 GitHub Release 提供的 SHA-256 digest，下载完成并校验通过后才会打开系统安装程序。
 
-Nightly Release 标签使用 `v1.0.<运行编号>-nightly-<日期>-<提交号>`，数字版本与 MSI、DMG 和宿主程序集保持一致，供已有客户端比较版本。只有日期和提交号的旧 `nightly-*` 标签不能被更新器解析；修复后的发布会显式标记为 Latest。
+发布入口是 [`.github/workflows/release.yml`](.github/workflows/release.yml)。Nightly 和正式版共用这个文件：Nightly 版本号是 `1.0.<该工作流的运行编号>`。GitHub 按工作流文件累计这个编号；把定时任务挪到新文件会从 1 重新计数，低于已经发布的 1.0.69，客户端不会把它当成更新。
+
+- **Nightly**：每天 14:00 UTC。只有最新提交的上海日期是当天才会发布。`workflow_dispatch` 可以忽略日期补跑，但自动化调用经常收到 403，定时和推送标签更可靠。手动触发也仍然是 Nightly，不会因为当前 ref 是标签就变成正式版。标签形如 `v1.0.<运行编号>-nightly-<YYYYMMDD>-<提交号>`。更新器只比较第一个连字符前的数字，并与 MSI、DMG 和宿主程序集对齐。只有日期和提交号的旧 `nightly-*` 标签不能参与比较。
+- **正式版**：推送干净标签 `vMAJOR.MINOR.PATCH`（`git tag v1.2.3 && git push origin v1.2.3`）。带 `-nightly-`、`-rc` 或其他后缀的标签不会走正式发布。打标签前可以把发行说明放在 `.github/release-notes/vX.Y.Z.md`；没有该文件时，正文是安装包清单。
+
+两条路径都会把该 Release 标为 Latest，并共用同一条队列，避免同时改写 Latest。打包任务图在 [`.github/workflows/package-release.yml`](.github/workflows/package-release.yml)。下载文件名与 v1.0.69 相同，包括 `AsterDock-win-*.msi`、`AsterDock-osx-*.dmg`、`AsterDock-linux-*.deb` / `.rpm`、`SHA256SUMS-linux-*.txt`、`AsterDock-App-<应用 id>.appbundle`、`app-catalog.json` 和 `VMCUBE-QEMU-<rid>.zip`。
 
 Linux 提供 x64/arm64 的 deb、rpm 安装包，可从 Releases 下载；内置主页，其他轻应用通过应用目录安装。Linux 可检查新版本并打开发布页面，暂不提供自动下载安装。安装包的实际桌面兼容性仍需在目标发行版验证。
 
@@ -110,7 +115,7 @@ bash scripts/package-invoice-app.sh Release 1.0.0 osx-arm64
 
 应用包会经过路径与大小检查，安全解包到用户缓存后加载。
 
-Nightly 发布会自动打包 `src/*.Module/app.json` 中除内置主页之外的所有轻应用，文件名为 `AsterDock-App-<应用 id>.appbundle`。发布流程从实际包内的清单生成目录，与应用包一起上传到同一个 Release；新增应用、更新版本无需手工维护目录。可在本地打包后生成目录，例如：
+发布流程会自动打包 `src/*.Module/app.json` 中除内置主页之外的所有轻应用，文件名为 `AsterDock-App-<应用 id>.appbundle`。发布流程从实际包内的清单生成目录，与应用包一起上传到同一个 Release；新增应用、更新版本无需手工维护目录。可在本地打包后生成目录，例如：
 
 ```bash
 python scripts/generate-app-catalog.py artifacts/release/apps --release-tag v1.0.123-nightly-YYYYMMDD-COMMIT

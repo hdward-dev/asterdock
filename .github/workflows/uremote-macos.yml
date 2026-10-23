@@ -1,29 +1,71 @@
+# macOS URemote desktop bridge.
+#
+# CI: pushes to main and pull requests into main.
+# Packaging: release.yml → package-release.yml calls this with workflow_call.
+# The artifact name uremote-macos-native is a packaging contract. Do not rename it.
+#
+# Tag pushes are not a CI trigger. The formal release calls this workflow itself,
+# so a tag does not build the bridge twice.
+
 name: URemote macOS native checks
-on: [push, pull_request, workflow_dispatch, workflow_call]
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+  workflow_call:
+
 permissions:
   contents: read
+
+# Hardcoded prefix so a Release workflow_call does not share a group with
+# URemote CI or with the VMCUBE call in the same release (both would otherwise
+# see the caller workflow name).
+concurrency:
+  group: uremote-macos-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
 jobs:
   macos:
+    name: liburemote-mac.dylib
     runs-on: macos-14
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.400'
-      - run: bash scripts/build-uremote-mac.sh arm64
-      - run: bash scripts/build-uremote-mac.sh x86_64
+      - name: Check out and set up .NET
+        uses: ./.github/actions/setup-dotnet
+
+      - name: Build arm64 bridge
+        run: bash scripts/build-uremote-mac.sh arm64
+
+      - name: Build x86_64 bridge
+        run: bash scripts/build-uremote-mac.sh x86_64
+
       - name: Build plugin and verify native output paths
         run: |
           dotnet build src/URemote.Module -c Release
           test -f src/URemote.Module/bin/Release/net10.0/native/osx-arm64/liburemote-mac.dylib
           test -f src/URemote.Module/bin/Release/net10.0/native/osx-x64/liburemote-mac.dylib
-      - run: dotnet build tests/URemote.MacChecks -c Release
+
+      - name: Build ABI checks
+        run: dotnet build tests/URemote.MacChecks -c Release
+
       - name: Load native ABI without requesting permissions
         run: |
           mkdir -p tests/URemote.MacChecks/bin/Release/net10.0/native
           cp -R src/URemote.Module/Native/bin/osx-* tests/URemote.MacChecks/bin/Release/net10.0/native/
           dotnet tests/URemote.MacChecks/bin/Release/net10.0/URemote.MacChecks.dll
-      - uses: actions/upload-artifact@v4
+
+      - name: Upload macOS desktop bridges
+        uses: actions/upload-artifact@v6
         with:
           name: uremote-macos-native
           path: src/URemote.Module/Native/bin/osx-*/liburemote-mac.dylib
+          if-no-files-found: error

@@ -1,4 +1,13 @@
-name: Build
+# Pull request and main CI. This workflow does not publish GitHub Releases.
+#
+# Other checks on the same main / pull_request triggers:
+#   portal-checks.yml   Portal and PipeWire protocol
+#   uremote-macos.yml   macOS desktop bridge; also called while packaging
+#   vmcube-native.yml   SPICE/QEMU natives, path-filtered; also called while packaging
+#
+# Publishing lives in release.yml (Nightly and formal tags) and package-release.yml.
+
+name: CI
 
 on:
   push:
@@ -13,7 +22,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: build-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -33,13 +42,8 @@ jobs:
           - macos-latest
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: 10.0.400
+      - name: Check out and set up .NET
+        uses: ./.github/actions/setup-dotnet
 
       - name: Restore dependencies
         run: dotnet restore AsterDock.slnx
@@ -53,35 +57,33 @@ jobs:
       - name: Build solution
         run: dotnet build AsterDock.slnx --configuration Release --no-restore
 
+  release-resolver:
+    name: Check Nightly and stable tag rules
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Resolve sample releases
+        run: bash tests/test_resolve_release.sh
+
   local-desktop:
     name: Check embedded RDP and VNC
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: 10.0.400
+      - name: Check out and set up .NET
+        uses: ./.github/actions/setup-dotnet
+
       - name: Install FreeRDP development libraries
+        uses: ./.github/actions/apt-install
         timeout-minutes: 20
-        run: |
-          apt_opts=(
-            -o Acquire::Retries=3
-            -o Acquire::http::Timeout=30
-            -o Acquire::https::Timeout=30
-          )
-          for attempt in 1 2 3; do
-            if sudo timeout 90 apt-get update "${apt_opts[@]}" \
-              && sudo timeout 180 apt-get install -y "${apt_opts[@]}" cmake pkg-config freerdp3-dev libwinpr3-dev; then
-              exit 0
-            fi
-            echo "FreeRDP apt install failed (attempt ${attempt}/3)" >&2
-            if [[ "${attempt}" -eq 3 ]]; then
-              exit 1
-            fi
-            sleep $((attempt * 10))
-          done
+        with:
+          packages: cmake pkg-config freerdp3-dev libwinpr3-dev
+
       - name: Build native RDP bridge
         run: bash scripts/build-uremote-rdp.sh
+
       - name: Check VNC protocol and RDP native lifecycle
         run: dotnet run --project tests/URemote.LocalChecks --configuration Release -- --require-rdp

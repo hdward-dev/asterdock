@@ -1,0 +1,5 @@
+# macos-15-intel is a GitHub-hosted Intel macOS runner. actionlint's built-in
+# label list does not include it. v1.0.69 published osx-x64 VMCUBE natives from it.
+self-hosted-runner:
+  labels:
+    - macos-15-intel

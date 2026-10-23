@@ -1,0 +1,420 @@
+# Shared packaging graph for Nightly and formal releases.
+# Called only from release.yml. There is no schedule or tag trigger here.
+#
+# channel=nightly  tag v1.0.<run>-nightly-<YYYYMMDD>-<sha>   title "AsterDock Nightly <date>"
+# channel=stable   tag vMAJOR.MINOR.PATCH                    title "AsterDock <version>"
+# The version string is already chosen by scripts/resolve-release.sh.
+#
+# Job graph
+#   validate
+#     ├─ package-windows      AsterDock-win-{x64,arm64}.msi  (+ .wixpdb if WiX emits it)
+#     ├─ package-macos        AsterDock-osx-{x64,arm64}.dmg
+#     ├─ package-linux        AsterDock-linux-{x64,arm64}.deb / .rpm + SHA256SUMS-linux-*.txt
+#     ├─ build-uremote-rdp    intermediate artifact uremote-rdp-{linux-x64,linux-arm64}
+#     ├─ build-vmcube-native  intermediate artifact vmcube-native-<rid>
+#     └─ build-uremote-macos  intermediate artifact uremote-macos-native
+#            └─ package-applications
+#                 AsterDock-App-<id>.appbundle
+#                 app-catalog.json
+#                 VMCUBE-QEMU-<rid>.zip          split out by scripts/package-apps.ps1
+#                 VMCUBE-SPICE-<rid>.zip         only when that script writes it (PR #16)
+#                      └─ publish-release
+#                           GitHub Release assets are every file in the release-* artifacts.
+#                           Intermediate uremote-rdp-*, vmcube-native-*, and
+#                           uremote-macos-native artifacts are not published.
+#
+# v1.0.69 clients download the names checked in publish-release. Do not rename them.
+# SPICE zips are not required; adding them in package-apps.ps1 is enough to publish them.
+
+name: Package release
+
+on:
+  workflow_call:
+    inputs:
+      channel:
+        description: nightly or stable
+        required: true
+        type: string
+      version:
+        description: Numeric version written into installers, such as 1.0.70
+        required: true
+        type: string
+      tag:
+        description: GitHub Release tag to create
+        required: true
+        type: string
+      release_date:
+        description: Display date YYYY-MM-DD (Asia/Shanghai), used in the Nightly title
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+  RELEASE_CHANNEL: ${{ inputs.channel }}
+  RELEASE_VERSION: ${{ inputs.version }}
+  RELEASE_TAG: ${{ inputs.tag }}
+  RELEASE_DATE: ${{ inputs.release_date }}
+
+jobs:
+  validate:
+    name: Check ${{ inputs.channel }} ${{ inputs.tag }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check channel, version, and tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "channel=${RELEASE_CHANNEL} version=${RELEASE_VERSION} tag=${RELEASE_TAG} date=${RELEASE_DATE}"
+          [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$RELEASE_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]
+          case "$RELEASE_CHANNEL" in
+            stable)
+              [[ "$RELEASE_TAG" == "v${RELEASE_VERSION}" ]]
+              ;;
+            nightly)
+              [[ "$RELEASE_TAG" == v${RELEASE_VERSION}-nightly-* ]]
+              ;;
+            *)
+              echo "channel must be nightly or stable, got ${RELEASE_CHANNEL}" >&2
+              exit 1
+              ;;
+          esac
+
+  package-windows:
+    name: Package Windows (${{ matrix.rid }})
+    needs: validate
+    runs-on: windows-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        rid:
+          - win-x64
+          - win-arm64
+    steps:
+      - name: Check out and set up .NET
+        uses: ./.github/actions/setup-dotnet
+
+      - name: Restore dependencies
+        run: dotnet restore AsterDock.slnx --runtime ${{ matrix.rid }}
+
+      - name: Build MSI
+        shell: pwsh
+        run: ./scripts/package-windows.ps1 -RuntimeIdentifier ${{ matrix.rid }} -Version ${{ inputs.version }}
+
+      - name: Upload Windows packages
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-${{ matrix.rid }}
+          path: artifacts/release/${{ matrix.rid }}/*
+          if-no-files-found: error
+
+  package-macos:
+    name: Package macOS (${{ matrix.rid }})
+    needs: validate
+    runs-on: macos-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        rid:
+          - osx-x64
+          - osx-arm64
+    steps:
+      - name: Check out and set up .NET
+        uses: ./.github/actions/setup-dotnet
+
+      - name: Restore dependencies
+        run: dotnet restore AsterDock.slnx --runtime ${{ matrix.rid }}
+
+      - name: Build DMG
+        run: bash scripts/package-macos-release.sh ${{ matrix.rid }} ${{ inputs.version }}
+
+      - name: Upload macOS packages
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-${{ matrix.rid }}
+          path: artifacts/release/${{ matrix.rid }}/*
+          if-no-files-found: error
+
+  package-linux:
+    name: Package Linux (${{ matrix.rid }})
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: linux-x64
+            runner: ubuntu-24.04
+          - rid: linux-arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Check out and set up .NET
+        uses: ./.github/actions/setup-dotnet
+
+      - name: Install packaging tools
+        uses: ./.github/actions/apt-install
+        timeout-minutes: 20
+        with:
+          packages: rpm desktop-file-utils
+
+      - name: Build deb and rpm packages
+        run: bash scripts/package-linux-release.sh ${{ matrix.rid }} ${{ inputs.version }}
+
+      - name: Validate desktop integration
+        run: |
+          dpkg-deb -x artifacts/release/${{ matrix.rid }}/AsterDock-${{ matrix.rid }}.deb /tmp/asterdock-package
+          desktop-file-validate /tmp/asterdock-package/usr/share/applications/asterdock.desktop
+          test -x /tmp/asterdock-package/opt/asterdock/AsterDock.Host
+
+      - name: Upload Linux packages
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-${{ matrix.rid }}
+          path: artifacts/release/${{ matrix.rid }}/*
+          if-no-files-found: error
+
+  build-uremote-rdp:
+    name: Build URemote RDP (${{ matrix.rid }})
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: linux-x64
+            runner: ubuntu-24.04
+          - rid: linux-arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install FreeRDP development libraries
+        uses: ./.github/actions/apt-install
+        timeout-minutes: 20
+        with:
+          packages: cmake pkg-config freerdp3-dev libwinpr3-dev
+
+      - name: Build embedded RDP bridge
+        run: bash scripts/build-uremote-rdp.sh
+
+      - name: Upload RDP bridge
+        uses: actions/upload-artifact@v6
+        with:
+          name: uremote-rdp-${{ matrix.rid }}
+          path: src/URemote.Module/Native/bin/${{ matrix.rid }}/*
+          if-no-files-found: error
+
+  build-vmcube-native:
+    name: VMCUBE native components
+    needs: validate
+    uses: ./.github/workflows/vmcube-native.yml
+
+  build-uremote-macos:
+    name: URemote macOS bridge
+    needs: validate
+    uses: ./.github/workflows/uremote-macos.yml
+
+  package-applications:
+    name: Package lightweight applications
+    needs: [validate, build-uremote-rdp, build-vmcube-native, build-uremote-macos]
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out and set up .NET
+        uses: ./.github/actions/setup-dotnet
+
+      - name: Restore dependencies
+        run: dotnet restore AsterDock.slnx
+
+      - name: Download Linux RDP bridges
+        uses: actions/download-artifact@v7
+        with:
+          pattern: uremote-rdp-*
+          path: artifacts/uremote-native
+
+      - name: Stage embedded RDP components
+        shell: pwsh
+        run: |
+          foreach ($rid in @("linux-x64", "linux-arm64")) {
+            $target = "src/URemote.Module/Native/bin/$rid"
+            New-Item -ItemType Directory -Path $target -Force | Out-Null
+            Copy-Item "artifacts/uremote-native/uremote-rdp-$rid/*" $target
+          }
+
+      - name: Download macOS desktop bridges
+        uses: actions/download-artifact@v7
+        with:
+          name: uremote-macos-native
+          path: src/URemote.Module/Native/bin
+
+      - name: Download VMCUBE native components
+        uses: actions/download-artifact@v7
+        with:
+          pattern: vmcube-native-*
+          path: artifacts/vmcube-native
+
+      - name: Stage SPICE clients and QEMU engines
+        shell: pwsh
+        run: |
+          foreach ($platform in Get-ChildItem artifacts/vmcube-native -Directory) {
+            $rid = $platform.Name -replace '^vmcube-native-', ''
+            $target = "src/VMCube.Module/Native/bin/$rid"
+            New-Item -ItemType Directory -Path $target -Force | Out-Null
+            Copy-Item "$($platform.FullName)/*" $target -Recurse
+          }
+
+      # scripts/package-apps.ps1 writes AsterDock-App-<id>.appbundle for every
+      # module except home, plus VMCUBE-QEMU-<rid>.zip. A later change that also
+      # writes VMCUBE-SPICE-<rid>.zip is uploaded by the glob below; this job
+      # does not need a new step for that zip.
+      - name: Package universal lightweight applications
+        shell: pwsh
+        run: ./scripts/package-apps.ps1
+
+      - name: Generate discovery catalog from packaged manifests
+        run: python scripts/generate-app-catalog.py artifacts/release/apps --release-tag "${{ inputs.tag }}"
+
+      - name: Require QEMU zips from the v1.0.69 contract
+        shell: pwsh
+        run: |
+          $apps = "artifacts/release/apps"
+          $required = @(
+            "app-catalog.json",
+            "VMCUBE-QEMU-linux-x64.zip",
+            "VMCUBE-QEMU-linux-arm64.zip",
+            "VMCUBE-QEMU-osx-x64.zip",
+            "VMCUBE-QEMU-osx-arm64.zip",
+            "VMCUBE-QEMU-win-x64.zip"
+          )
+          foreach ($name in $required) {
+            if (-not (Test-Path (Join-Path $apps $name))) {
+              throw "Missing $name. On-demand VMCUBE install downloads this name from the GitHub Release."
+            }
+          }
+          $bundles = Get-ChildItem $apps -Filter "AsterDock-App-*.appbundle"
+          if (-not $bundles) { throw "No AsterDock-App-*.appbundle files were produced." }
+          Get-ChildItem $apps -Filter "VMCUBE-SPICE-*.zip" | ForEach-Object {
+            Write-Output "Optional SPICE component will be published: $($_.Name)"
+          }
+
+      - name: Upload lightweight applications
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-applications
+          path: artifacts/release/apps/*
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    needs:
+      - validate
+      - package-windows
+      - package-macos
+      - package-linux
+      - package-applications
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Download release packages
+        uses: actions/download-artifact@v7
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          echo "Release assets:"
+          find release-assets -maxdepth 1 -type f -printf '%f\n' | sort
+
+          # Names published on v1.0.69 that clients and the updater already request.
+          # Extra files (WiX .wixpdb, future VMCUBE-SPICE-*.zip) are uploaded too.
+          required=(
+            app-catalog.json
+            AsterDock-App-android-screen.appbundle
+            AsterDock-App-device-information.appbundle
+            AsterDock-App-invoice-printer.appbundle
+            AsterDock-App-network-accelerator.appbundle
+            AsterDock-App-serial-debugger.appbundle
+            AsterDock-App-u-remote.appbundle
+            AsterDock-App-vmcube.appbundle
+            AsterDock-linux-arm64.deb
+            AsterDock-linux-arm64.rpm
+            AsterDock-linux-x64.deb
+            AsterDock-linux-x64.rpm
+            AsterDock-osx-arm64.dmg
+            AsterDock-osx-x64.dmg
+            AsterDock-win-arm64.msi
+            AsterDock-win-x64.msi
+            SHA256SUMS-linux-arm64.txt
+            SHA256SUMS-linux-x64.txt
+            VMCUBE-QEMU-linux-arm64.zip
+            VMCUBE-QEMU-linux-x64.zip
+            VMCUBE-QEMU-osx-arm64.zip
+            VMCUBE-QEMU-osx-x64.zip
+            VMCUBE-QEMU-win-x64.zip
+          )
+          missing=0
+          for name in "${required[@]}"; do
+            if [[ ! -f "release-assets/${name}" ]]; then
+              echo "Missing release asset: ${name}" >&2
+              missing=1
+            fi
+          done
+          if [[ "$missing" -ne 0 ]]; then
+            exit 1
+          fi
+
+          shopt -s nullglob
+          extras=()
+          qemu=(release-assets/VMCUBE-QEMU-*.zip)
+          spice=(release-assets/VMCUBE-SPICE-*.zip)
+          if [[ "${#qemu[@]}" -gt 0 ]]; then extras+=("VMCUBE-QEMU-<rid>.zip"); fi
+          if [[ "${#spice[@]}" -gt 0 ]]; then extras+=("VMCUBE-SPICE-<rid>.zip"); fi
+          extra_text=""
+          if [[ "${#extras[@]}" -gt 0 ]]; then
+            joined="$(IFS='、'; echo "${extras[*]}")"
+            extra_text="另含 ${joined}。"
+          fi
+
+          notes_file=".github/release-notes/${RELEASE_TAG}.md"
+          body="${RUNNER_TEMP}/release-notes.md"
+          packages="安装包：Windows x64/arm64 MSI、macOS x64/arm64 DMG、Linux x64/arm64 deb/rpm，以及适用于所有受支持宿主的通用轻应用包。${extra_text}macOS 包尚未签名和公证。"
+          if [[ "$RELEASE_CHANNEL" == "stable" && -f "$notes_file" ]]; then
+            cp "$notes_file" "$body"
+            title="AsterDock ${RELEASE_VERSION}"
+          elif [[ "$RELEASE_CHANNEL" == "stable" ]]; then
+            title="AsterDock ${RELEASE_VERSION}"
+            printf '%s\n\n%s\n' "正式发布 ${RELEASE_VERSION}。" "$packages" > "$body"
+          else
+            title="AsterDock Nightly ${RELEASE_DATE}"
+            printf '%s\n' "自动构建：Windows x64/arm64 MSI、macOS x64/arm64 DMG、Linux x64/arm64 deb/rpm，以及适用于所有受支持宿主的通用轻应用包。${extra_text}macOS 包尚未签名和公证。" > "$body"
+          fi
+          if [[ ! -s "$body" ]]; then
+            echo "Release notes are empty: ${notes_file}" >&2
+            exit 1
+          fi
+
+          gh release create "$RELEASE_TAG" release-assets/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --latest \
+            --title "$title" \
+            --notes-file "$body"

@@ -1,0 +1,25 @@
+name: Check out and set up .NET
+description: Check out this repository and install the .NET SDK pinned by AsterDock CI.
+
+inputs:
+  fetch-depth:
+    description: Passed to actions/checkout fetch-depth
+    required: false
+    default: "1"
+  dotnet-version:
+    description: SDK version
+    required: false
+    default: "10.0.400"
+
+runs:
+  using: composite
+  steps:
+    - name: Check out repository
+      uses: actions/checkout@v7
+      with:
+        fetch-depth: ${{ inputs.fetch-depth }}
+
+    - name: Set up .NET
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}

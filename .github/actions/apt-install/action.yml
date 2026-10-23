@@ -1,0 +1,79 @@
+name: Install apt packages
+description: >-
+  apt-get update and install with per-command timeouts and retries.
+  A stuck mirror or debconf prompt fails this step instead of hanging the job
+  for hours. Defaults match the FreeRDP retry policy: 3 attempts, 90s update,
+  180s install.
+
+inputs:
+  packages:
+    description: Package names separated by spaces
+    required: true
+  attempts:
+    description: How many times to retry the update and install pair
+    required: false
+    default: "3"
+  update-timeout-seconds:
+    description: Timeout for apt-get update
+    required: false
+    default: "90"
+  install-timeout-seconds:
+    description: Timeout for apt-get install
+    required: false
+    default: "180"
+
+runs:
+  using: composite
+  steps:
+    - name: apt-get install (bounded retries)
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+        ATTEMPTS: ${{ inputs.attempts }}
+        UPDATE_TIMEOUT: ${{ inputs.update-timeout-seconds }}
+        INSTALL_TIMEOUT: ${{ inputs.install-timeout-seconds }}
+      run: |
+        set -euo pipefail
+        if [[ -z "${PACKAGES//[[:space:]]/}" ]]; then
+          echo "apt-install: packages input is empty" >&2
+          exit 1
+        fi
+        if ! command -v timeout >/dev/null 2>&1; then
+          echo "apt-install: timeout(1) is required so apt cannot hang" >&2
+          exit 1
+        fi
+        if ! [[ "$ATTEMPTS" =~ ^[1-9][0-9]*$ && "$UPDATE_TIMEOUT" =~ ^[1-9][0-9]*$ && "$INSTALL_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
+          echo "apt-install: attempts and timeouts must be positive integers" >&2
+          exit 1
+        fi
+
+        apt_opts=(
+          -o Acquire::Retries=3
+          -o Acquire::http::Timeout=30
+          -o Acquire::https::Timeout=30
+          -o Dpkg::Lock::Timeout=60
+          -o Dpkg::Options::=--force-confdef
+          -o Dpkg::Options::=--force-confold
+        )
+        set -f
+        # Intentional word-splitting: the input is a space-separated package list.
+        # shellcheck disable=SC2206
+        packages=( $PACKAGES )
+        set +f
+
+        attempt=1
+        while [[ "$attempt" -le "$ATTEMPTS" ]]; do
+          echo "apt-get install attempt ${attempt}/${ATTEMPTS}: ${packages[*]}"
+          if sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a \
+              timeout "$UPDATE_TIMEOUT" apt-get update "${apt_opts[@]}" \
+            && sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a \
+              timeout "$INSTALL_TIMEOUT" apt-get install -y "${apt_opts[@]}" "${packages[@]}"; then
+            exit 0
+          fi
+          echo "apt install failed (attempt ${attempt}/${ATTEMPTS})" >&2
+          if [[ "$attempt" -eq "$ATTEMPTS" ]]; then
+            exit 1
+          fi
+          sleep $((attempt * 10))
+          attempt=$((attempt + 1))
+        done

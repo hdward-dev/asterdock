@@ -1,18 +1,45 @@
+# CI only. Checks the isolated Portal video path. Does not publish a release.
+# Tag pushes do not run this file; Nightly and formal releases do not need it.
+
 name: Native Portal checks
-on: [push, pull_request, workflow_dispatch]
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
 jobs:
   native-portal:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    name: Portal checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.400'
+      - name: Check out and set up .NET
+        uses: ./.github/actions/setup-dotnet
+
       - name: Install native runtime dependencies
-        run: sudo apt-get update && sudo apt-get install -y dbus-daemon gstreamer1.0-plugins-base gstreamer1.0-pipewire libgstreamer-plugins-base1.0-0
-      - run: dotnet build tests/URemote.PortalChecks -c Release
+        uses: ./.github/actions/apt-install
+        timeout-minutes: 20
+        with:
+          packages: dbus-daemon gstreamer1.0-plugins-base gstreamer1.0-pipewire libgstreamer-plugins-base1.0-0
+
+      - name: Build Portal checks
+        run: dotnet build tests/URemote.PortalChecks -c Release
+
       - name: Test synthetic video and isolated Portal protocol
         run: UREMOTE_ISOLATED_TEST_BUS=1 dbus-run-session -- dotnet tests/URemote.PortalChecks/bin/Release/net10.0/URemote.PortalChecks.dll

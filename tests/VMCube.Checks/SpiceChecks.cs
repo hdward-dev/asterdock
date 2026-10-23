@@ -19,7 +19,7 @@ internal static class SpiceChecks
             using (var listener = new TcpListener(IPAddress.Loopback, 0)) { listener.Start(); port = ((IPEndPoint)listener.LocalEndpoint).Port; }
             var info = new ProcessStartInfo(qemu) { UseShellExecute = false, RedirectStandardError = true, RedirectStandardOutput = true };
             foreach (var arg in new[] { "-accel", "tcg", "-m", "128", "-display", "none", "-vga", "qxl", "-nic", "none", "-serial", "none", "-monitor", "none", "-device", "qemu-xhci", "-device", "usb-tablet", "-boot", "menu=on", "-spice", $"addr=127.0.0.1,port={port}," + (authentication ? "password-secret=fixture" : "disable-ticketing=on") }) info.ArgumentList.Add(arg);
-            info.ArgumentList.Add("-trace"); info.ArgumentList.Add("enable=input_event_btn,file=" + traceFile);
+            info.ArgumentList.Add("-trace"); info.ArgumentList.Add("enable=input_event_*,file=" + traceFile);
             var modules = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(qemu))!, "modules");
             if (Directory.Exists(modules)) info.Environment["QEMU_MODULE_DIR"] = modules;
             var firmware = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(qemu))!, "share", "qemu");
@@ -53,8 +53,23 @@ internal static class SpiceChecks
                 var first = await firstFrame;
                 if (first.Width < 320 || first.Height < 200 || first.Pixels.Length != first.Width * first.Height * 4) throw new Exception("SPICE invalid QEMU frame");
                 for (var i = 3; i < first.Pixels.Length; i += 4) if (first.Pixels[i] != 255) throw new Exception("SPICE frame alpha invalid");
-                session.Pointer(100, 100, 0); await Task.Delay(100, timeout.Token);
-                var traceStart = File.Exists(traceFile) ? (await File.ReadAllTextAsync(traceFile, timeout.Token)).Length : 0;
+                // No guest agent: pointer motion must arrive as PS/2 relative events.
+                // Absolute positions are what a Windows guest without spice tools drops.
+                session.Pointer(10, 10, 0); await Task.Delay(150, timeout.Token);
+                var moveStart = File.Exists(traceFile) ? (await File.ReadAllTextAsync(traceFile, timeout.Token)).Length : 0;
+                session.Pointer(50, 30, 0);
+                string moveTrace;
+                MatchCollection axes;
+                do
+                {
+                    await Task.Delay(50, timeout.Token);
+                    moveTrace = (await File.ReadAllTextAsync(traceFile, timeout.Token))[moveStart..];
+                    axes = Regex.Matches(moveTrace, @"input_event_(rel|abs) con -?\d+, axis (\w+), value (-?\d+)");
+                    if (axes.Any(x => x.Groups[1].Value == "abs")) throw new Exception("SPICE sent absolute pointer input without a guest agent: " + moveTrace);
+                } while (axes.Count(x => x.Groups[1].Value == "rel") < 2);
+                int Axis(string name) => axes.Where(x => x.Groups[1].Value == "rel" && x.Groups[2].Value.Equals(name, StringComparison.OrdinalIgnoreCase)).Sum(x => int.Parse(x.Groups[3].Value, System.Globalization.CultureInfo.InvariantCulture));
+                if (Axis("x") != 40 || Axis("y") != 20) throw new Exception($"SPICE relative motion at QEMU receiver dx={Axis("x")} dy={Axis("y")}: {moveTrace}");
+                var traceStart = moveStart + moveTrace.Length;
                 foreach (var mask in new[] { 4, 0, 2, 0, 1, 0 })
                 { session.Pointer(100, 100, mask); await Task.Delay(30, timeout.Token); }
                 MatchCollection received;
@@ -76,7 +91,7 @@ internal static class SpiceChecks
                 stop.Cancel();
                 try { await running.WaitAsync(TimeSpan.FromSeconds(5)); } catch (OperationCanceledException) { }
                 if (!running.IsCompleted) throw new Exception("SPICE worker failed to stop");
-                Console.WriteLine($"SPICE/QEMU passed: auth={authentication}, {first.Width}x{first.Height}, frames, QEMU-confirmed right/middle/left press/release, key/pointer input and cancellation.");
+                Console.WriteLine($"SPICE/QEMU passed: auth={authentication}, {first.Width}x{first.Height}, frames, relative mouse without guest agent, QEMU-confirmed right/middle/left press/release, key/pointer input and cancellation.");
             }
             finally
             {

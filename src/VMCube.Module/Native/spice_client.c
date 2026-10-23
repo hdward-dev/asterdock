@@ -27,7 +27,7 @@ static gint stopping;
 static int exit_status;
 static guint buttons;
 static int last_x, last_y;
-static gboolean have_position;
+static gboolean have_position, main_ready;
 typedef struct { guint32 id; GCancellable *cancel; GFile *files[2]; gint64 last_progress; guint64 current, total; } FileTransfer;
 static FileTransfer *transfer;
 
@@ -66,12 +66,27 @@ static gboolean file_agent_ready(void) {
     if (main_channel) g_object_get(main_channel, "agent-connected", &connected, NULL);
     return connected && !spice_main_channel_agent_test_capability(main_channel, VD_AGENT_CAP_FILE_XFER_DISABLED);
 }
+/* Client/absolute mode is applied by the guest agent (VD_AGENT_CAP_MOUSE_STATE).
+ * spice-gtk otherwise remembers a CLIENT request and repeats it whenever the
+ * server advertises support. QEMU advertises that support for one QXL display
+ * plus a USB tablet even when no agent is running, then drops relative motion
+ * and delivers positions to the tablet, or only to vdagent once agent-mouse
+ * is on. A Windows guest without spice guest tools never applies those events,
+ * while frames still paint. Server mode uses the PS/2 mouse and works before
+ * guest tools exist. The capability is announced after the agent port opens
+ * and cleared again when the agent disconnects. */
+static void sync_mouse_mode(void) {
+    if (!main_channel || !main_ready || g_atomic_int_get(&stopping)) return;
+    gboolean client = spice_main_channel_agent_test_capability(main_channel, VD_AGENT_CAP_MOUSE_STATE);
+    spice_main_channel_request_mouse_mode(main_channel, client ? SPICE_MOUSE_MODE_CLIENT : SPICE_MOUSE_MODE_SERVER);
+}
 static void agent_update(SpiceMainChannel *channel, gpointer unused) {
     gboolean connected = FALSE; g_object_get(channel, "agent-connected", &connected, NULL);
     gboolean allowed = file_agent_ready();
     file_event(0, 0, allowed ? 1 : 0, 0, allowed ? "可发送文件；接收位置由虚拟机中的 SPICE Agent 决定。" :
         connected ? "虚拟机已禁用 SPICE 文件传输，请检查访客端策略。" :
         "未检测到 SPICE Agent。请在虚拟机中安装 SPICE Guest Tools，并启用 com.redhat.spice.0 通道；安装后登录桌面再重连。");
+    sync_mouse_mode();
 }
 static void file_progress(goffset current, goffset total, gpointer data) {
     FileTransfer *t = data; t->current = MAX(current, 0); t->total = MAX(total, current);
@@ -109,7 +124,8 @@ static void channel_event(SpiceChannel *channel, SpiceChannelEvent event, gpoint
     if (g_atomic_int_get(&stopping)) return;
     switch (event) {
     case SPICE_CHANNEL_OPENED:
-        if (SPICE_IS_MAIN_CHANNEL(channel)) spice_main_channel_request_mouse_mode(SPICE_MAIN_CHANNEL(channel), SPICE_MOUSE_MODE_CLIENT);
+        /* Before MAIN_INIT, so spice-gtk does not keep its default CLIENT request. */
+        if (SPICE_IS_MAIN_CHANNEL(channel)) { main_ready = TRUE; sync_mouse_mode(); }
         break;
     case SPICE_CHANNEL_ERROR_AUTH: fail("SPICE 认证失败，请检查控制台密码。"); break;
     case SPICE_CHANNEL_ERROR_TLS: fail("SPICE TLS 校验失败，请检查证书、主机名和 CA 文件。"); break;
@@ -153,7 +169,7 @@ static void channel_new(SpiceSession *s, SpiceChannel *channel, gpointer unused)
 static void channel_destroy(SpiceSession *s, SpiceChannel *channel, gpointer unused) {
     if ((gpointer)channel == display) { display = NULL; dirty = FALSE; }
     if ((gpointer)channel == inputs) inputs = NULL;
-    if ((gpointer)channel == main_channel) main_channel = NULL;
+    if ((gpointer)channel == main_channel) { main_channel = NULL; main_ready = FALSE; }
 }
 static gboolean paint(gpointer unused) {
     if (g_atomic_int_get(&stopping)) return G_SOURCE_REMOVE;
@@ -213,7 +229,8 @@ static gboolean input_packet(gpointer data) {
             if (b) spice_inputs_channel_key_press(inputs, a); else spice_inputs_channel_key_release(inputs, a);
         } else if (kind == 2) {
             guint state = spice_buttons(c & 7);
-            int mode = SPICE_MOUSE_MODE_CLIENT;
+            /* Unset or server mode: absolute positions are ignored by the server. */
+            int mode = SPICE_MOUSE_MODE_SERVER;
             if (main_channel) g_object_get(main_channel, "mouse-mode", &mode, NULL);
             if (mode == SPICE_MOUSE_MODE_CLIENT) spice_inputs_channel_position(inputs, (int)a, (int)b, 0, state);
             else if (have_position) spice_inputs_channel_motion(inputs, (int)a-last_x, (int)b-last_y, state);

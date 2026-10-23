@@ -26,3 +26,15 @@ class ExecutablePathTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaisesRegex(FileNotFoundError, 'Missing native executable:'):
                 self.resolve(pathlib.Path(directory) / 'missing', True)
+
+
+class SpicePackageAssetTests(unittest.TestCase):
+    def test_spice_zip_follows_qemu_removal_and_keeps_the_helper(self):
+        script = (pathlib.Path(__file__).resolve().parents[1] / 'scripts/package-apps.ps1').read_text()
+        qemu = script.index('VMCUBE-QEMU-')
+        remove_qemu = script.index('Remove-Item -LiteralPath $engine')
+        spice = script.index('VMCUBE-SPICE-$')
+        self.assertLess(qemu, remove_qemu)
+        self.assertLess(remove_qemu, spice)
+        self.assertIn('vmcube-spice', script)
+        self.assertNotIn('Remove-Item -LiteralPath $helper', script)

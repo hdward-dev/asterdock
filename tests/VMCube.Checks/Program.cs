@@ -143,6 +143,7 @@ try
     catch (InvalidDataException) { }
 }
 finally { Directory.Delete(zipRoot, recursive: true); }
+await SpiceInstallChecks.RunAsync();
 Console.WriteLine("Console discovery, SPICE framing, remote SSH management, archive traversal and injection checks passed.");
 
 byte[] challenge = Enumerable.Range(0, 16).Select(x => (byte)x).ToArray();

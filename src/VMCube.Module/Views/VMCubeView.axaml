@@ -176,6 +176,16 @@
         </Border>
         <Border Classes="ad-card" Padding="18">
           <StackPanel Spacing="12">
+            <TextBlock Text="SPICE 桌面组件" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource AppStrongTextBrush}"/>
+            <TextBlock x:Name="_spiceStatus" Text="正在检测 SPICE 组件…" TextWrapping="Wrap" FontSize="12" Classes="ad-muted"/>
+            <WrapPanel x:Name="_spiceControls">
+              <Button x:Name="_installSpice" Content="安装 SPICE 组件" Click="InstallSpice_Click"/>
+            </WrapPanel>
+            <TextBlock Text="通用应用包通常已包含各平台组件。若当前平台的 vmcube-spice 缺失或损坏，可从官方发布下载并校验后安装到应用数据目录。" FontSize="12" TextWrapping="Wrap" Classes="ad-muted"/>
+          </StackPanel>
+        </Border>
+        <Border Classes="ad-card" Padding="18">
+          <StackPanel Spacing="12">
             <TextBlock Text="本机工作区" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource AppStrongTextBrush}"/>
             <TextBlock Text="新建虚拟机保存在应用数据目录；导入的虚拟机继续使用原有磁盘。" FontSize="13" TextWrapping="Wrap" Classes="ad-muted"/>
             <SelectableTextBlock x:Name="workspacePath" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource AppStrongTextBrush}"/>

@@ -45,10 +45,10 @@ public sealed partial class ConsoleWindow : Window
         feedback = null;
     }
 
-    public ConsoleWindow(string name, LocalDesktopOptions options, Func<CancellationToken, Task<ConsoleTunnel>>? openTunnel = null, ConsoleProtocol consoleProtocol = ConsoleProtocol.Vnc, bool useTls = false, string? caFile = null, IUserFeedbackService? feedback = null) : this()
+    public ConsoleWindow(string name, LocalDesktopOptions options, Func<CancellationToken, Task<ConsoleTunnel>>? openTunnel = null, ConsoleProtocol consoleProtocol = ConsoleProtocol.Vnc, bool useTls = false, string? caFile = null, IUserFeedbackService? feedback = null, string? dataDirectory = null) : this()
     {
         options.Validate(); protocol = consoleProtocol == ConsoleProtocol.Spice ? LocalDesktopProtocol.Rdp : LocalDesktopProtocol.Vnc; this.openTunnel = openTunnel; this.feedback = feedback;
-        session = consoleProtocol == ConsoleProtocol.Spice ? new SpiceDesktopSession(useTls, caFile) : new VncDesktopSession();
+        session = consoleProtocol == ConsoleProtocol.Spice ? new SpiceDesktopSession(useTls, caFile, dataDirectory: dataDirectory) : new VncDesktopSession();
         Title = $"{name} · {consoleProtocol.ToString().ToUpperInvariant()} · VMCUBE";
         WireFileTransfers();
         session.Frame += frame => { lock (frameGate) { if (!closed) latest = frame; } };
@@ -120,6 +120,14 @@ public sealed partial class ConsoleWindow : Window
             if (!closed) status.Text = "连接已结束";
         }
         catch (Exception e) when (stop.IsCancellationRequested && e is OperationCanceledException or ObjectDisposedException or IOException or System.Net.Sockets.SocketException) { }
+        catch (SpiceComponentMissingException e)
+        {
+            if (!closed)
+            {
+                status.Text = e.Message;
+                if (feedback is not null) _ = feedback.ShowWarningAsync("缺少 SPICE 组件", e.Message);
+            }
+        }
         catch (Exception e)
         {
             if (!closed)

@@ -1,4 +1,31 @@
-name: Nightly Release
+# Release entry. 发布入口：Nightly 与正式版共用本文件。
+#
+# Do not rename this file and do not move the schedule to another workflow.
+# Nightly versions are 1.0.<github.run_number> of THIS file. A new filename
+# starts the counter at 1, which is older than the shipped 1.0.69 line, and
+# clients ignore an update whose numeric prefix is not newer.
+#
+# Nightly（定时 / 手动）:
+#   schedule 14:00 UTC, or workflow_dispatch.
+#   Tag: v1.0.<run>-nightly-<YYYYMMDD>-<sha>
+#   The schedule publishes only when the latest commit's Asia/Shanghai date
+#   is today. workflow_dispatch publishes anyway (manual catch-up).
+#   Automation often receives 403 on workflow_dispatch; the schedule is the
+#   reliable Nightly path. Dispatch is always Nightly, even if the ref is a tag.
+#
+# Formal（正式版本）:
+#   Push a clean tag vMAJOR.MINOR.PATCH. Example:
+#     git tag v1.2.3 && git push origin v1.2.3
+#   Suffixes such as -nightly- or -rc1 do not match, so creating a Nightly
+#   release cannot start this path again.
+#   Optional body: .github/release-notes/vX.Y.Z.md on the tagged commit.
+#   Without that file the body is the installer list.
+#
+# Both channels are marked Latest. They share one concurrency group so two
+# publishes cannot race. The job graph and artifact names are in
+# package-release.yml. Clients keep the v1.0.69 download names.
+
+name: Release
 
 on:
   schedule:
@@ -15,336 +42,43 @@ permissions:
   contents: write
 
 concurrency:
-  group: nightly-release
+  group: astordock-release
   cancel-in-progress: false
-
-env:
-  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
-  DOTNET_NOLOGO: "1"
 
 jobs:
   prepare:
-    name: Prepare release
+    name: Prepare ${{ github.event_name == 'push' && 'stable' || 'Nightly' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       should_release: ${{ steps.release.outputs.should_release }}
       release_date: ${{ steps.release.outputs.release_date }}
       tag: ${{ steps.release.outputs.tag }}
       version: ${{ steps.release.outputs.version }}
+      channel: ${{ steps.release.outputs.channel }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Check for updates and existing release
+      - name: Resolve channel, tag, and version
         id: release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          release_date="$(TZ=Asia/Shanghai date +%Y%m%d)"
-          display_date="$(TZ=Asia/Shanghai date +%Y-%m-%d)"
-          commit_timestamp="$(git log -1 --format=%ct)"
-          commit_date="$(TZ=Asia/Shanghai date -d "@$commit_timestamp" +%Y%m%d)"
-          short_sha="${GITHUB_SHA:0:7}"
-          should_release="false"
+        run: bash scripts/resolve-release.sh
 
-          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF_NAME}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-            version="${BASH_REMATCH[1]}"
-            # Clean tags have no hyphen, so clients keep the full numeric version.
-            tag="v${version}"
-            should_release="true"
-            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-              should_release="false"
-            fi
-          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" || "${GITHUB_EVENT_NAME}" == "schedule" ]]; then
-            version="1.0.${GITHUB_RUN_NUMBER}"
-            # Existing clients parse the numeric prefix before the first hyphen.
-            tag="v${version}-nightly-${release_date}-${short_sha}"
-            if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" || "$commit_date" == "$release_date" ]]; then
-              should_release="true"
-            fi
-            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
-               gh release view "nightly-${release_date}-${short_sha}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-              should_release="false"
-            fi
-          fi
-
-          echo "should_release=$should_release" >> "$GITHUB_OUTPUT"
-          echo "release_date=$display_date" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-  package-windows:
-    name: Package Windows (${{ matrix.rid }})
+  package:
+    name: Package and publish (${{ needs.prepare.outputs.channel }})
     needs: prepare
     if: needs.prepare.outputs.should_release == 'true'
-    runs-on: windows-latest
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        rid:
-          - win-x64
-          - win-arm64
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: 10.0.400
-
-      - name: Restore dependencies
-        run: dotnet restore AsterDock.slnx --runtime ${{ matrix.rid }}
-
-      - name: Build MSI
-        shell: pwsh
-        run: ./scripts/package-windows.ps1 -RuntimeIdentifier ${{ matrix.rid }} -Version ${{ needs.prepare.outputs.version }}
-
-      - name: Upload Windows packages
-        uses: actions/upload-artifact@v6
-        with:
-          name: release-${{ matrix.rid }}
-          path: artifacts/release/${{ matrix.rid }}/*
-          if-no-files-found: error
-
-  package-macos:
-    name: Package macOS (${{ matrix.rid }})
-    needs: prepare
-    if: needs.prepare.outputs.should_release == 'true'
-    runs-on: macos-latest
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        rid:
-          - osx-x64
-          - osx-arm64
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: 10.0.400
-
-      - name: Restore dependencies
-        run: dotnet restore AsterDock.slnx --runtime ${{ matrix.rid }}
-
-      - name: Build DMG
-        run: bash scripts/package-macos-release.sh ${{ matrix.rid }} ${{ needs.prepare.outputs.version }}
-
-      - name: Upload macOS packages
-        uses: actions/upload-artifact@v6
-        with:
-          name: release-${{ matrix.rid }}
-          path: artifacts/release/${{ matrix.rid }}/*
-          if-no-files-found: error
-
-  package-linux:
-    name: Package Linux (${{ matrix.rid }})
-    needs: prepare
-    if: needs.prepare.outputs.should_release == 'true'
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - rid: linux-x64
-            runner: ubuntu-24.04
-          - rid: linux-arm64
-            runner: ubuntu-24.04-arm
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: 10.0.400
-      - name: Install packaging tools
-        run: sudo apt-get update && sudo apt-get install -y rpm desktop-file-utils
-      - name: Build deb and rpm packages
-        run: bash scripts/package-linux-release.sh ${{ matrix.rid }} ${{ needs.prepare.outputs.version }}
-      - name: Validate desktop integration
-        run: |
-          dpkg-deb -x artifacts/release/${{ matrix.rid }}/AsterDock-${{ matrix.rid }}.deb /tmp/asterdock-package
-          desktop-file-validate /tmp/asterdock-package/usr/share/applications/asterdock.desktop
-          test -x /tmp/asterdock-package/opt/asterdock/AsterDock.Host
-      - uses: actions/upload-artifact@v6
-        with:
-          name: release-${{ matrix.rid }}
-          path: artifacts/release/${{ matrix.rid }}/*
-          if-no-files-found: error
-
-  build-uremote-rdp:
-    name: Build URemote RDP (${{ matrix.rid }})
-    needs: prepare
-    if: needs.prepare.outputs.should_release == 'true'
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - rid: linux-x64
-            runner: ubuntu-24.04
-          - rid: linux-arm64
-            runner: ubuntu-24.04-arm
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install FreeRDP development libraries
-        timeout-minutes: 20
-        run: |
-          apt_opts=(
-            -o Acquire::Retries=3
-            -o Acquire::http::Timeout=30
-            -o Acquire::https::Timeout=30
-          )
-          for attempt in 1 2 3; do
-            if sudo timeout 90 apt-get update "${apt_opts[@]}" \
-              && sudo timeout 180 apt-get install -y "${apt_opts[@]}" cmake pkg-config freerdp3-dev libwinpr3-dev; then
-              exit 0
-            fi
-            echo "FreeRDP apt install failed (attempt ${attempt}/3)" >&2
-            if [[ "${attempt}" -eq 3 ]]; then
-              exit 1
-            fi
-            sleep $((attempt * 10))
-          done
-      - name: Build embedded RDP bridge
-        run: bash scripts/build-uremote-rdp.sh
-      - uses: actions/upload-artifact@v6
-        with:
-          name: uremote-rdp-${{ matrix.rid }}
-          path: src/URemote.Module/Native/bin/${{ matrix.rid }}/*
-          if-no-files-found: error
-
-  build-vmcube-native:
-    needs: prepare
-    if: needs.prepare.outputs.should_release == 'true'
-    uses: ./.github/workflows/vmcube-native.yml
-
-  build-uremote-macos:
-    needs: prepare
-    if: needs.prepare.outputs.should_release == 'true'
-    uses: ./.github/workflows/uremote-macos.yml
-
-  package-applications:
-    name: Package lightweight applications
-    needs: [prepare, build-uremote-rdp, build-vmcube-native, build-uremote-macos]
-    if: needs.prepare.outputs.should_release == 'true'
-    runs-on: windows-latest
-    timeout-minutes: 30
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: 10.0.400
-
-      - name: Restore dependencies
-        run: dotnet restore AsterDock.slnx
-
-      - name: Download Linux RDP bridges
-        uses: actions/download-artifact@v7
-        with:
-          pattern: uremote-rdp-*
-          path: artifacts/uremote-native
-
-      - name: Stage embedded RDP components
-        shell: pwsh
-        run: |
-          foreach ($rid in @("linux-x64", "linux-arm64")) {
-            $target = "src/URemote.Module/Native/bin/$rid"
-            New-Item -ItemType Directory -Path $target -Force | Out-Null
-            Copy-Item "artifacts/uremote-native/uremote-rdp-$rid/*" $target
-          }
-
-      - name: Download macOS desktop bridges
-        uses: actions/download-artifact@v7
-        with:
-          name: uremote-macos-native
-          path: src/URemote.Module/Native/bin
-
-      - name: Download VMCUBE native components
-        uses: actions/download-artifact@v7
-        with:
-          pattern: vmcube-native-*
-          path: artifacts/vmcube-native
-
-      - name: Stage SPICE clients and QEMU engines
-        shell: pwsh
-        run: |
-          foreach ($platform in Get-ChildItem artifacts/vmcube-native -Directory) {
-            $rid = $platform.Name -replace '^vmcube-native-', ''
-            $target = "src/VMCube.Module/Native/bin/$rid"
-            New-Item -ItemType Directory -Path $target -Force | Out-Null
-            Copy-Item "$($platform.FullName)/*" $target -Recurse
-          }
-
-      - name: Package universal lightweight applications
-        shell: pwsh
-        run: ./scripts/package-apps.ps1
-
-      - name: Generate discovery catalog from packaged manifests
-        run: python scripts/generate-app-catalog.py artifacts/release/apps --release-tag ${{ needs.prepare.outputs.tag }}
-
-      - name: Upload lightweight applications
-        uses: actions/upload-artifact@v6
-        with:
-          name: release-applications
-          path: artifacts/release/apps/*
-          if-no-files-found: error
-
-  publish-release:
-    name: Publish GitHub Release
-    needs:
-      - prepare
-      - package-windows
-      - package-macos
-      - package-linux
-      - package-applications
-    if: needs.prepare.outputs.should_release == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download release packages
-        uses: actions/download-artifact@v7
-        with:
-          pattern: release-*
-          path: release-assets
-          merge-multiple: true
-
-      - name: Create GitHub Release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
-          RELEASE_DATE: ${{ needs.prepare.outputs.release_date }}
-        run: |
-          if [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            version="${RELEASE_TAG#v}"
-            title="AsterDock ${version}"
-            notes="$(printf '%s\n' \
-              "正式发布 ${version}（当前 main）。" \
-              "" \
-              "- URemote：画质档位、会话弹出窗口（pop-out）、设备卡片随视口缩放，以及 Plasma 锁屏/黑屏后的采集恢复" \
-              "- 统一组件：窗口内对话框、Toast、系统通知与加载状态" \
-              "- U远程与 VMCUBE 界面统一为 AXAML，并接入星栈主题" \
-              "" \
-              "安装包：Windows x64/arm64 MSI、macOS x64/arm64 DMG、Linux x64/arm64 deb/rpm，以及适用于所有受支持宿主的通用轻应用包。macOS 包尚未签名和公证。")"
-          else
-            title="AsterDock Nightly ${RELEASE_DATE}"
-            notes="自动构建：Windows x64/arm64 MSI、macOS x64/arm64 DMG、Linux x64/arm64 deb/rpm，以及适用于所有受支持宿主的通用轻应用包。macOS 包尚未签名和公证。"
-          fi
-
-          gh release create "$RELEASE_TAG" release-assets/* \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --latest \
-            --title "$title" \
-            --notes "$notes"
+    permissions:
+      contents: write
+    uses: ./.github/workflows/package-release.yml
+    with:
+      channel: ${{ needs.prepare.outputs.channel }}
+      version: ${{ needs.prepare.outputs.version }}
+      tag: ${{ needs.prepare.outputs.tag }}
+      release_date: ${{ needs.prepare.outputs.release_date }}
+    secrets: inherit

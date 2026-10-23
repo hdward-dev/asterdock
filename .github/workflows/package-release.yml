@@ -97,7 +97,10 @@ jobs:
           - win-x64
           - win-arm64
     steps:
-      - name: Check out and set up .NET
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
         uses: ./.github/actions/setup-dotnet
 
       - name: Restore dependencies
@@ -126,7 +129,10 @@ jobs:
           - osx-x64
           - osx-arm64
     steps:
-      - name: Check out and set up .NET
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
         uses: ./.github/actions/setup-dotnet
 
       - name: Restore dependencies
@@ -156,7 +162,10 @@ jobs:
           - rid: linux-arm64
             runner: ubuntu-24.04-arm
     steps:
-      - name: Check out and set up .NET
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
         uses: ./.github/actions/setup-dotnet
 
       - name: Install packaging tools
@@ -230,7 +239,10 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - name: Check out and set up .NET
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
         uses: ./.github/actions/setup-dotnet
 
       - name: Restore dependencies

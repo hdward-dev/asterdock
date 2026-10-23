@@ -57,7 +57,10 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     steps:
-      - name: Check out and set up .NET
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
         uses: ./.github/actions/setup-dotnet
 
       - name: Check packaging path resolution

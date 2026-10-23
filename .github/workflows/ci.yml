@@ -42,7 +42,10 @@ jobs:
           - macos-latest
 
     steps:
-      - name: Check out and set up .NET
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
         uses: ./.github/actions/setup-dotnet
 
       - name: Restore dependencies
@@ -73,7 +76,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - name: Check out and set up .NET
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
         uses: ./.github/actions/setup-dotnet
 
       - name: Install FreeRDP development libraries

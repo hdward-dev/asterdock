@@ -48,7 +48,7 @@ U远程作为 Avalonia `IApplicationModule` 运行在 AsterDock 内，不启动�
   使用当前用户的原生 Linux PTY；与键鼠共用本机允许开关。远端断开保留会话，本机停止被控或退出宿主清理会话。
   最多 8 个终端，每个仅在内存保留最多 64 KiB 输出供重连恢复；暂不支持终端重命名，同时只允许一个主控连接。
   本机加密完整回环、Ctrl+C、恢复 Shell 状态测试通过；官方客户端已由用户确认成功创建会话，`uname -a` 正确返回；Ctrl+C 和恢复会话仍待官方客户端实测。
-- 当前被控后端只支持 Linux/Wayland；Windows/Mac 的 AsterDock 可加载模块并显示平台说明。
+- 被控后端支持 Windows、Linux/Wayland 和 macOS。Windows 使用 DXGI Desktop Duplication 采集、SendInput 键鼠、系统剪贴板和当前用户的 cmd 终端；本机预览用 GDI 截屏，避免 DXGI 首帧全黑。远程视频仍是 8 位 BGRA 经 H.264 发出，不携带 HDR。需要本机 PATH 或 `%LOCALAPPDATA%\AsterDock\tools\ffmpeg` 中的 ffmpeg。Windows 触控注入和系统声音尚未接入。
 
 ## 验证状态
 

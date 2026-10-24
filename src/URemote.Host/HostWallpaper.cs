@@ -9,7 +9,7 @@ internal static class HostWallpaper
     private sealed record Cache(string Hash,DateTimeOffset Uploaded,string DeviceId = "");
     public static async Task RunAsync(LoginState state,string ffmpeg,string identityPath,Action<string> report,CancellationToken ct)
     {
-        if(!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())return;
+        if(!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS() && !OperatingSystem.IsWindows())return;
         using var api=new UuWallpaperApi(state);
         var cachePath=identityPath+".wallpaper.json";
         Cache? cache=null;
@@ -26,7 +26,7 @@ internal static class HostWallpaper
                         await api.UploadAsync(png,ct);cache=new(hash,DateTimeOffset.UtcNow,state.DeviceId);failed=false;
                         var temporary=cachePath+"."+Guid.NewGuid().ToString("N")+".tmp";
                         try {
-                            await using(var stream=new FileStream(temporary,new FileStreamOptions{Mode=FileMode.CreateNew,Access=FileAccess.Write,UnixCreateMode=UnixFileMode.UserRead|UnixFileMode.UserWrite}))
+                            await using(var stream=new FileStream(temporary,OperatingSystem.IsWindows()?new FileStreamOptions{Mode=FileMode.CreateNew,Access=FileAccess.Write}:new FileStreamOptions{Mode=FileMode.CreateNew,Access=FileAccess.Write,UnixCreateMode=UnixFileMode.UserRead|UnixFileMode.UserWrite}))
                                 await JsonSerializer.SerializeAsync(stream,cache,cancellationToken:ct);
                             File.Move(temporary,cachePath,true);
                         } finally {if(File.Exists(temporary))File.Delete(temporary);}

@@ -12,7 +12,7 @@ internal static class HostInput
         while (media.State != RTCPeerConnectionState.connected) await Task.Delay(100, ct);
         await using var fileTransfer = enableFiles ? new HostFileTransfer(media.SendData, report, ct) : null;
         await using var keyboard = enableInput ? await DesktopBackend.CreateKeyboardAsync(ct) : null;
-        report("keyboard-backend=" + (keyboard is MacDesktop.Keyboard ? "macos" : keyboard is UInputKeyboard ? "uinput" : keyboard is WaylandVirtualKeyboard ? "wayland" : keyboard is null ? "disabled" : "portal"));
+        report("keyboard-backend=" + (keyboard is WindowsDesktop.Keyboard ? "windows" : keyboard is MacDesktop.Keyboard ? "macos" : keyboard is UInputKeyboard ? "uinput" : keyboard is WaylandVirtualKeyboard ? "wayland" : keyboard is null ? "disabled" : "portal"));
         await using var touch = await HostTouchInput.OpenAsync(enableInput, report, ct);
         await using var clipboard = enableClipboard ? new HostClipboard(media, report) : null;
         using var clipboardStop = CancellationTokenSource.CreateLinkedTokenSource(ct);

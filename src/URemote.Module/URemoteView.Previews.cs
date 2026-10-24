@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Threading;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Avalonia.Controls.Presenters;
@@ -36,6 +37,20 @@ public sealed partial class URemoteView
     private DateTimeOffset localWallpaperChecked;
     private readonly HttpClient previewHttp = new(new SocketsHttpHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(12) };
 
+    // Avalonia bitmaps and controls are owned by the UI thread. Decoding and property changes off that thread surface as "a different thread owns it".
+    private static Task<T> OnUiAsync<T>(Func<T> action)
+    {
+        if (Dispatcher.UIThread.CheckAccess()) return Task.FromResult(action());
+        var done = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Dispatcher.UIThread.Post(() =>
+        {
+            try { done.TrySetResult(action()); }
+            catch (Exception e) { done.TrySetException(e); }
+        });
+        return done.Task;
+    }
+    private static Task OnUiAsync(Action action) => OnUiAsync(() => { action(); return true; });
+
     private async Task RefreshPreviewsAsync()
     {
         if (loggingOut) return;
@@ -53,11 +68,16 @@ public sealed partial class URemoteView
                 var png = await LinuxWallpaper.RenderAsync(appliedEncoder, lifetime.Token);
                 if (png is not null && !disposed && !loggingOut && generation == accountGeneration)
                 {
-                    using var stream = new MemoryStream(png);
-                    var bitmap = Bitmap.DecodeToWidth(stream, 800);
-                    if (previewCache.Remove(localWallpaperKey, out var old)) old.Dispose();
-                    previewCache[localWallpaperKey] = bitmap;
-                    RenderDevices();
+                    var bytes = png;
+                    await OnUiAsync(() =>
+                    {
+                        if (disposed || loggingOut || generation != accountGeneration) return;
+                        using var stream = new MemoryStream(bytes);
+                        var bitmap = Bitmap.DecodeToWidth(stream, 800);
+                        if (previewCache.Remove(localWallpaperKey, out var old)) old.Dispose();
+                        previewCache[localWallpaperKey] = bitmap;
+                        RenderDevices();
+                    });
                 }
             }
             catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { return; }
@@ -80,11 +100,14 @@ public sealed partial class URemoteView
                     if (bytes.Length + read > 5_000_000) throw new IOException("Preview too large.");
                     bytes.Write(chunk, 0, read);
                 }
-                bytes.Position = 0;
-                var bitmap = Bitmap.DecodeToWidth(bytes, 800);
-                if (disposed || loggingOut || generation != accountGeneration) { bitmap.Dispose(); return; }
-                previewCache.Add(url, bitmap);
-                RenderDevices();
+                var copy = bytes.ToArray();
+                await OnUiAsync(() =>
+                {
+                    if (disposed || loggingOut || generation != accountGeneration || previewCache.ContainsKey(url)) return;
+                    using var image = new MemoryStream(copy);
+                    previewCache.Add(url, Bitmap.DecodeToWidth(image, 800));
+                    RenderDevices();
+                });
             }
             catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { return; }
             catch { /* A missing thumbnail must never prevent remote control. */ }
@@ -97,47 +120,76 @@ public sealed partial class URemoteView
         loadingScreens = true;
         try
         {
-            localScreenItems.Clear(); localScreenLabels.Clear();
-            foreach (var old in localBitmaps) old.Dispose(); localBitmaps.Clear();
-            foreach (var share in outputs.Take(5).ToArray())
+            var shares = outputs.Take(5).ToArray();
+            var built = new List<(int Index, string Caption, byte[]? Pixels, string? Error)>();
+            foreach (var share in shares)
             {
                 var screenIndex = outputs.Select((item, index) => (item, index)).First(x => x.item.Id == share.Id).index + 1;
-                var tile = new LocalScreenModel {
-                    Caption = $"显示屏 {screenIndex}" + (localScreenFps.TryGetValue(screenIndex, out var fps) ? $" · FPS {fps}" : ""),
-                    OpenSettings = new AsyncCommand(() => { ShowPage(1); return Task.CompletedTask; }) };
-                localScreenLabels[screenIndex] = tile;
-                localScreenItems.Add(tile);
-                if (!hostEnabled || Environment.GetEnvironmentVariable("UREMOTE_NO_AUTO_START") == "1") continue;
+                var caption = $"显示屏 {screenIndex}" + (localScreenFps.TryGetValue(screenIndex, out var fps) ? $" · FPS {fps}" : "");
+                if (!hostEnabled || Environment.GetEnvironmentVariable("UREMOTE_NO_AUTO_START") == "1")
+                {
+                    built.Add((screenIndex, caption, null, null));
+                    continue;
+                }
                 CapturedScreen? frame = null;
                 try
                 {
                     frame = await DesktopBackend.CaptureAsync(share.Id, false, lifetime.Token);
                     if (disposed) return;
-                    if (frame.ShmFormat is not (0 or 1)) continue;
-                    var bitmap = new WriteableBitmap(new PixelSize(224, 126), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Opaque);
-                    using (var target = bitmap.Lock())
-                    {
-                        var row = new byte[224 * 4];
-                        for (var y = 0; y < 126; y++)
-                        {
-                            var sy = y * (int)frame.Height / 126;
-                            if (frame.YInverted) sy = (int)frame.Height - 1 - sy;
-                            for (var x = 0; x < 224; x++)
-                            {
-                                var at = sy * (int)frame.Stride + x * (int)frame.Width / 224 * 4;
-                                Array.Copy(frame.Pixels, at, row, x * 4, 4); row[x * 4 + 3] = 255;
-                            }
-                            Marshal.Copy(row, 0, target.Address + y * target.RowBytes, row.Length);
-                        }
-                    }
-                    localBitmaps.Add(bitmap); tile.Snapshot = bitmap;
+                    var pixels = frame.ShmFormat is 0 or 1 ? ScalePreview(frame, 224, 126) : null;
+                    built.Add((screenIndex, caption, pixels, null));
                 }
                 catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { return; }
-                catch { tile.ShowSnapshot = false; }
+                catch (Exception e) { built.Add((screenIndex, caption, null, e.GetType().Name)); }
                 finally { if (frame is not null) Array.Clear(frame.Pixels); }
             }
+            await OnUiAsync(() =>
+            {
+                if (disposed) return;
+                localScreenItems.Clear(); localScreenLabels.Clear();
+                foreach (var old in localBitmaps) old.Dispose();
+                localBitmaps.Clear();
+                foreach (var item in built)
+                {
+                    var tile = new LocalScreenModel {
+                        Caption = item.Error is null ? item.Caption : $"显示屏 {item.Index} · {item.Error}",
+                        ShowSnapshot = item.Pixels is not null,
+                        OpenSettings = new AsyncCommand(() => { ShowPage(1); return Task.CompletedTask; }) };
+                    if (item.Pixels is { } pixels)
+                    {
+                        var image = new WriteableBitmap(new PixelSize(224, 126), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Opaque);
+                        using (var target = image.Lock())
+                        {
+                            for (var y = 0; y < 126; y++)
+                                Marshal.Copy(pixels, y * 224 * 4, target.Address + y * target.RowBytes, 224 * 4);
+                        }
+                        localBitmaps.Add(image);
+                        tile.Snapshot = image;
+                    }
+                    localScreenLabels[item.Index] = tile;
+                    localScreenItems.Add(tile);
+                }
+            });
         }
         finally { loadingScreens = false; }
+    }
+
+    private static byte[] ScalePreview(CapturedScreen frame, int width, int height)
+    {
+        var pixels = new byte[width * height * 4];
+        for (var y = 0; y < height; y++)
+        {
+            var sy = y * (int)frame.Height / height;
+            if (frame.YInverted) sy = (int)frame.Height - 1 - sy;
+            for (var x = 0; x < width; x++)
+            {
+                var at = sy * (int)frame.Stride + x * (int)frame.Width / width * 4;
+                var to = (y * width + x) * 4;
+                if ((uint)at > frame.Pixels.Length - 4) continue;
+                pixels[to] = frame.Pixels[at]; pixels[to + 1] = frame.Pixels[at + 1]; pixels[to + 2] = frame.Pixels[at + 2]; pixels[to + 3] = 255;
+            }
+        }
+        return pixels;
     }
 
     private void UpdateScreenFps(string value)
@@ -148,12 +200,19 @@ public sealed partial class URemoteView
         var shared = outputs.Select((o, i) => (o, i)).Where(x => x.o.IsChecked == true).Select(x => x.i + 1).ToArray();
         if (index > 0 && index <= shared.Length) index = shared[index - 1];
         localScreenFps[index] = fps;
-        if (localScreenLabels.TryGetValue(index, out var label)) label.Caption = $"显示屏 {index} · FPS {fps}";
+        var caption = $"显示屏 {index} · FPS {fps}";
+        if (localScreenLabels.TryGetValue(index, out var label))
+            Dispatcher.UIThread.Post(() => { if (!disposed) label.Caption = caption; });
     }
 
     private void ClearScreenFps()
     {
         localScreenFps.Clear();
-        foreach (var (index, label) in localScreenLabels) label.Caption = $"显示屏 {index}";
+        var labels = localScreenLabels.ToArray();
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (disposed) return;
+            foreach (var (index, label) in labels) label.Caption = $"显示屏 {index}";
+        });
     }
 }

@@ -15,6 +15,11 @@ public static class LinuxWallpaper
         JsonObject? session=null;
         JsonObject? settings=null;
         var source=Environment.GetEnvironmentVariable("UREMOTE_WALLPAPER");
+        if (string.IsNullOrEmpty(source) && OperatingSystem.IsWindows())
+        {
+            source = WindowsDesktop.WallpaperPath();
+            if (string.IsNullOrEmpty(source)) return null;
+        }
         if (string.IsNullOrEmpty(source) && OperatingSystem.IsMacOS())
         {
             source = MacDesktop.WallpaperPath();

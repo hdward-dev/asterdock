@@ -13,10 +13,10 @@ public static class DesktopHostSession
 {
     public static SavedHostIdentity ReadIdentity(string path)
     {
-        if (OperatingSystem.IsWindows() || (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())) throw new PlatformNotSupportedException();
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException();
         if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0
-            || (File.GetUnixFileMode(path) & (UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute
-                | UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute)) != 0)
+            || (!OperatingSystem.IsWindows() && (File.GetUnixFileMode(path) & (UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute
+                | UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute)) != 0))
             throw new InvalidOperationException("身份文件权限必须为 600。");
         return JsonSerializer.Deserialize<SavedHostIdentity>(File.ReadAllText(path)) ?? throw new InvalidDataException();
     }
@@ -24,13 +24,14 @@ public static class DesktopHostSession
     public static async Task RunAsync(string identityPath, string ffmpeg, IReadOnlyList<uint> outputs,
         bool enableInput, TimeSpan duration, Action<string> report, CancellationToken ct, bool enableAudio = false, bool enableClipboard = false, IReadOnlyList<int>? outputIndices = null, Action<HostControlConnection?>? connectionChanged = null, HostAdmission? admission = null, Func<string>? encoderPath = null)
     {
-        if (OperatingSystem.IsWindows() || (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())) throw new PlatformNotSupportedException();
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException();
         if (outputs.Count > 5 || outputs.Distinct().Count() != outputs.Count || (duration != Timeout.InfiniteTimeSpan && (duration <= TimeSpan.Zero
             || duration > TimeSpan.FromHours(1))))
             throw new ArgumentException("无效的被控设置。");
-        await using var identityLock = new FileStream(identityPath + ".lock", new FileStreamOptions
-        { Mode = FileMode.OpenOrCreate, Access = FileAccess.ReadWrite, Share = FileShare.None,
-            UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite });
+        await using var identityLock = new FileStream(identityPath + ".lock", OperatingSystem.IsWindows()
+            ? new FileStreamOptions { Mode = FileMode.OpenOrCreate, Access = FileAccess.ReadWrite, Share = FileShare.None }
+            : new FileStreamOptions { Mode = FileMode.OpenOrCreate, Access = FileAccess.ReadWrite, Share = FileShare.None,
+                UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite });
         var identity = ReadIdentity(identityPath);
         if (!identity.State.IsAuthenticated) throw new InvalidOperationException("请先登录。");
         if (HostWirePlatform.Windows && identity.Platform != 1)
@@ -134,6 +135,7 @@ public static class DesktopHostSession
                     admission.SetEnabled(false);
                     report("control-unavailable;type=" + e.GetType().Name);
                     if (OperatingSystem.IsMacOS()) report("macos-control-unavailable");
+                    if (OperatingSystem.IsWindows()) report("windows-control-unavailable");
                 }
                 finally
                 {

@@ -22,8 +22,14 @@ internal sealed class HostClipboard : IAsyncDisposable
     public HostClipboard(HostMediaPeer peer, Action<string> report) : this(peer.SendData, report) { }
     public HostClipboard(Func<string, byte[], bool> send, Action<string> report)
     {
-        var clipboard = new WaylandClipboard(); clipboardOwner = clipboard;
-        this.send = send; this.report = report; read = clipboard.ReadAsync; write = clipboard.WriteAsync;
+        if (OperatingSystem.IsWindows())
+        {
+            var clipboard = new WindowsClipboard(); clipboardOwner = clipboard;
+            this.send = send; this.report = report; read = clipboard.ReadAsync; write = clipboard.WriteAsync;
+            return;
+        }
+        var wayland = new WaylandClipboard(); clipboardOwner = wayland;
+        this.send = send; this.report = report; read = wayland.ReadAsync; write = wayland.WriteAsync;
     }
     internal HostClipboard(Func<string, byte[], bool> send, Action<string> report,
         Func<CancellationToken, Task<string?>> read, Func<string, CancellationToken, Task> write)

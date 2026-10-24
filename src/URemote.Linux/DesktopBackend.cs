@@ -90,6 +90,7 @@ public static class DesktopBackend
 
     public static async Task<IReadOnlyList<WaylandGlobal>> DiscoverAsync(CancellationToken ct = default)
     {
+        if (OperatingSystem.IsWindows()) return await WindowsDesktop.DiscoverAsync(ct);
         if (OperatingSystem.IsMacOS()) return await MacDesktop.DiscoverAsync(ct);
         if (Volatile.Read(ref portal) is { } active)
         {
@@ -104,6 +105,7 @@ public static class DesktopBackend
 
     public static async Task<IAsyncDisposable> OpenAsync(bool enableInput, CancellationToken ct)
     {
+        if (OperatingSystem.IsWindows()) return await WindowsDesktop.OpenAsync(enableInput, ct);
         if (OperatingSystem.IsMacOS()) return await MacDesktop.OpenAsync(enableInput, ct);
         await lifecycle.WaitAsync(ct);
         try
@@ -119,11 +121,12 @@ public static class DesktopBackend
     }
 
     public static Task<CapturedScreen> CaptureAsync(uint output, bool includeCursor = true, CancellationToken ct = default)
-        => OperatingSystem.IsMacOS() ? MacDesktop.CaptureAsync(output, includeCursor, ct) : Volatile.Read(ref portal) is { } active ? active.CaptureAsync(output, ct) : WaylandScreenCapture.CaptureAsync(output, includeCursor, ct);
+        => OperatingSystem.IsWindows() ? WindowsDesktop.CaptureAsync(output, includeCursor, ct) : OperatingSystem.IsMacOS() ? MacDesktop.CaptureAsync(output, includeCursor, ct) : Volatile.Read(ref portal) is { } active ? active.CaptureAsync(output, ct) : WaylandScreenCapture.CaptureAsync(output, includeCursor, ct);
     public static async Task<IDesktopPointer> CreatePointerAsync(uint output, CancellationToken ct)
-        => OperatingSystem.IsMacOS() ? new MacDesktop.Pointer(output) : Volatile.Read(ref portal) is { } active ? active.CreatePointer(output) : await WaylandVirtualPointer.CreateAsync(output, ct);
+        => OperatingSystem.IsWindows() ? new WindowsDesktop.Pointer(output) : OperatingSystem.IsMacOS() ? new MacDesktop.Pointer(output) : Volatile.Read(ref portal) is { } active ? active.CreatePointer(output) : await WaylandVirtualPointer.CreateAsync(output, ct);
     public static async Task<IDesktopKeyboard> CreateKeyboardAsync(CancellationToken ct)
     {
+        if (OperatingSystem.IsWindows()) return new WindowsDesktop.Keyboard();
         if (OperatingSystem.IsMacOS()) return new MacDesktop.Keyboard();
         if (Volatile.Read(ref portal) is { } active) return active.CreateKeyboard();
         var backend = Environment.GetEnvironmentVariable("UREMOTE_KEYBOARD_BACKEND") ?? "auto";
@@ -137,14 +140,15 @@ public static class DesktopBackend
         return await WaylandVirtualKeyboard.CreateAsync(ct);
     }
     public static Task<IDesktopTouch?> CreateTouchAsync(CancellationToken ct)
-        => OperatingSystem.IsMacOS() ? Task.FromResult<IDesktopTouch?>(null) : Volatile.Read(ref portal) is { } active ? active.CreateTouchAsync(ct) : Task.FromResult<IDesktopTouch?>(null);
+        => OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? Task.FromResult<IDesktopTouch?>(null) : Volatile.Read(ref portal) is { } active ? active.CreateTouchAsync(ct) : Task.FromResult<IDesktopTouch?>(null);
     public static Task TypeTextAsync(string text, CancellationToken ct)
     {
         HostControlInput.ValidateText(text);
-        return OperatingSystem.IsMacOS() ? MacDesktop.TypeTextAsync(text, ct) : Volatile.Read(ref portal) is { } active ? active.TypeTextAsync(text, ct) : WaylandVirtualKeyboard.TypeTextAsync(text, ct);
+        return OperatingSystem.IsWindows() ? WindowsDesktop.TypeTextAsync(text, ct) : OperatingSystem.IsMacOS() ? MacDesktop.TypeTextAsync(text, ct) : Volatile.Read(ref portal) is { } active ? active.TypeTextAsync(text, ct) : WaylandVirtualKeyboard.TypeTextAsync(text, ct);
     }
     public static async Task<IReadOnlyDictionary<uint, int>> ReadRefreshRatesAsync(CancellationToken ct)
     {
+        if (OperatingSystem.IsWindows()) return await WindowsDesktop.RefreshAsync(ct);
         if (OperatingSystem.IsMacOS()) return await MacDesktop.RefreshAsync(ct);
         // Portal node ids are not wl_output names, but the compositor still publishes the mode.
         var outputs = await WaylandOutputRefresh.ReadOutputsAsync(ct);

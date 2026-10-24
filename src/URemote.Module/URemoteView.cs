@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text.Json;
 using AsterDock.Contracts;
 using AsterDock.UI.Controls;
@@ -25,6 +26,7 @@ public sealed partial class URemoteView : UserControl, IDisposable
     private readonly System.Collections.ObjectModel.ObservableCollection<LocalHistoryModel> historyItems = [];
     private readonly CancellationTokenSource lifetime = new();
     private readonly string settingsFile;
+    private string hostLogFile = "";
     private Task? session;
     private readonly URemote.Core.HostAdmission admission = new(false);
     private DesktopHostLogin? login;
@@ -60,9 +62,12 @@ public sealed partial class URemoteView : UserControl, IDisposable
             });
         settingsFile = Path.Combine(dataDirectory, "settings.json");
         identity.Text = Environment.GetEnvironmentVariable("UREMOTE_IDENTITY") ?? Path.Combine(dataDirectory, "identity.json");
+        hostLogFile = Path.Combine(Path.GetDirectoryName(identity.Text) ?? dataDirectory, "host.log");
         encoder.Text = Environment.GetEnvironmentVariable("UREMOTE_FFMPEG") ?? FindExecutable("ffmpeg");
+        if (string.IsNullOrEmpty(encoder.Text)) encoder.Text = BundledEncoder();
         try { if (File.Exists(settingsFile) && JsonSerializer.Deserialize<Settings>(File.ReadAllText(settingsFile)) is { } saved)
             { identity.Text = saved.Identity; if (Path.IsPathFullyQualified(saved.Encoder) && File.Exists(saved.Encoder)) encoder.Text = saved.Encoder; allowAssistance = saved.AllowAssistance; hostEnabled = saved.HostEnabled; } } catch (IOException) { } catch (JsonException) { }
+        if (string.IsNullOrEmpty(encoder.Text) || !File.Exists(encoder.Text)) encoder.Text = BundledEncoder();
         appliedEncoder = encoder.Text ?? "";
         try { URemote.Core.HostAssistance.SetEnabled(DesktopHostSession.ReadIdentity(identity.Text!).State.DeviceId, allowAssistance); } catch { }
         LoadAssistanceSettings();
@@ -93,12 +98,19 @@ public sealed partial class URemoteView : UserControl, IDisposable
             .Select(p => Path.Combine(p, OperatingSystem.IsWindows() ? name + ".exe" : name))
             .FirstOrDefault(File.Exists) ?? "";
     }
+    private static string BundledEncoder()
+    {
+        if (!OperatingSystem.IsWindows()) return "";
+        var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AsterDock", "tools", "ffmpeg");
+        if (!Directory.Exists(root)) return "";
+        return Directory.EnumerateFiles(root, "ffmpeg.exe", SearchOption.AllDirectories).FirstOrDefault() ?? "";
+    }
     private async Task InitializeAsync()
     {
         try
         {
             if (Environment.GetEnvironmentVariable("UREMOTE_NO_AUTO_START") != "1") _ = RefreshDevicesAsync();
-            if (!(OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())) { status.Text = "当前被控后端支持 Linux / Wayland 和 macOS"; hostSwitch.IsEnabled = false; return; }
+            if (!(OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsWindows())) { status.Text = "当前被控后端支持 Windows、Linux / Wayland 和 macOS"; hostSwitch.IsEnabled = false; return; }
             var globals = await DesktopBackend.DiscoverAsync(lifetime.Token);
             if (disposed) return;
             ReplaceScreens(globals.Where(g => g.Interface == "wl_output").Select(g => g.Name).Order().Take(5).ToArray(), _ => true, "开启被控后读取显示器；若出现系统授权窗口，请选择需要共享的屏幕。");
@@ -109,7 +121,7 @@ public sealed partial class URemoteView : UserControl, IDisposable
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (Exception e) { if (!disposed) { hostBadge.Text = "○  被控不可用"; ApplyTheme(hostBadge, TextBlock.ForegroundProperty, "AppMutedBrush"); status.Text = "桌面共享不可用";
-            detail.Text = e is NotSupportedException or InvalidOperationException ? e.Message : "请检查 Wayland 会话、桌面 Portal 服务及 GLib / GStreamer 原生库。";
+            detail.Text = e is NotSupportedException or InvalidOperationException ? e.Message : OperatingSystem.IsWindows() ? e.Message : "请检查 Wayland 会话、桌面 Portal 服务及 GLib / GStreamer 原生库。";
             if (Environment.GetEnvironmentVariable("UREMOTE_NO_AUTO_START") != "1") StartCore(); } }
     }
     private async void Start()
@@ -146,7 +158,7 @@ public sealed partial class URemoteView : UserControl, IDisposable
         catch (Exception e)
         {
             Console.WriteLine("host-display-discovery-failed;type=" + e.GetType().Name);
-            if (!disposed) { SetHostSwitch(false); status.Text = "无法访问显示器"; detail.Text = "请确认显示器已连接，并在本机桌面中重新开启被控。"; ReportFailure(detail.Text, "无法访问显示器"); }
+            if (!disposed) { SetHostSwitch(false); status.Text = "无法访问显示器"; detail.Text = e is IOException or Win32Exception or AccessViolationException ? e.Message : "请确认显示器已连接，并在本机桌面中重新开启被控。"; ReportFailure(detail.Text, "无法访问显示器"); }
         }
         finally { starting = false; if (!disposed) hostSwitch.IsEnabled = true; }
     }
@@ -284,7 +296,9 @@ public sealed partial class URemoteView : UserControl, IDisposable
     private void Report(string value)
     {
         // Only structural event names/counts are emitted by the host; never clipboard or input values.
-        Console.WriteLine(DateTimeOffset.UtcNow.ToString("HH:mm:ss") + " " + value);
+        var line = DateTimeOffset.UtcNow.ToString("HH:mm:ss") + " " + value;
+        Console.WriteLine(line);
+        try { if (hostLogFile.Length > 0) File.AppendAllText(hostLogFile, line + Environment.NewLine); } catch (IOException) { } catch (UnauthorizedAccessException) { }
         Post(() =>
     {
         switch (value)
@@ -296,6 +310,7 @@ public sealed partial class URemoteView : UserControl, IDisposable
                 break;
             case "desktop-action-unavailable;reason=gnome-show-desktop-shortcut-unset": detail.Text = "GNOME 未设置可用的“显示桌面”快捷键，请在系统键盘快捷键设置中配置；U远程不会修改系统快捷键。"; break;
             case "macos-control-unavailable": detail.Text = "请检查编码器路径，并在 macOS 系统设置 → 隐私与安全性中允许星栈的屏幕录制与辅助功能权限，然后重新开启被控。"; break;
+            case "windows-control-unavailable": detail.Text = "Windows 屏幕采集未能启动。请确认当前是桌面会话，编码器可用，然后重新开启被控。"; break;
             case "desktop-authorizing": status.Text = "准备桌面共享"; detail.Text = "若系统显示授权窗口，请选择共享的显示器并允许所需权限。"; break;
             case "desktop-ready": _ = RefreshAuthorizedScreensAsync(); break;
             case "assistance-code-rotated": UpdateAssistanceState(); break;
@@ -305,7 +320,7 @@ public sealed partial class URemoteView : UserControl, IDisposable
             case "device-profile-refreshed": _ = RefreshDevicesAsync(); break;
             case "audio-streaming": metrics.Text = "系统声音正在传输"; break;
             case "audio-unavailable": detail.Text = "音频未能启动，视频与键鼠仍可使用。"; ReportFailure(detail.Text, "音频"); break;
-            case "clipboard-unavailable": detail.Text = "剪贴板不可用，请检查 wl-clipboard。"; ReportFailure(detail.Text, "剪贴板"); break;
+            case "clipboard-unavailable": detail.Text = OperatingSystem.IsWindows() ? "剪贴板不可用。" : "剪贴板不可用，请检查 wl-clipboard。"; ReportFailure(detail.Text, "剪贴板"); break;
             case "clipboard-received": metrics.Text = "已接收文本剪贴板"; break;
             case "clipboard-sent": metrics.Text = "已发送文本剪贴板"; break;
             case "waiting-for-display": status.Text = "等待显示器恢复"; detail.Text = "被控保持开启，显示器恢复后会自动重连。"; break;

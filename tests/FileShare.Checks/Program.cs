@@ -60,8 +60,12 @@ static void RunChecks(string source, string temporary)
     var entry = Path.Combine(package, manifest.RootElement.GetProperty("entryAssembly").GetString()!);
     var resolver = new AssemblyDependencyResolver(entry);
     foreach (var file in Directory.GetFiles(package, "Microsoft*.dll"))
-        Require(resolver.ResolveAssemblyToPath(AssemblyName.GetAssemblyName(file)) == file,
-            "deps runtime 未登记 " + Path.GetFileName(file));
+    {
+        var resolved = resolver.ResolveAssemblyToPath(AssemblyName.GetAssemblyName(file));
+        // hostpolicy 解析 deps 时会 realpath。macOS 临时目录在 /var，指向 /private/var，
+        // 字符串相等会把已经登记的程序集误报为未登记，且只报枚举到的第一个 DLL。
+        Require(resolved != null && SamePath(resolved, file), "deps runtime 未登记 " + Path.GetFileName(file));
+    }
     Require(Directory.GetFiles(package, "Microsoft.AspNetCore*.dll").Length > 0, "包内缺少 ASP.NET 实现程序集");
     Require(!AssemblyLoadContext.Default.Assemblies.Any(a => a.GetName().Name!.StartsWith("Microsoft.AspNetCore")),
         "检查宿主意外预加载了 ASP.NET");
@@ -191,6 +195,61 @@ static void VerifyPortReleased(int port)
 static void Require(bool condition, string message)
 {
     if (!condition) throw new InvalidOperationException(message);
+}
+
+static bool SamePath(string left, string right)
+{
+    var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+    if (string.Equals(left, right, comparison)) return true;
+    return !OperatingSystem.IsWindows() &&
+        string.Equals(CanonicalPath(left), CanonicalPath(right), StringComparison.Ordinal);
+}
+
+static string CanonicalPath(string path)
+{
+    var full = Path.GetFullPath(path);
+    if (File.Exists(full))
+    {
+        var link = File.ResolveLinkTarget(full, returnFinalTarget: true);
+        if (link != null)
+        {
+            var linkDirectory = Path.GetDirectoryName(full)!;
+            full = Path.IsPathFullyQualified(link.FullName)
+                ? Path.GetFullPath(link.FullName)
+                : Path.GetFullPath(Path.Combine(linkDirectory, link.FullName));
+        }
+    }
+    var directory = Path.GetDirectoryName(full);
+    var name = Path.GetFileName(full);
+    if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory)) return full;
+    var canonical = CanonicalDirectory(directory);
+    return string.IsNullOrEmpty(name) ? canonical : Path.Combine(canonical, name);
+}
+
+static string CanonicalDirectory(string path)
+{
+    var info = new DirectoryInfo(Path.TrimEndingDirectorySeparator(Path.GetFullPath(path)));
+    var parts = new Stack<string>();
+    var guard = 0;
+    while (info.Parent != null)
+    {
+        if (++guard > 64) throw new InvalidOperationException("符号链接循环: " + path);
+        var target = info.ResolveLinkTarget(returnFinalTarget: true);
+        if (target != null)
+        {
+            var full = Path.IsPathFullyQualified(target.FullName)
+                ? target.FullName
+                : Path.GetFullPath(Path.Combine(info.Parent.FullName, target.FullName));
+            info = new DirectoryInfo(Path.TrimEndingDirectorySeparator(full));
+            continue;
+        }
+        parts.Push(info.Name);
+        info = info.Parent;
+    }
+    var result = info.FullName;
+    foreach (var part in parts)
+        result = Path.Combine(result, part);
+    return result;
 }
 
 sealed class CheckContext(string directory) : IApplicationContext

@@ -1,0 +1,11 @@
+{
+  "id": "file-share",
+  "name": "文件共享",
+  "description": "把本机目录分享给同一局域网内的设备",
+  "version": "1.0.0",
+  "entryAssembly": "FileShareApp.Module.dll",
+  "entryType": "FileShareApp.Module.FileShareApplicationModule",
+  "icon": "network",
+  "category": "工具",
+  "order": 30
+}

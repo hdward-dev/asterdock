@@ -60,6 +60,9 @@ jobs:
       - name: Build solution
         run: dotnet build AsterDock.slnx --configuration Release --no-restore
 
+      - name: Check isolated file sharing runtime and HTTP lifecycle
+        run: dotnet run --project tests/FileShare.Checks --configuration Release --no-build
+
   release-resolver:
     name: Check Nightly and stable tag rules
     runs-on: ubuntu-24.04

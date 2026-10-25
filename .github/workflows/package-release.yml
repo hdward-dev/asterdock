@@ -293,6 +293,9 @@ jobs:
         shell: pwsh
         run: ./scripts/package-apps.ps1
 
+      - name: Check packaged file sharing runtime and HTTP lifecycle
+        run: dotnet run --project tests/FileShare.Checks --configuration Release -- artifacts/release/apps/AsterDock-App-file-share.appbundle
+
       - name: Generate discovery catalog from packaged manifests
         run: python scripts/generate-app-catalog.py artifacts/release/apps --release-tag "${{ inputs.tag }}"
 
@@ -302,6 +305,7 @@ jobs:
           $apps = "artifacts/release/apps"
           $required = @(
             "app-catalog.json",
+            "AsterDock-App-file-share.appbundle",
             "VMCUBE-QEMU-linux-x64.zip",
             "VMCUBE-QEMU-linux-arm64.zip",
             "VMCUBE-QEMU-osx-x64.zip",
@@ -362,6 +366,7 @@ jobs:
             app-catalog.json
             AsterDock-App-android-screen.appbundle
             AsterDock-App-device-information.appbundle
+            AsterDock-App-file-share.appbundle
             AsterDock-App-invoice-printer.appbundle
             AsterDock-App-network-accelerator.appbundle
             AsterDock-App-serial-debugger.appbundle

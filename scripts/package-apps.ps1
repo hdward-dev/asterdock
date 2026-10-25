@@ -9,7 +9,7 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 }
 
 $applications = @(Get-ChildItem -Path (Join-Path $repoRoot "src/*.Module/app.json") | Sort-Object FullName | ForEach-Object {
-    $manifest = Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json
+    $manifest = Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
     # Home is supplied by the host and is not an installable application.
     if ($manifest.id -ne "home") {
         @{ Name = $manifest.id; Project = $_.Directory.Name }

@@ -1,0 +1,66 @@
+<Project>
+  <UsingTask TaskName="ResolveFileShareAspNetRuntime" TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Frameworks ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <DotNetRoot ParameterType="System.String" />
+      <SdkPath ParameterType="System.String" Required="true" />
+      <Assemblies ParameterType="Microsoft.Build.Framework.ITaskItem[]" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Linq" />
+      <Using Namespace="System.Reflection" />
+      <Using Namespace="Microsoft.Build.Utilities" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var framework = Frameworks.Single(item => item.ItemSpec == "Microsoft.AspNetCore.App");
+        var version = Version.Parse(framework.GetMetadata("TargetingPackVersion"));
+        var roots = new[] {
+            DotNetRoot,
+            Path.GetFullPath(Path.Combine(SdkPath, "../../..")),
+            Path.GetFullPath(Path.Combine(framework.GetMetadata("TargetingPackPath"), "../../.."))
+        }.Where(root => !string.IsNullOrEmpty(root)).Distinct();
+        var candidates = roots.Select(root => Path.Combine(root, "shared", "Microsoft.AspNetCore.App"))
+            .Where(Directory.Exists).SelectMany(Directory.GetDirectories)
+            .Select(path => new { Path = path, Version = Version.TryParse(Path.GetFileName(path), out var parsed) ? parsed : null })
+            .Where(item => item.Version != null && item.Version.Major == version.Major &&
+                item.Version.Minor == version.Minor && item.Version >= version)
+            .OrderByDescending(item => item.Version).ToArray();
+        var selected = candidates.FirstOrDefault(item => item.Version == version) ?? candidates.FirstOrDefault();
+        if (selected == null) {
+            Log.LogError("文件共享需要安装与 targeting pack {0} 匹配或更新的同系列 ASP.NET Core Runtime。SDK: {1}", version, SdkPath);
+            return false;
+        }
+        Assemblies = Directory.GetFiles(selected.Path, "Microsoft*.dll").Select(path => {
+            var identity = AssemblyName.GetAssemblyName(path);
+            var item = new TaskItem(path);
+            item.SetMetadata("FusionName", identity.FullName);
+            item.SetMetadata("OriginalItemSpec", identity.Name);
+            item.SetMetadata("CopyLocal", "true");
+            item.SetMetadata("Private", "true");
+            item.SetMetadata("IncludeRuntimeDependency", "true");
+            item.SetMetadata("ResolvedFrom", "{RawFileName}");
+            return item;
+        }).ToArray();
+        Log.LogMessage(Microsoft.Build.Framework.MessageImportance.High,
+            "文件共享随包运行库: Microsoft.AspNetCore.App {0} ({1} 个程序集)", selected.Version, Assemblies.Length);
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <!-- 在 SDK 生成 deps 前登记运行时引用，同时由标准 CopyLocal 流程复制实现程序集。 -->
+  <Target Name="BundleFileShareAspNetRuntime" AfterTargets="ResolveReferences"
+          BeforeTargets="_ComputeReferenceAssemblies;_ComputeUserRuntimeAssemblies"
+          DependsOnTargets="ResolveFrameworkReferences" Condition="'$(DesignTimeBuild)' != 'true'">
+    <ResolveFileShareAspNetRuntime Frameworks="@(ResolvedFrameworkReference)"
+                                  DotNetRoot="$(NetCoreRoot)" SdkPath="$(MSBuildSDKsPath)">
+      <Output TaskParameter="Assemblies" ItemName="_FileShareAspNetRuntime" />
+    </ResolveFileShareAspNetRuntime>
+    <ItemGroup>
+      <ReferencePath Remove="@(ReferencePath)" Condition="'%(ReferencePath.FrameworkReferenceName)' == 'Microsoft.AspNetCore.App'" />
+      <ReferencePath Include="@(_FileShareAspNetRuntime)" />
+      <ReferenceCopyLocalPaths Include="@(_FileShareAspNetRuntime)" />
+    </ItemGroup>
+  </Target>
+</Project>

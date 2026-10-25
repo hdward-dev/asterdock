@@ -19,6 +19,7 @@
     <BundledAndroidScreenModuleOutput>$(MSBuildProjectDirectory)\..\AndroidScreen.Module\bin\$(Configuration)\net10.0</BundledAndroidScreenModuleOutput>
     <BundledSerialDebuggerModuleProject>$(MSBuildProjectDirectory)\..\SerialDebugger.Module\SerialDebugger.Module.csproj</BundledSerialDebuggerModuleProject>
     <BundledSerialDebuggerModuleOutput>$(MSBuildProjectDirectory)\..\SerialDebugger.Module\bin\$(Configuration)\net10.0</BundledSerialDebuggerModuleOutput>
+    <BundledFileShareModuleOutput>$(MSBuildProjectDirectory)/../FileShare.Module/bin/$(Configuration)/net10.0</BundledFileShareModuleOutput>
     <BundledVMCubeModuleOutput>$(MSBuildProjectDirectory)/../VMCube.Module/bin/$(Configuration)/net10.0</BundledVMCubeModuleOutput>
     <BundledURemoteModuleOutput>$(MSBuildProjectDirectory)/../URemote.Module/bin/$(Configuration)/net10.0</BundledURemoteModuleOutput>
   </PropertyGroup>
@@ -39,6 +40,9 @@
                       Condition="'$(BundleApplications)' == 'true'" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
     <ProjectReference Include="..\SerialDebugger.Module\SerialDebugger.Module.csproj"
+                      Condition="'$(BundleApplications)' == 'true'" ReferenceOutputAssembly="false" Private="false"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
+    <ProjectReference Include="../FileShare.Module/FileShare.Module.csproj"
                       Condition="'$(BundleApplications)' == 'true'" ReferenceOutputAssembly="false" Private="false"
                       GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
     <ProjectReference Include="../VMCube.Module/VMCube.Module.csproj"
@@ -68,6 +72,7 @@
       <BundledNetworkModuleFiles Include="$(BundledNetworkModuleOutput)\**\*" />
       <BundledAndroidScreenModuleFiles Include="$(BundledAndroidScreenModuleOutput)\**\*" />
       <BundledSerialDebuggerModuleFiles Include="$(BundledSerialDebuggerModuleOutput)\**\*" />
+      <BundledFileShareModuleFiles Include="$(BundledFileShareModuleOutput)/**/*" />
       <BundledVMCubeModuleFiles Include="$(BundledVMCubeModuleOutput)/**/*" />
       <BundledURemoteModuleFiles Include="$(BundledURemoteModuleOutput)/**/*" />
     </ItemGroup>
@@ -96,6 +101,9 @@
           SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\SerialDebugger.Module\app.json"
           DestinationFolder="$(OutDir)Apps\SerialDebugger" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(BundledFileShareModuleFiles)"
+          DestinationFiles="@(BundledFileShareModuleFiles->'$(OutDir)Apps/FileShare/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(BundledVMCubeModuleFiles)"
           DestinationFiles="@(BundledVMCubeModuleFiles->'$(OutDir)Apps/VMCube/%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
@@ -112,6 +120,7 @@
       <PublishedNetworkModuleFiles Include="$(BundledNetworkModuleOutput)\**\*" />
       <PublishedAndroidScreenModuleFiles Include="$(BundledAndroidScreenModuleOutput)\**\*" />
       <PublishedSerialDebuggerModuleFiles Include="$(BundledSerialDebuggerModuleOutput)\**\*" />
+      <PublishedFileShareModuleFiles Include="$(BundledFileShareModuleOutput)/**/*" />
       <PublishedVMCubeModuleFiles Include="$(BundledVMCubeModuleOutput)/**/*" />
       <PublishedURemoteModuleFiles Include="$(BundledURemoteModuleOutput)/**/*" />
     </ItemGroup>
@@ -140,6 +149,9 @@
           SkipUnchangedFiles="true" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\SerialDebugger.Module\app.json"
           DestinationFolder="$(PublishDir)Apps\SerialDebugger" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(PublishedFileShareModuleFiles)"
+          DestinationFiles="@(PublishedFileShareModuleFiles->'$(PublishDir)Apps/FileShare/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(PublishedVMCubeModuleFiles)"
           DestinationFiles="@(PublishedVMCubeModuleFiles->'$(PublishDir)Apps/VMCube/%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />

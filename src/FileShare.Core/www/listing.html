@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__PAGE_TITLE__</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128194;</text></svg>">
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --border:#e5e7eb; --text:#1f2328; --muted:#6b7280;
+  --accent:#2563eb; --accent-soft:#eff6ff; --hover:#f3f4f6;
+  --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#0f1115; --panel:#161a21; --border:#262c36; --text:#e6e9ee; --muted:#9aa3b2;
+         --accent:#5b9dff; --accent-soft:#1a2536; --hover:#1d232c; --shadow:0 1px 3px rgba(0,0,0,.4); }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.wrap{max-width:1100px;margin:0 auto;padding:20px 16px 60px}
+header{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+.logo{font-size:22px;line-height:1}
+.brand{font-weight:650;font-size:17px;letter-spacing:-.2px}
+.brand small{font-weight:400;color:var(--muted);font-size:12px;margin-left:6px}
+.spacer{flex:1}
+.chip{font-size:12px;color:var(--muted);background:var(--panel);border:1px solid var(--border);
+  padding:4px 10px;border-radius:999px}
+.crumbs{background:var(--panel);border:1px solid var(--border);border-radius:10px;
+  padding:11px 14px;margin-bottom:12px;font-size:13.5px;box-shadow:var(--shadow);
+  overflow-x:auto;white-space:nowrap}
+.crumbs a{color:var(--accent)}
+.crumbs .sep{color:var(--muted);margin:0 2px}
+.crumb-cur{color:var(--text);font-weight:600}
+.toolbar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center}
+.toolbar form{display:flex;gap:8px;flex:1;min-width:240px}
+input[type=search],select{border:1px solid var(--border);background:var(--panel);color:var(--text);
+  border-radius:8px;padding:8px 11px;font-size:13.5px;outline:none;font-family:inherit}
+input[type=search]{flex:1;min-width:120px}
+input[type=search]:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.btn{background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:8px;
+  padding:8px 13px;font-size:13.5px;cursor:pointer;font-family:inherit;display:inline-flex;
+  align-items:center;gap:5px;white-space:nowrap}
+.btn:hover{background:var(--hover);text-decoration:none}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-primary:hover{filter:brightness(1.08);background:var(--accent)}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;
+  box-shadow:var(--shadow);overflow:hidden}
+table{width:100%;border-collapse:collapse}
+th,td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);vertical-align:middle}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);
+  font-weight:600;background:var(--panel);position:sticky;top:0;z-index:1}
+th a{color:var(--muted)}
+th.sorted a{color:var(--accent)}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--hover)}
+.c-icon{width:40px;text-align:center;font-size:17px;padding-right:0}
+.c-name{min-width:0}
+.c-name a{color:var(--text);word-break:break-all}
+.row-dir .c-name a{font-weight:600;color:var(--text)}
+.c-size,.c-time{color:var(--muted);font-size:12.5px;white-space:nowrap;width:1%}
+.c-time{text-align:right;padding-right:16px}
+.dl{opacity:0;margin-left:8px;font-size:12px;color:var(--muted);vertical-align:middle}
+tr:hover .dl{opacity:1}
+.empty{text-align:center;color:var(--muted);padding:48px 16px;font-size:14px}
+.pager{display:flex;gap:6px;justify-content:center;padding:16px;flex-wrap:wrap;font-size:13px}
+.pager a,.pager span{padding:5px 10px;border-radius:7px;border:1px solid var(--border);color:var(--text)}
+.pager a:hover{background:var(--hover);text-decoration:none}
+.pager .cur{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.pager .dots{border:none}
+footer{margin-top:22px;display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:12px;justify-content:center}
+footer span{display:inline-flex;gap:4px;align-items:center}
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#111827;color:#fff;
+  padding:10px 16px;border-radius:9px;font-size:13px;opacity:0;transition:.25s;pointer-events:none;z-index:99}
+.toast.show{opacity:1}
+@media (max-width:640px){
+  .c-time{display:none}
+  th:nth-child(4){display:none}
+  .wrap{padding:14px 10px 40px}
+  th,td{padding:9px 10px}
+  .dl{opacity:1}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="logo">&#128194;</span>
+    <div class="brand">__SERVER_NAME__<small>通过局域网分享</small></div>
+    <div class="spacer"></div>
+    <span class="chip">__STATS__</span>
+  </header>
+
+  <div class="crumbs">__CRUMBS__</div>
+
+  <div class="toolbar">
+    <form method="get" action="#">
+      <input type="search" name="q" placeholder="在当前目录搜索文件名…" value="__QUERY__">
+      __TOKEN_INPUT__
+      <select name="type" onchange="this.form.submit()">__TYPE_OPTIONS__</select>
+      <button class="btn" type="submit">搜索</button>
+    </form>
+    __ZIP_BUTTON__
+    __UPLOAD_BUTTON__
+  </div>
+
+  <div class="card">
+    <table>
+      <thead><tr>
+        <th class="c-icon"></th>
+        __SORT_NAME__
+        __SORT_SIZE__
+        __SORT_TIME__
+      </tr></thead>
+      <tbody>__ROWS__</tbody>
+    </table>
+    __PAGER__
+  </div>
+
+  <footer>
+    <span>&#128421; __MACHINE__</span>
+    <span>&#9201; 运行 __UPTIME__</span>
+    <span>&#11015; 已传输 __SERVED__</span>
+    <span>&#128279; __HOST__</span>
+  </footer>
+</div>
+__UPLOAD_SCRIPT__
+</body>
+</html>

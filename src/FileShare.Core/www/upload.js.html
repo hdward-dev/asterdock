@@ -1,0 +1,42 @@
+<div class="toast" id="toast"></div>
+<script>
+(function () {
+  var FS_TOKEN = /*__TOKEN__*/'';
+  var FS_DIR = /*__DIR__*/'';
+  var pick = document.getElementById('pick');
+  var input = document.getElementById('fileInput');
+  var toast = document.getElementById('toast');
+  if (!pick || !input || !toast) return;
+
+  function say(msg) { toast.textContent = msg; toast.classList.add('show'); }
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  pick.addEventListener('click', function () { input.click(); });
+
+  input.addEventListener('change', async function () {
+    var files = Array.prototype.slice.call(input.files);
+    if (!files.length) return;
+    var ok = 0;
+
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i];
+      say('正在上传 ' + f.name + '（' + (f.size / 1048576).toFixed(1) + ' MB）…');
+      try {
+        var url = '/' + FS_DIR + (FS_DIR ? '/' : '')
+                + '?token=' + encodeURIComponent(FS_TOKEN)
+                + '&name=' + encodeURIComponent(f.name);
+        var r = await fetch(url, { method: 'PUT', body: f });
+        if (r.ok) { ok++; }
+        else { say('上传失败 ' + f.name + '：' + r.status); await wait(2200); }
+      } catch (e) {
+        say('上传出错 ' + f.name + '：' + e.message);
+        await wait(2200);
+      }
+    }
+
+    say('完成 ' + ok + '/' + files.length + ' 个文件，正在刷新…');
+    await wait(700);
+    location.reload();
+  });
+})();
+</script>

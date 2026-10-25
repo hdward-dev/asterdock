@@ -7,6 +7,8 @@
     <Project Path="src/AndroidScreen.Module/AndroidScreen.Module.csproj" />
     <Project Path="src/DeviceInformation.Core/DeviceInformation.Core.csproj" />
     <Project Path="src/DeviceInformation.Module/DeviceInformation.Module.csproj" />
+    <Project Path="src/FileShare.Core/FileShare.Core.csproj" />
+    <Project Path="src/FileShare.Module/FileShare.Module.csproj" />
     <Project Path="src/Home.Module/Home.Module.csproj" />
     <Project Path="src/VMCube.Module/VMCube.Module.csproj" />
     <Project Path="src/InvoicePrinter.Core/InvoicePrinter.Core.csproj" />
@@ -19,6 +21,9 @@
     <Project Path="src/URemote.Media/URemote.Media.csproj" />
     <Project Path="src/URemote.Host/URemote.Host.csproj" />
     <Project Path="src/URemote.Module/URemote.Module.csproj" />
+  </Folder>
+  <Folder Name="/tests/FileShare/">
+    <Project Path="tests/FileShare.Checks/FileShare.Checks.csproj" />
   </Folder>
   <Folder Name="/tests/VMCube/">
     <Project Path="tests/VMCube.Checks/VMCube.Checks.csproj" />

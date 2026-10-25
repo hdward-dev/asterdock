@@ -363,7 +363,7 @@ public sealed partial class URemoteView : UserControl, IDisposable
     {
         if (appContext?.Windows is { } windows)
         {
-            windows.Show(window);
+            windows.Show(window, owned: false);
             return;
         }
 

@@ -43,6 +43,27 @@ if(args.Contains("--catalog-status-check")) {
     return;
 }
 
+if(args.Contains("--decoder-realtime-check")) {
+    var ff = Environment.GetEnvironmentVariable("UREMOTE_FFMPEG")!;
+    var start = new System.Diagnostics.ProcessStartInfo(ff) { UseShellExecute=false, CreateNoWindow=true, RedirectStandardOutput=true, RedirectStandardError=true };
+    var size = Environment.GetEnvironmentVariable("UREMOTE_TEST_SIZE") ?? "1920x1080";
+    foreach(var a in new[] {"-v","error","-f","lavfi","-i",$"testsrc2=size={size}:rate=60","-frames:v","180","-c:v","libx264","-preset","ultrafast","-tune","zerolatency","-x264-params","aud=1:repeat-headers=1:keyint=60","-threads","2","-f","h264","pipe:1"}) start.ArgumentList.Add(a);
+    using var source = System.Diagnostics.Process.Start(start)!;
+    var err = source.StandardError.ReadToEndAsync();
+    using var data = new MemoryStream(); await source.StandardOutput.BaseStream.CopyToAsync(data); await source.WaitForExitAsync();
+    if(source.ExitCode != 0) throw new Exception(await err);
+    var parser = new AnnexBAccessUnits(); var units = new List<byte[]>(); var streamBytes=data.ToArray(); for(var offset=0;offset<streamBytes.Length;offset+=65536) units.AddRange(parser.Push(streamBytes.AsSpan(offset,Math.Min(65536,streamBytes.Length-offset)))); if(parser.Finish() is {} tail) units.Add(tail);
+    await using var decoder = new ControllerVideoDecoder(ff);
+    var clock = System.Diagnostics.Stopwatch.StartNew(); var arrivals = new List<double>(); var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    decoder.Frame += frame => { if ($"{frame.Width}x{frame.Height}" != size) { done.TrySetException(new Exception("Decoded frame was resized")); return; } lock(arrivals) { arrivals.Add(clock.Elapsed.TotalMilliseconds); if(arrivals.Count >= units.Count-2) done.TrySetResult(); } };
+    decoder.Failed += reason => done.TrySetException(new Exception(reason));
+    for(int i=0;i<units.Count;i++) { var delay=i*1000d/60-clock.Elapsed.TotalMilliseconds; if(delay>0) await Task.Delay(TimeSpan.FromMilliseconds(delay)); decoder.Push(units[i]); }
+    await done.Task.WaitAsync(TimeSpan.FromSeconds(20));
+    var lag=arrivals.Select((t,i)=>t-i*1000d/60).Order().ToArray();
+    Console.WriteLine($"REALTIME size={size} frames={arrivals.Count} first_ms={arrivals[0]:F1} p50_ms={lag[lag.Length/2]:F1} p95_ms={lag[(int)(lag.Length*.95)]:F1} max_ms={lag[^1]:F1} tail_ms={arrivals[^1]-(arrivals.Count-1)*1000d/60:F1}");
+    return;
+}
+
 if(args.Contains("--decoder-load-check")) {
     var ffmpeg = Environment.GetEnvironmentVariable("UREMOTE_FFMPEG") ?? "ffmpeg";
     var info = new System.Diagnostics.ProcessStartInfo(ffmpeg) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };

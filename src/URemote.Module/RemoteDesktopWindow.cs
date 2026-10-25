@@ -22,7 +22,7 @@ public sealed partial class RemoteDesktopWindow : Window
     private readonly HashSet<int> buttons = [];
     private readonly Dictionary<int, ControllerFrame> latest = [];
     private readonly object frameGate = new();
-    private readonly DispatcherTimer paintTimer = new() { Interval = TimeSpan.FromMilliseconds(33) };
+    private readonly DispatcherTimer paintTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
     private WriteableBitmap? bitmap;
     private ControllerFrame? painted;
     private int[] displayIds = [];
@@ -131,8 +131,14 @@ public sealed partial class RemoteDesktopWindow : Window
         if (bitmap is null || bitmap.PixelSize != new PixelSize(frame.Width, frame.Height)) {
             video.Source = null; bitmap?.Dispose(); bitmap = new WriteableBitmap(new PixelSize(frame.Width, frame.Height), new Vector(96, 96), PixelFormat.Rgba8888, AlphaFormat.Opaque); video.Source = bitmap;
         }
-        using (var fb = bitmap.Lock()) for (int y = 0; y < frame.Height; y++) Marshal.Copy(frame.Pixels, y * frame.Width * 4, fb.Address + y * fb.RowBytes, frame.Width * 4);
-        painted = frame; video.InvalidateVisual(); connectingOverlay.IsLoading = false; status.Text = $"已连接 · {frame.Width} × {frame.Height}";
+        using (var fb = bitmap.Lock())
+        {
+            if (fb.RowBytes == frame.Width * 4) Marshal.Copy(frame.Pixels, 0, fb.Address, frame.Pixels.Length);
+            else for (int y = 0; y < frame.Height; y++) Marshal.Copy(frame.Pixels, y * frame.Width * 4, fb.Address + y * fb.RowBytes, frame.Width * 4);
+        }
+        if (painted is null || painted.Width != frame.Width || painted.Height != frame.Height)
+            status.Text = $"已连接 · {frame.Width} × {frame.Height}";
+        painted = frame; video.InvalidateVisual(); connectingOverlay.IsLoading = false;
     }
     private string FailChannel()
     {

@@ -3,5 +3,6 @@
   <ItemGroup>
     <ProjectReference Include="../../src/AsterDock.Host/AsterDock.Host.csproj" />
     <PackageReference Include="Avalonia.Headless" Version="12.1.0" />
+    <PackageReference Include="SkiaSharp" Version="3.119.4" />
   </ItemGroup>
 </Project>

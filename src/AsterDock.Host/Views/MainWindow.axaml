@@ -125,6 +125,8 @@
     </Style>
   </Window.Styles>
 
+  <Border x:Name="WindowChrome" Background="{DynamicResource AppPageBrush}" BorderThickness="0">
+  <Grid x:Name="WindowChromeHost">
   <Grid x:Name="WindowRootGrid" RowDefinitions="40,*">
     <Border x:Name="CustomTitleBar" Background="{DynamicResource AppChromeBrush}"
             BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1"
@@ -691,4 +693,6 @@
                          IndicatorSize="Large" UseBlur="False"/>
     <ui:AdFeedbackLayer x:Name="WindowFeedback" Grid.RowSpan="2" ZIndex="280"/>
   </Grid>
+  </Grid>
+  </Border>
 </Window>

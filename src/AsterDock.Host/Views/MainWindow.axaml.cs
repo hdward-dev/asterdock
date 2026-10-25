@@ -847,20 +847,6 @@ public partial class MainWindow : Window, IApplicationShell
         SettingsStatusText.Text = status;
     }
 
-    private void ConfigureWindowChrome()
-    {
-        WindowDecorations = WindowDecorations.BorderOnly;
-        ExtendClientAreaToDecorationsHint = true;
-        ExtendClientAreaTitleBarHeightHint = 40;
-        if (OperatingSystem.IsWindows())
-            TransparencyLevelHint = [WindowTransparencyLevel.Mica, WindowTransparencyLevel.Blur];
-        base.PropertyChanged += (_, args) =>
-        {
-            if (args.Property == WindowStateProperty) UpdateMaximizeGlyph();
-            if (args.Property == WindowStateProperty || args.Property == IsVisibleProperty)
-                _feedbackService.RefreshDelivery();
-        };
-    }
 
     private void TitleBar_PointerPressed(object? sender, PointerPressedEventArgs e)
     {

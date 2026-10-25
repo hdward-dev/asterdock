@@ -11,11 +11,18 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml.Styling;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using SkiaSharp;
 
-AppBuilder.Configure<CheckApplication>().UseHeadless(new AvaloniaHeadlessPlatformOptions()).SetupWithoutStarting();
+AppBuilder.Configure<CheckApplication>()
+    .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
+    .UseSkia()
+    .SetupWithoutStarting();
 var host = new MainWindow();
+CheckLinuxWindowChrome(host);
 LoadedApplication App(string id) => (LoadedApplication)Activator.CreateInstance(typeof(LoadedApplication),
     BindingFlags.Instance | BindingFlags.NonPublic, null,
     [new AppManifest { Id = id, Name = id, Version = "1", EntryAssembly = "fixture", EntryType = "fixture" },
@@ -231,6 +238,96 @@ static void ExerciseLayouts(params Window[] windows)
         AvaloniaHeadlessPlatform.ForceRenderTimerTick();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
     }
+}
+
+void CheckLinuxWindowChrome(MainWindow window)
+{
+    var linux = MainWindowChrome.Resolve(linux: true, windows: false, WindowState.Normal);
+    Check(linux.Decorations == WindowDecorations.None && linux.TransparentSurface && linux.ClipToRoundedBounds
+          && linux.CornerRadius == new CornerRadius(MainWindowChrome.CornerRadiusDip)
+          && linux.CornerRadius.TopLeft == linux.CornerRadius.BottomLeft
+          && linux.CornerRadius.TopRight == linux.CornerRadius.BottomRight
+          && !linux.WindowsCornerPreference,
+        "linux chrome rounds every corner without a window-manager frame");
+    var maximized = MainWindowChrome.Resolve(linux: true, windows: false, WindowState.Maximized);
+    var fullscreen = MainWindowChrome.Resolve(linux: true, windows: false, WindowState.FullScreen);
+    Check(maximized.CornerRadius == default && fullscreen.CornerRadius == default && maximized.TransparentSurface,
+        "maximized and fullscreen linux windows meet the screen edges");
+    var windows = MainWindowChrome.Resolve(linux: false, windows: true, WindowState.Normal);
+    Check(windows.Decorations == WindowDecorations.BorderOnly && windows.WindowsCornerPreference
+          && !windows.TransparentSurface && windows.CornerRadius == default,
+        "windows keeps the system corner preference instead of a transparent clip");
+    if (!OperatingSystem.IsLinux())
+    {
+        Check(window.WindowDecorations == WindowDecorations.BorderOnly, "non-linux window keeps border decorations");
+        return;
+    }
+
+    var chrome = window.FindControl<Border>("WindowChrome")!;
+    Check(window.WindowDecorations == WindowDecorations.None, "running window clears linux decorations");
+    Check(window.Background is ISolidColorBrush { Color.A: 0 }, "linux window surface is transparent");
+    Check(window.TransparencyLevelHint.Contains(WindowTransparencyLevel.Transparent), "linux window asks for a transparent visual");
+    Check(chrome.CornerRadius.BottomLeft == MainWindowChrome.CornerRadiusDip
+          && chrome.CornerRadius.BottomRight == MainWindowChrome.CornerRadiusDip
+          && chrome.CornerRadius.TopLeft == chrome.CornerRadius.BottomLeft,
+        "live chrome uses the same radius on the bottom corners");
+    Check(chrome.ClipToBounds && chrome.BorderThickness == default && chrome.BoxShadow == default && chrome.BorderBrush is null,
+        "live chrome has no square stroke and no drop shadow");
+    var grips = (Grid)typeof(MainWindow).GetField("_resizeGrips", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!;
+    Check(grips.IsVisible && grips.Children.Count == 8, "linux keeps invisible resize grips");
+    window.WindowState = WindowState.Maximized;
+    Check(chrome.CornerRadius == default && !grips.IsVisible, "maximized window drops the radius and the grips");
+    window.WindowState = WindowState.Normal;
+    Check(chrome.CornerRadius.BottomLeft == MainWindowChrome.CornerRadiusDip && grips.IsVisible,
+        "restoring the window rounds the bottom corners again");
+
+    const int width = 1100;
+    const int height = 700;
+    var opened = typeof(MainWindow).GetMethod("MainWindow_Opened", BindingFlags.Instance | BindingFlags.NonPublic)!;
+    var openedHandler = (EventHandler)Delegate.CreateDelegate(typeof(EventHandler), window, opened);
+    window.Opened -= openedHandler;
+    window.Width = width;
+    window.Height = height;
+    window.Show();
+    window.Measure(new Size(width, height));
+    window.Arrange(new Rect(0, 0, width, height));
+    window.UpdateLayout();
+    using var bitmap = window.CaptureRenderedFrame();
+    if (bitmap is null)
+        throw new Exception($"chrome frame was not rendered (bounds {window.Bounds}, client {window.ClientSize})");
+    var pngPath = Path.Combine(Path.GetTempPath(), "asterdock-chrome-frame.png");
+    bitmap.Save(pngPath, PngBitmapEncoderOptions.Default);
+    var pngLength = new FileInfo(pngPath).Length;
+    if (pngLength < 32)
+        throw new Exception($"chrome frame did not encode ({pngLength} bytes, bitmap {bitmap.PixelSize}, bounds {window.Bounds})");
+    using var pixels = SKBitmap.Decode(pngPath);
+    Check(pixels is not null && pixels.Width == width && pixels.Height == height,
+        $"chrome frame rendered (png {pngLength} bytes, bitmap {bitmap.PixelSize}, decoded {(pixels is null ? "null" : pixels.Width + "x" + pixels.Height)})");
+    var radius = (int)MainWindowChrome.CornerRadiusDip;
+    var frameWidth = pixels!.Width;
+    var frameHeight = pixels.Height;
+    static int ChannelGap(SKColor left, SKColor right) =>
+        Math.Abs(left.Red - right.Red) + Math.Abs(left.Green - right.Green) + Math.Abs(left.Blue - right.Blue);
+    static bool Unpainted(SKColor color) => color.Alpha <= 12 || color.Red + color.Green + color.Blue <= 18;
+    bool Outside(int x, int y) => Unpainted(pixels.GetPixel(x, y));
+    Check(Outside(0, 0) && Outside(2, 0) && Outside(0, 2), "top-left corner is outside the rounded window");
+    Check(Outside(frameWidth - 1, 0) && Outside(frameWidth - 3, 0), "top-right corner is outside the rounded window");
+    Check(Outside(0, frameHeight - 1) && Outside(2, frameHeight - 1) && Outside(0, frameHeight - 3),
+        "bottom-left corner is outside the rounded window");
+    Check(Outside(frameWidth - 1, frameHeight - 1) && Outside(frameWidth - 3, frameHeight - 1) && Outside(frameWidth - 1, frameHeight - 3),
+        "bottom-right corner is outside the rounded window");
+    var leftEdge = pixels.GetPixel(0, frameHeight / 2);
+    var leftInside = pixels.GetPixel(40, frameHeight / 2);
+    var bottomEdge = pixels.GetPixel(frameWidth / 2, frameHeight - 1);
+    var bottomInside = pixels.GetPixel(frameWidth / 2, frameHeight - 24);
+    Check(leftEdge.Alpha >= 250 && bottomEdge.Alpha >= 250 && pixels.GetPixel(frameWidth / 2, 0).Alpha >= 250,
+        "straight edges are painted");
+    Check(ChannelGap(leftEdge, leftInside) <= 12 && ChannelGap(bottomEdge, bottomInside) <= 12,
+        "edges are the page fill, not a frame line or shadow");
+    Check(pixels.GetPixel(radius, 1).Alpha >= 250 && pixels.GetPixel(1, frameHeight - 1 - radius).Alpha >= 250,
+        "pixels inside the radius stay filled");
+    window.Width = 1440;
+    window.Height = 900;
 }
 
 public sealed class CheckApplication : Application

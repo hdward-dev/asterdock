@@ -110,7 +110,7 @@ public static class LinuxWallpaper
     private static async Task RunAsync(string exe,string[] args,CancellationToken ct)
     {
         using var timeout=CancellationTokenSource.CreateLinkedTokenSource(ct);timeout.CancelAfter(TimeSpan.FromSeconds(15));
-        using var p=new Process{StartInfo=new(exe){UseShellExecute=false,RedirectStandardError=true,RedirectStandardOutput=true}};
+        using var p=new Process{StartInfo=new(exe){UseShellExecute=false,RedirectStandardError=true,RedirectStandardOutput=true,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Hidden}};
         foreach(var arg in args)p.StartInfo.ArgumentList.Add(arg);p.Start();var error=p.StandardError.ReadToEndAsync(timeout.Token);var output=p.StandardOutput.ReadToEndAsync(timeout.Token);
         try {await p.WaitForExitAsync(timeout.Token);await Task.WhenAll(error,output);if(p.ExitCode!=0)throw new IOException("Wallpaper rendering failed.");}
         finally {if(!p.HasExited)p.Kill(true);}

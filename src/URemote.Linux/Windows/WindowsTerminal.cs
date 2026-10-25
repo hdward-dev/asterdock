@@ -21,9 +21,11 @@ public sealed class WindowsTerminal : IAsyncDisposable
         var start = new ProcessStartInfo(shell)
         {
             UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
-            CreateNoWindow = true, WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+            CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden,
+            WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
         };
         process = Process.Start(start) ?? throw new IOException("无法启动 Windows 终端。");
+        URemote.Core.HiddenConsole.Hide(process);
         input = process.StandardInput;
         input.AutoFlush = true;
     }

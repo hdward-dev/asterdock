@@ -24,7 +24,7 @@ public sealed class DesktopControllerSession
         peer?.SetQuality(level);
     }
     public void SelectDisplay(int id) { Volatile.Write(ref display, id); peer?.SelectDisplay(id, Volatile.Read(ref quality)); }
-    public async Task RunAsync(LoginState state, string target, string ffmpeg, CancellationToken ct, int captureType = 1, AssistanceRequest? assistance = null)
+    public async Task RunAsync(LoginState state, string target, string ffmpeg, CancellationToken ct, int captureType = 1, AssistanceRequest? assistance = null, bool forceJoin = false)
     {
         using var api = new UuMacHostApi(state);
         var joined = false;
@@ -44,7 +44,7 @@ public sealed class DesktopControllerSession
                 var assistanceRoom = await api.JoinAssistanceAsync(assistance.ConnectId, assistance.TakeCode(), deadline.Token);
                 joined = true; room = assistanceRoom.Room; TargetPlatform?.Invoke(assistanceRoom.Platform);
             }
-            else { room = await api.JoinDeviceAsync(target, ct); joined = true; }
+            else { room = await api.JoinDeviceAsync(target, ct, forceJoin); joined = true; }
             Status?.Invoke("signaling");
             await using var signal = await UuSignalClient.ConnectAsync(room, ct);
             var appId = Guid.NewGuid().ToString(); var initialIce = Guid.NewGuid().ToString();
@@ -83,7 +83,7 @@ public sealed class DesktopControllerSession
                         try { decoder = new ControllerVideoDecoder(ffmpeg); }
                         catch { done.TrySetException(new IOException("Could not start video decoder.")); return; }
                         decoders[index] = decoder; Status?.Invoke("video-stream-received");
-                        decoder.Failed += () => done.TrySetException(new IOException("Video decoder stopped."));
+                        decoder.Failed += detail => done.TrySetException(new IOException(string.IsNullOrWhiteSpace(detail) ? "Video decoder stopped." : "Video decoder stopped: " + detail));
                         var firstFrame = true;
                         decoder.Frame += frame => { if (firstFrame) { firstFrame = false; Status?.Invoke("video-decoded"); } if (!stop.IsCancellationRequested) Frame?.Invoke(index, frame); };
                         Displays?.Invoke(decoders.Keys.Order().ToArray());

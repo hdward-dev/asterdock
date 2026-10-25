@@ -48,6 +48,7 @@ public sealed partial class URemoteView
                 {
                     UseShellExecute = false, RedirectStandardOutput = true,
                     RedirectStandardError = true, CreateNoWindow = true,
+                    WindowStyle = ProcessWindowStyle.Hidden,
                     ArgumentList = { "-version" }
                 }
             };

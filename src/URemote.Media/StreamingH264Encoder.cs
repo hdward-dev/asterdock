@@ -15,7 +15,8 @@ public sealed class StreamingH264Encoder : IAsyncDisposable
             throw new ArgumentException("Unsupported stream format.");
         this.width = width; this.height = height;
         var start = new ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardInput = true,
-            RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+            RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true,
+            WindowStyle = ProcessWindowStyle.Hidden };
         // Frequent IDRs plus a 125 ms VBV caused periodic text-quality collapse.
         // Keep 500 ms of encoder rate-control budget (not a playback queue),
         // without periodic IDRs; each peer starts with an IDR and authenticated PLI/FIR
@@ -36,6 +37,7 @@ public sealed class StreamingH264Encoder : IAsyncDisposable
         }
         foreach (var arg in args) start.ArgumentList.Add(arg);
         process = Process.Start(start) ?? throw new IOException("Cannot start video encoder.");
+        URemote.Core.HiddenConsole.Hide(process);
         errors = process.StandardError.ReadToEndAsync();
     }
     public async Task WriteAsync(byte[] pixels, int stride, CancellationToken ct)

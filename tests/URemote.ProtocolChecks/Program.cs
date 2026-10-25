@@ -171,6 +171,14 @@ Reject(() => AssistanceRequest.Validate("not-an-id", "Fixture123"), "invalid par
 Reject(() => AssistanceRequest.Validate("123456789", ""), "empty partner code rejected");
 Check(StreamerConnectOptions.Decode(ControllerProtocol.ConnectOptions("fixture", assistance: true)).ControlConnectType == 2, "assistance connection is explicitly marked as assistance");
 await AssistanceJoinTests.Run(Check, assistFixture.ToJsonString());
+using (var busyCatalog = System.Text.Json.JsonDocument.Parse("""
+{"data":{"desktop_devices":[{"device_id":"busy","status":"CONNECTED","controllable":true,"controlled_support":true,"publisher_availability_status":"ready","participants_info":[{}]},{"device_id":"idle","status":"CONNECTED","controllable":true,"controlled_support":true,"publisher_availability_status":"ready","participants_info":[]},{"device_id":"off","status":"CONNECTED","controllable":false,"controlled_support":true,"publisher_availability_status":"control_off"}]}}
+""")) {
+    var entries = UuDeviceCatalog.Parse(busyCatalog.RootElement, "self");
+    Check(entries[0].Busy && !entries[0].CanConnect && entries[0].ConnectionStatusName == "被控中", "participants override ready availability and block duplicate connections");
+    Check(!entries[1].Busy && entries[1].CanConnect, "empty participants allow available device connections");
+    Check(!entries[2].CanConnect && entries[2].ConnectionStatusName == "未开启被控", "control off is shown distinctly from online");
+}
 var room = UuMacHostProtocol.ParseRoomResponse(roomFixture);
 Check(room.SignalingList.Count == 2 && room.WebSocketConnectTimeoutMs == 5000
     && room.Token == "fixture-room-secret", "observed room configuration schema parses synthetic data");

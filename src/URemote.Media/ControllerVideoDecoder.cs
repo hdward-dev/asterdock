@@ -9,24 +9,28 @@ public sealed class ControllerVideoDecoder : IAsyncDisposable
 {
     private readonly Process process;
     private readonly CancellationTokenSource stop = new();
-    private readonly Channel<byte[]> encoded = Channel.CreateBounded<byte[]>(32);
+    // Network packets arrive in bursts and vary in size. Bound memory by queuedBytes
+    // rather than packet count; dropping arbitrary H264 chunks corrupts reference frames.
+    private readonly Channel<byte[]> encoded = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions { SingleReader = true, AllowSynchronousContinuations = false });
     private readonly Task worker;
+    private readonly StringBuilder stderr = new();
     private long queuedBytes;
     public event Action<ControllerFrame>? Frame;
-    public event Action? Failed;
+    public event Action<string?>? Failed;
     public ControllerVideoDecoder(string executable)
     {
-        var info = new ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+        var info = new ProcessStartInfo(executable) { UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden };
         foreach (var arg in new[] { "-hide_banner", "-loglevel", "error", "-avioflags", "direct", "-fpsprobesize", "0", "-probesize", "32", "-analyzeduration", "0", "-flags", "low_delay", "-threads", "2", "-f", "h264", "-i", "pipe:0", "-an", "-pix_fmt", "rgba", "-fps_mode", "passthrough", "-c:v", "pam", "-threads", "1", "-f", "image2pipe", "pipe:1" }) info.ArgumentList.Add(arg);
         process = Process.Start(info) ?? throw new IOException("Video decoder could not start.");
+        URemote.Core.HiddenConsole.Hide(process);
         worker = RunAsync();
     }
     public void Push(byte[] bytes)
     {
         if (stop.IsCancellationRequested) return;
-        if (bytes.Length > 16_000_000) { Failed?.Invoke(); stop.Cancel(); return; }
+        if (bytes.Length > 16_000_000) { Failed?.Invoke("Video frame exceeds limit."); stop.Cancel(); return; }
         var queued = Interlocked.Add(ref queuedBytes, bytes.Length);
-        if (queued > 32_000_000 || !encoded.Writer.TryWrite(bytes.ToArray())) { Interlocked.Add(ref queuedBytes, -bytes.Length); Failed?.Invoke(); stop.Cancel(); }
+        if (queued > 32_000_000 || !encoded.Writer.TryWrite(bytes.ToArray())) { Interlocked.Add(ref queuedBytes, -bytes.Length); Failed?.Invoke("Video decoder queue overflow."); stop.Cancel(); }
     }
     private async Task RunAsync()
     {
@@ -34,18 +38,26 @@ public sealed class ControllerVideoDecoder : IAsyncDisposable
         {
             var tasks = new[] { WriteAsync(), ReadAsync(), DrainErrorsAsync() };
             var completed = await Task.WhenAny(tasks);
-            if (!stop.IsCancellationRequested) Failed?.Invoke();
+            if (!stop.IsCancellationRequested)
+            {
+                string detail;
+                lock (stderr) detail = stderr.ToString().Trim();
+                Failed?.Invoke(detail.Length == 0 ? null : detail.Length > 400 ? detail[..400] : detail);
+            }
             stop.Cancel();
             if (!process.HasExited) process.Kill();
             await Task.WhenAll(tasks);
         }
         catch (OperationCanceledException) { }
-        catch { if (!stop.IsCancellationRequested) Failed?.Invoke(); }
+        catch (Exception ex) { if (!stop.IsCancellationRequested) Failed?.Invoke(ex.Message); }
         finally { stop.Cancel(); try { if (!process.HasExited) process.Kill(); } catch (InvalidOperationException) { } }
     }
     private async Task DrainErrorsAsync()
     {
-        var buffer = new char[2048]; while (await process.StandardError.ReadAsync(buffer.AsMemory(), stop.Token) > 0) { }
+        var buffer = new char[2048];
+        int read;
+        while ((read = await process.StandardError.ReadAsync(buffer.AsMemory(), stop.Token)) > 0)
+            lock (stderr) { if (stderr.Length < 2000) stderr.Append(buffer, 0, read); }
     }
     private async Task WriteAsync()
     {

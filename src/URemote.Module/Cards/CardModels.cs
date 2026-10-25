@@ -89,6 +89,7 @@ public sealed class DeviceCardModel : CardModel
     public bool IsDesktop => !IsMobile;
     public bool ShowBadge { get; init; }
     public bool CanControl { get; init; }
+    public bool CanOpenRemote { get; init; }
     public bool ListView { get; init; }
     public double PreviewHeight { get; init; }
     public bool IsSelected { get; init; }

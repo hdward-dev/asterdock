@@ -112,7 +112,7 @@ public sealed partial class URemoteView
         ShowPage(0); RenderDevices();
         try { UpdateAccountDisplay(DesktopHostSession.ReadIdentity(identity.Text ?? "")); }
         catch { UpdateAccountDisplay(null); }
-        deviceTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
+        deviceTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
         deviceTimer.Tick += async (_, _) => { if (IsVisible && page.Content == pages[0] && Environment.GetEnvironmentVariable("UREMOTE_NO_AUTO_START") != "1") await RefreshDevicesAsync(); };
         deviceTimer.Start();
     }
@@ -243,26 +243,27 @@ public sealed partial class URemoteView
 
     private DeviceCard BuildPreviewCard(UuDevice device)
     {
-        var allowed = !device.IsCurrent && device.Online && device.Controllable && device.ControlledSupport && device.Category == "desktop";
+        var allowed = device.CanConnect && device.Category == "desktop";
         var wallpaperKey = device.IsCurrent && previewCache.ContainsKey("local-wallpaper") ? "local-wallpaper" : device.WallpaperUrl;
         previewCache.TryGetValue(wallpaperKey, out var wallpaper);
         return new DeviceCard { DataContext = new DeviceCardModel {
             Name = device.Name,
-            StatusText = "●  " + device.StatusName,
+            StatusText = "●  " + device.ConnectionStatusName,
             PlatformName = device.PlatformName,
-            BadgeText = device.IsCurrent ? "本机" : device.StatusName,
+            BadgeText = device.IsCurrent ? "本机" : device.ConnectionStatusName,
             FavoriteLabel = favorites.Contains(device.Id) ? "取消收藏" : "收藏设备",
             Online = device.Online,
             HasWallpaper = wallpaper is not null,
             Wallpaper = wallpaper,
             WallpaperOpacity = device.Online ? 1 : .5,
             IsMobile = device.Category == "mobile",
-            ShowBadge = device.IsCurrent || !device.Online,
+            ShowBadge = device.IsCurrent || !device.Online || device.Busy,
             CanControl = allowed,
+            CanOpenRemote = allowed || (device.Busy && !device.IsCurrent && device.Controllable && device.ControlledSupport && device.Category == "desktop"),
             ListView = listView,
             PreviewHeight = listView ? 120 : 190,
             IsSelected = selectedDeviceId == device.Id,
-            ConnectTip = allowed ? "点击预览进入远程控制" : null,
+            ConnectTip = allowed ? "点击预览进入远程控制" : device.Busy ? "点击接管设备，将断开原连接并建立新连接" : device.ConnectionStatusName,
             ConnectName = allowed ? "远程控制 " + device.Name : "",
             TransferTip = allowed ? "在独立窗口中浏览、上传和下载远端文件" : "设备需在线并允许被控",
             TerminalTip = allowed ? "打开远程终端命令窗口" : "设备需在线并允许被控",
@@ -277,27 +278,56 @@ public sealed partial class URemoteView
             RequestDetails = () => { ShowDevice(device); RenderDevices(); }
         } };
     }
-    private void OpenRemote(UuDevice device)
+    private readonly HashSet<string> pendingTakeovers = [];
+    private async void OpenRemote(UuDevice device)
     {
         if (toolWindows.ContainsKey(device.Id)) { catalogHint.Text = "请先关闭此设备的终端或文件窗口，再发起桌面连接。"; return; }
         if (remoteWindows.TryGetValue(device.Id, out var existing)) { existing.Activate(); return; }
-        if (device.IsCurrent || !device.Online || !device.Controllable || !device.ControlledSupport) return;
+        if (pendingTakeovers.Contains(device.Id)) return;
+        var forceJoin = false;
+        if (device.Busy && !device.IsCurrent && device.Online && device.Controllable && device.ControlledSupport)
+        {
+            pendingTakeovers.Add(device.Id);
+            try { forceJoin = await ConfirmTakeoverAsync(device); }
+            finally { pendingTakeovers.Remove(device.Id); }
+            if (!forceJoin || disposed || loggingOut) return;
+            if (remoteWindows.TryGetValue(device.Id, out existing)) { existing.Activate(); return; }
+            if (toolWindows.ContainsKey(device.Id)) return;
+        }
+        else if (!device.CanConnect) { catalogHint.Text = "设备当前不可连接：" + device.ConnectionStatusName; return; }
         try
         {
             var state = DesktopHostSession.ReadIdentity(identity.Text ?? "").State;
             if (!state.IsAuthenticated || !File.Exists(appliedEncoder)) throw new InvalidOperationException();
-            var window = new RemoteDesktopWindow(device, state, appliedEncoder, feedback: appContext?.Feedback);
+            var window = new RemoteDesktopWindow(device, state, appliedEncoder, feedback: appContext?.Feedback, forceJoin: forceJoin);
             remoteWindows.Add(device.Id, window);
             window.Closed += async (_, _) => { try { await window.Completion; } finally { remoteWindows.Remove(device.Id); } };
             ShowManaged(window);
         }
         catch { catalogHint.Text = "无法打开远控窗口，请检查登录状态与视频解码器路径。"; ReportFailure(catalogHint.Text, "远程桌面"); }
     }
+    private async Task<bool> ConfirmTakeoverAsync(UuDevice device)
+    {
+        if (TopLevel.GetTopLevel(this) is not Window owner) return false;
+        var dialog = new Window { Title = "接管设备", Width = 420, SizeToContent = SizeToContent.Height,
+            CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner };
+        var cancel = new Button { Content = "取消", IsCancel = true };
+        var confirm = new Button { Content = "接管设备" };
+        cancel.Click += (_, _) => dialog.Close(false);
+        confirm.Click += (_, _) => dialog.Close(true);
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 12 };
+        actions.Children.Add(cancel); actions.Children.Add(confirm);
+        var panel = new StackPanel { Margin = new Thickness(24), Spacing = 20 };
+        panel.Children.Add(new TextBlock { Text = "设备「" + device.Name + "」正在被控。", FontSize = 16, TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(new TextBlock { Text = "接管设备会断开原连接，并建立新的远程连接。是否继续？", TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(actions); dialog.Content = panel;
+        return await dialog.ShowDialog<bool>(owner);
+    }
     private void OpenTool(UuDevice device, bool terminal)
     {
         if (remoteWindows.ContainsKey(device.Id)) { catalogHint.Text = "请先断开此设备的桌面，再打开终端或文件传输。"; return; }
         if (toolWindows.TryGetValue(device.Id, out var existing)) { existing.Activate(); catalogHint.Text = "请先关闭该设备已有的工具窗口，再切换连接类型。"; return; }
-        if (device.IsCurrent || !device.Online || !device.Controllable || !device.ControlledSupport) return;
+        if (!device.CanConnect) { catalogHint.Text = device.Busy ? "设备正在被控，请等待现有连接结束后刷新。" : "设备当前不可连接：" + device.ConnectionStatusName; return; }
         try
         {
             var state = DesktopHostSession.ReadIdentity(identity.Text ?? "").State;
@@ -320,7 +350,7 @@ public sealed partial class URemoteView
         deviceDetail.Children.Clear();
         var detailView = new DeviceDetailView { Feedback = appContext?.Feedback, DataContext = new DeviceDetailModel {
             Name = device.Name,
-            Summary = $"{device.PlatformName} · {device.StatusName}",
+            Summary = $"{device.PlatformName} · {device.ConnectionStatusName}",
             Identifier = "设备编号  " + device.Id,
             Version = "客户端版本  " + (device.Version.Length == 0 ? "未提供" : device.Version),
             Description = device.IsCurrent ? "这是本机。可在其他设备的 UU 官方客户端中发起桌面或终端连接。" : "可通过设备列表中的远程控制，在独立窗口中连接。",

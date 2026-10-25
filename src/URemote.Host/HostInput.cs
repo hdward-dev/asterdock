@@ -115,7 +115,7 @@ internal static class HostInput
                     }
                     continue;
                 }
-                var input = HostControlInput.Decode(message.ChannelLabel, message.IsText, message.Bytes, outputs.Count, HostWirePlatform.Windows);
+                var input = HostControlInput.Decode(message.ChannelLabel, message.IsText, message.Bytes, outputs.Count, windowsKeys: HostWirePlatform.Windows);
                 if (input?.Mouse is { } mouse)
                 {
                     var displayId = profiles?.SingleVideoStream == true ? profiles.SelectedScreen : input.DisplayId;

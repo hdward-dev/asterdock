@@ -38,7 +38,7 @@ public sealed partial class RemoteDesktopWindow : Window
         InitializeComponent();
     }
 
-    public RemoteDesktopWindow(UuDevice device, LoginState state, string ffmpeg, AssistanceRequest? assistance = null, IUserFeedbackService? feedback = null) : this()
+    public RemoteDesktopWindow(UuDevice device, LoginState state, string ffmpeg, AssistanceRequest? assistance = null, IUserFeedbackService? feedback = null, bool forceJoin = false) : this()
     {
         this.feedback = feedback;
         mac = device.Platform == 4;
@@ -86,7 +86,7 @@ public sealed partial class RemoteDesktopWindow : Window
         };
         video.KeyUp += (_, e) => { if (ControllerKeys.Map(e.PhysicalKey, e.Key, mac) is { } key) { if (keys.Remove(key)) SendKey(key, false); e.Handled = true; } };
         video.LostFocus += (_, _) => ReleaseInputs(); Deactivated += (_, _) => ReleaseInputs();
-        Opened += (_, _) => { paintTimer.Start(); Completion = RunAsync(state, device.Id, ffmpeg, assistance); };
+        Opened += (_, _) => { paintTimer.Start(); Completion = RunAsync(state, device.Id, ffmpeg, assistance, forceJoin); };
         Closed += (_, _) => { closed = true; ReleaseInputs(); stop.Cancel(); paintTimer.Stop(); video.Source = null; bitmap?.Dispose(); lock (frameGate) latest.Clear(); };
     }
     // Combo order is HostVideoSettings 1–5: fluent, HD, ultra, original, automatic.
@@ -147,9 +147,9 @@ public sealed partial class RemoteDesktopWindow : Window
         connectingOverlay.Text = label;
         status.Text = label;
     }
-    private async Task RunAsync(LoginState state, string target, string ffmpeg, AssistanceRequest? assistance = null)
+    private async Task RunAsync(LoginState state, string target, string ffmpeg, AssistanceRequest? assistance = null, bool forceJoin = false)
     {
-        try { await controller.RunAsync(state, target, ffmpeg, stop.Token, assistance: assistance); }
+        try { await controller.RunAsync(state, target, ffmpeg, stop.Token, assistance: assistance, forceJoin: forceJoin); }
         catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
         catch (Exception e) {
             Console.WriteLine("controller-failed;type=" + e.GetType().Name);

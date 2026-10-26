@@ -12,11 +12,18 @@ namespace AsterDock.Host.Views;
 /// Linux has no window-corner preference. <see cref="WindowDecorations.BorderOnly"/> makes the X11
 /// backend draw a square stroke and drop shadow around the client, so the corners stay square.
 /// The Linux path clears window-manager decorations and clips the client to one radius on every corner.
+/// The outer X11 silhouette uses that same radius; the caption's top and right insets are a separate distance.
 /// </summary>
 internal static class MainWindowChrome
 {
     public const double CornerRadiusDip = 12;
     public const double ResizeGripDip = 6;
+
+    /// <summary>
+    /// Distance from the window top to the caption capsule, and from the window right to the capsule.
+    /// This inset is not the corner radius.
+    /// </summary>
+    public const double TitleBarInsetDip = 4;
 
     internal readonly record struct Shape(
         WindowDecorations Decorations,
@@ -47,7 +54,12 @@ public partial class MainWindow
     private void ConfigureWindowChrome()
     {
         if (OperatingSystem.IsLinux())
+        {
             CreateLinuxResizeGrips();
+            Opened += (_, _) => ApplyOuterWindowShape();
+            SizeChanged += (_, _) => ApplyOuterWindowShape();
+            ScalingChanged += (_, _) => ApplyOuterWindowShape();
+        }
 
         ApplyWindowChrome();
         ExtendClientAreaToDecorationsHint = !OperatingSystem.IsLinux();
@@ -87,14 +99,19 @@ public partial class MainWindow
             TransparencyLevelHint = [WindowTransparencyLevel.Transparent];
         }
 
+        // Top and right caption insets stay equal. Resize padding must not add a larger right gap.
+        var inset = MainWindowChrome.TitleBarInsetDip;
+        WindowControlCapsule.VerticalAlignment = VAlign.Top;
+        WindowControlCapsule.Margin = new Thickness(0, inset, inset, 0);
+        CustomTitleBar.Padding = default;
+
         if (_resizeGrips is not null)
         {
             var resizing = shape.TransparentSurface && WindowState == WindowState.Normal && CanResize;
             _resizeGrips.IsVisible = resizing;
-            CustomTitleBar.Padding = resizing
-                ? new Thickness(MainWindowChrome.ResizeGripDip, 0, MainWindowChrome.ResizeGripDip, 0)
-                : default;
         }
+
+        ApplyOuterWindowShape();
     }
 
     private void CreateLinuxResizeGrips()
@@ -122,12 +139,13 @@ public partial class MainWindow
         }
 
         const double edge = MainWindowChrome.ResizeGripDip;
-        Add(WindowEdge.North, HAlign.Stretch, VAlign.Top, double.NaN, edge, StandardCursorType.TopSide);
+        const double inset = MainWindowChrome.TitleBarInsetDip;
+        Add(WindowEdge.North, HAlign.Stretch, VAlign.Top, double.NaN, inset, StandardCursorType.TopSide);
         Add(WindowEdge.South, HAlign.Stretch, VAlign.Bottom, double.NaN, edge, StandardCursorType.BottomSide);
         Add(WindowEdge.West, HAlign.Left, VAlign.Stretch, edge, double.NaN, StandardCursorType.LeftSide);
-        Add(WindowEdge.East, HAlign.Right, VAlign.Stretch, edge, double.NaN, StandardCursorType.RightSide);
-        Add(WindowEdge.NorthWest, HAlign.Left, VAlign.Top, edge, edge, StandardCursorType.TopLeftCorner);
-        Add(WindowEdge.NorthEast, HAlign.Right, VAlign.Top, edge, edge, StandardCursorType.TopRightCorner);
+        Add(WindowEdge.East, HAlign.Right, VAlign.Stretch, inset, double.NaN, StandardCursorType.RightSide);
+        Add(WindowEdge.NorthWest, HAlign.Left, VAlign.Top, edge, inset, StandardCursorType.TopLeftCorner);
+        Add(WindowEdge.NorthEast, HAlign.Right, VAlign.Top, inset, inset, StandardCursorType.TopRightCorner);
         Add(WindowEdge.SouthWest, HAlign.Left, VAlign.Bottom, edge, edge, StandardCursorType.BottomLeftCorner);
         Add(WindowEdge.SouthEast, HAlign.Right, VAlign.Bottom, edge, edge, StandardCursorType.BottomRightCorner);
     }

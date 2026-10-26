@@ -125,6 +125,8 @@
     </Style>
   </Window.Styles>
 
+  <Border x:Name="WindowChrome" Background="{DynamicResource AppPageBrush}" BorderThickness="0">
+  <Grid x:Name="WindowChromeHost">
   <Grid x:Name="WindowRootGrid" RowDefinitions="40,*">
     <Border x:Name="CustomTitleBar" Background="{DynamicResource AppChromeBrush}"
             BorderBrush="{DynamicResource AppBorderBrush}" BorderThickness="0,0,0,1"
@@ -153,8 +155,8 @@
           <TextBlock x:Name="WindowTitleText" Text="星栈" Margin="5,0,0,0" FontSize="12.5"
                      Foreground="{DynamicResource AppStrongTextBrush}" VerticalAlignment="Center"/>
         </StackPanel>
-        <Border x:Name="WindowControlCapsule" Grid.Column="1" Width="124" Height="32" Margin="0,0,4,0" Padding="2"
-                VerticalAlignment="Center" CornerRadius="12"
+        <Border x:Name="WindowControlCapsule" Grid.Column="1" Width="124" Height="32" Margin="0,4,4,0" Padding="2"
+                VerticalAlignment="Top" CornerRadius="12"
                 Background="{DynamicResource AppSurfaceBrush}"
                 BorderBrush="{DynamicResource AppInputBorderBrush}" BorderThickness="1"
                 ClipToBounds="True">
@@ -691,4 +693,6 @@
                          IndicatorSize="Large" UseBlur="False"/>
     <ui:AdFeedbackLayer x:Name="WindowFeedback" Grid.RowSpan="2" ZIndex="280"/>
   </Grid>
+  </Grid>
+  </Border>
 </Window>

@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -133,10 +134,161 @@ Check(selected.BorderThickness == new Thickness(1) && accent is not null && acce
     "selected card keeps a 1px accent border");
 selectedWindow.Close();
 
+CheckPreviewFlush();
+
 view.Dispose();
 window.Close();
 if (failed) throw new Exception("Device card layout checks failed.");
 Console.WriteLine("PASS: 9 devices render as adaptive cards under 我的设备");
+
+void CheckPreviewFlush()
+{
+    const int photoWidth = 160;
+    const int photoHeight = 90;
+    var wallpaper = new WriteableBitmap(new PixelSize(photoWidth, photoHeight), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Opaque);
+    var packed = new byte[photoHeight * photoWidth * 4];
+    for (var y = 0; y < photoHeight; y++)
+    for (var x = 0; x < photoWidth; x++)
+    {
+        var at = (y * photoWidth + x) * 4;
+        packed[at] = 32;
+        packed[at + 1] = (byte)(70 + y);
+        packed[at + 2] = 214;
+        packed[at + 3] = 255;
+    }
+    using (var buffer = wallpaper.Lock())
+    {
+        for (var y = 0; y < photoHeight; y++)
+            Marshal.Copy(packed, y * photoWidth * 4, buffer.Address + y * buffer.RowBytes, photoWidth * 4);
+    }
+
+    var card = new DeviceCard
+    {
+        Width = 420,
+        HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left,
+        VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top,
+        DataContext = new DeviceCardModel
+        {
+            Name = "aster-JohnnydeMac-mini",
+            StatusText = "●  未开启被控",
+            PlatformName = "macOS",
+            BadgeText = "在线",
+            FavoriteLabel = "收藏设备",
+            TransferTip = "文件",
+            TerminalTip = "终端",
+            TransferName = "文件传输",
+            TerminalName = "终端",
+            PortName = "端口映射",
+            WakeName = "远程开机",
+            Online = true,
+            HasWallpaper = true,
+            Wallpaper = wallpaper,
+            PreviewHeight = 190
+        }
+    };
+    var host = new Window
+    {
+        Width = 480,
+        Height = 460,
+        Content = card,
+        Background = new SolidColorBrush(Color.FromRgb(0xF5, 0xF7, 0xFA))
+    };
+    host.RequestedThemeVariant = ThemeVariant.Light;
+    host.Show();
+    Layout(host, 480, 460);
+
+    var preview = card.GetVisualDescendants().OfType<Grid>().Single(grid => grid.Name == "preview");
+    var topLeft = preview.TranslatePoint(default, card)!.Value;
+    Check(Math.Abs(topLeft.X - 1) < 0.6 && Math.Abs(topLeft.Y - 1) < 0.6,
+        "preview is flush with the inner edge of the card border, origin=" + topLeft);
+    Check(Math.Abs(topLeft.X + preview.Bounds.Width - (card.Bounds.Width - 1)) < 0.6,
+        "preview meets the right border, right=" + (topLeft.X + preview.Bounds.Width).ToString("0.0") + " card=" + card.Bounds.Width.ToString("0.0"));
+    Check(card.Padding == new Thickness(4) && card.CornerRadius == new CornerRadius(12) && card.BorderThickness == new Thickness(1)
+          && card.Background is not null && card.ClipToBounds,
+        "device card keeps its surface, 4px content padding, 1px border, and 12px clip");
+
+    var name = card.GetVisualDescendants().OfType<TextBlock>().First(text => text.Text == "aster-JohnnydeMac-mini");
+    var nameAt = name.TranslatePoint(default, card)!.Value;
+    var previewBottom = topLeft.Y + preview.Bounds.Height;
+    Check(Math.Abs(nameAt.X - 17) < 1.5, "device name keeps its inset, x=" + nameAt.X.ToString("0.0"));
+    Check(Math.Abs(nameAt.Y - (previewBottom + 12)) < 1.5,
+        "device name stays 12px below the preview, y=" + nameAt.Y.ToString("0.0") + " previewBottom=" + previewBottom.ToString("0.0"));
+    var actions = card.GetVisualDescendants().OfType<Grid>().Single(grid => grid.Name == "actions");
+    var actionsAt = actions.TranslatePoint(default, card)!.Value;
+    Check(Math.Abs(actionsAt.X - 13) < 1.5, "toolbar keeps its inset, x=" + actionsAt.X.ToString("0.0"));
+
+    AvaloniaHeadlessPlatform.ForceRenderTimerTick(2);
+    using var frame = host.CaptureRenderedFrame() ?? throw new Exception("preview frame was not rendered");
+    var path = Path.Combine(Path.GetTempPath(), "uremote-preview-flush.png");
+    frame.Save(path, PngBitmapEncoderOptions.Default);
+    var width = frame.PixelSize.Width;
+    var height = frame.PixelSize.Height;
+    var pixels = new byte[width * height * 4];
+    var pinned = GCHandle.Alloc(pixels, GCHandleType.Pinned);
+    try { frame.CopyPixels(new PixelRect(0, 0, width, height), pinned.AddrOfPinnedObject(), pixels.Length, width * 4); }
+    finally { pinned.Free(); }
+
+    var origin = preview.TranslatePoint(default, host)!.Value;
+    int Px(double x, double y)
+    {
+        var ix = (int)Math.Round(x);
+        var iy = (int)Math.Round(y);
+        return ((iy * width) + ix) * 4;
+    }
+    bool Photo(int at) => pixels[at] is > 200 and < 230 && pixels[at + 2] is > 20 and < 48;
+    bool White(int at) => pixels[at + 2] > 248 && pixels[at + 1] > 248 && pixels[at] > 248;
+    int photoLeft = width, photoTop = height, photoRight = 0, photoBottom = 0, photoCount = 0;
+    for (var y = 0; y < height; y++)
+    {
+        var rowLeft = -1;
+        var rowRight = -1;
+        var rowCount = 0;
+        for (var x = 0; x < width; x++)
+        {
+            if (!Photo(Px(x, y))) continue;
+            rowCount++;
+            if (rowLeft < 0) rowLeft = x;
+            rowRight = x;
+        }
+        // Glyph antialiasing can mimic the wallpaper color. Only full preview rows count.
+        if (rowCount < 40) continue;
+        photoCount += rowCount;
+        if (rowLeft < photoLeft) photoLeft = rowLeft;
+        if (rowRight > photoRight) photoRight = rowRight;
+        if (y < photoTop) photoTop = y;
+        if (y > photoBottom) photoBottom = y;
+    }
+    Check(photoCount > 1000, "wallpaper image is visible, pixels=" + photoCount);
+    var midY = (photoTop + photoBottom) / 2;
+    var leftWhite = 0;
+    for (var x = photoLeft - 1; x >= 0 && White(Px(x, midY)); x--) leftWhite++;
+    var topWhite = 0;
+    var midX = (photoLeft + photoRight) / 2;
+    for (var y = photoTop - 1; y >= 0 && White(Px(midX, y)); y--) topWhite++;
+    var rightWhite = 0;
+    for (var x = photoRight + 1; x < width && White(Px(x, midY)); x++) rightWhite++;
+    Check(leftWhite == 0 && topWhite == 0 && rightWhite == 0,
+        "no white inset around the preview, left=" + leftWhite + " top=" + topWhite + " right=" + rightWhite);
+
+    int LeftAt(int y)
+    {
+        for (var x = 0; x < width; x++) if (Photo(Px(x, y))) return x;
+        return -1;
+    }
+    var side = LeftAt(photoTop + 16);
+    var topCorner = LeftAt(photoTop);
+    var bottomCorner = LeftAt(photoBottom);
+    var cornerInset = topCorner - side;
+    Check(side >= 0 && cornerInset is >= 5 and <= 9,
+        "top corner inset matches the card's 12px radius, inset=" + cornerInset + " side=" + side + " top=" + topCorner);
+    Check(Math.Abs(bottomCorner - side) <= 1, "bottom of the preview stays square, bottom=" + bottomCorner + " side=" + side);
+    var corner = Px(origin.X + 1, origin.Y + 1);
+    Check(!Photo(corner), "the card's outer top corner is not covered by a square preview");
+    Console.WriteLine("preview-flush=" + path + " photo=" + photoLeft + "," + photoTop + " " + photoRight + "," + photoBottom);
+
+    wallpaper.Dispose();
+    host.Close();
+}
 
 static void Layout(Window window, double width, double height)
 {

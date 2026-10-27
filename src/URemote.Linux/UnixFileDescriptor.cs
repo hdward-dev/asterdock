@@ -18,6 +18,20 @@ internal static class UnixFileDescriptor
     }
     [DllImport("libc", SetLastError = true)] private static extern nint sendmsg(int socket, ref MessageHeader message, int flags);
     [DllImport("libc", SetLastError = true)] private static extern int memfd_create([MarshalAs(UnmanagedType.LPUTF8Str)] string name, uint flags);
+    [DllImport("libc", SetLastError = true)] private static extern int dup(int descriptor);
+    [DllImport("libc", SetLastError = true)] private static extern int fcntl(int descriptor, int command, int argument);
+    [DllImport("libc", SetLastError = true)] private static extern int close(int descriptor);
+
+    // pipewiresrc takes ownership of the fd it is given. Each pipeline needs its own duplicate.
+    public static int Duplicate(int descriptor)
+    {
+        if (!OperatingSystem.IsLinux() || descriptor < 0) throw new IOException("无法复制 PipeWire 描述符。");
+        var copy = dup(descriptor);
+        if (copy < 0) throw new IOException("无法复制 PipeWire 描述符。");
+        fcntl(copy, 2, 1); // F_SETFD, FD_CLOEXEC
+        return copy;
+    }
+    public static void Close(int descriptor) { if (descriptor >= 0) close(descriptor); }
 
     public static SafeFileHandle CreateMemoryFile()
     {

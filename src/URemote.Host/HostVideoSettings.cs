@@ -2,9 +2,11 @@ using URemote.Core;
 internal sealed record VideoProfile(int Width, int Height, int Fps, int Bitrate, int Crf = 18, int Recovery = 0);
 internal sealed class HostVideoSettings
 {
+    public const int IdleFps = 5;
     private readonly (int Width, int Height)[] native;
     private readonly VideoProfile[] profiles;
     private readonly int[] frameRateLimits;
+    private readonly int[] requestedFps;
     public bool SingleVideoStream { get; }
     private int selectedScreen;
     // A session starts without evidence of congestion. Do not force every quality tier
@@ -73,8 +75,19 @@ internal sealed class HostVideoSettings
         qualities = dimensions.Select(_ => 5).ToArray();
         autoQualities = dimensions.Select(_ => 2).ToArray();
         customBitrates = dimensions.Select(_ => 8000000).ToArray();
+        // No 30 FPS startup cap. Until the controller asks, the target is this screen's refresh rate.
+        requestedFps = (int[])this.frameRateLimits.Clone();
         profiles = dimensions.Select((d, i) => new VideoProfile(d.Width, d.Height,
-            Math.Min(30, this.frameRateLimits[i]), Math.Min(8000000, networkCeiling), 23)).ToArray();
+            this.frameRateLimits[i], Math.Min(8000000, networkCeiling), 23)).ToArray();
+    }
+    public int DisplayFps(int index) => frameRateLimits[index];
+    public int RequestedFps(int index) => Volatile.Read(ref requestedFps[index]);
+    // Target is min(this display's refresh, the controller's request), stored on the profile.
+    // Changing content is paced at that target. Only static content may fall to IdleFps.
+    public int OutputFps(int index, bool contentChanging)
+    {
+        var target = Get(index).Fps;
+        return contentChanging ? target : Math.Min(target, IdleFps);
     }
     public VideoProfile Get(int index) => Volatile.Read(ref profiles[index]);
     public bool Apply(CaptureUpdate update)
@@ -91,6 +104,7 @@ internal sealed class HostVideoSettings
             var width = update.Width > 0 ? Math.Clamp(update.Width, 320, native[i].Width) & ~1 : p.Width;
             var height = update.Height > 0 ? Math.Clamp(update.Height, 240, native[i].Height) & ~1 : p.Height;
             var fps = update.Fps > 0 ? Math.Clamp(update.Fps, Math.Min(15, frameRateLimits[i]), frameRateLimits[i]) : p.Fps;
+            if (update.Fps > 0) Volatile.Write(ref requestedFps[i], fps);
             if (update.Quality != 0) qualities[i] = update.Quality;
             if (update.AutoQuality is >= 1 and <= 4) autoQualities[i] = update.AutoQuality;
             if (update.Quality == 6 && update.CustomBitrate > 0)

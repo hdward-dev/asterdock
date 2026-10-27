@@ -9,6 +9,7 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
     private readonly PortalBus bus;
     private readonly SemaphoreSlim inputGate = new(1);
     private readonly CancellationTokenSource closed = new();
+    private readonly object streamLock = new();
     private readonly Dictionary<uint, (PortalVideoStream Video, int Width, int Height)> streams = [];
     private readonly List<PortalStreamBox> layout = [];
     private readonly HashSet<(string Method, int Code)> held = [];
@@ -101,7 +102,7 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
             }
             using var mapping = properties.Get("mapping_id");
             if (mapping is not null && !string.IsNullOrWhiteSpace(mapping.Text())) touchMappings.Add(node, mapping.Text());
-            streams.Add(node, (new PortalVideoStream(node, checked((int)remote.DangerousGetHandle())), width, height));
+            streams.Add(node, (OpenStream(node), width, height));
             layout.Add(new(node, x, y, width, height));
         }
         CheckAlive();
@@ -125,11 +126,49 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
     public async Task<CapturedScreen> CaptureAsync(uint output, CancellationToken ct)
     {
         CheckAlive();
-        if (!streams.TryGetValue(output, out var stream)) throw new ArgumentException("所选显示器不可用。");
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct, closed.Token);
-        try { return await stream.Video.CaptureAsync(stop.Token); }
-        catch (OperationCanceledException) when (closed.IsCancellationRequested && !ct.IsCancellationRequested)
-        { throw new DesktopSessionClosedException("桌面共享授权已结束。"); }
+        for (var attempt = 0; ; attempt++)
+        {
+            PortalVideoStream video;
+            lock (streamLock)
+            {
+                if (!streams.TryGetValue(output, out var stream)) throw new ArgumentException("所选显示器不可用。");
+                video = stream.Video;
+            }
+            try { return await video.CaptureAsync(stop.Token); }
+            catch (ObjectDisposedException) when (attempt == 0)
+            {
+                lock (streamLock)
+                {
+                    if (!streams.TryGetValue(output, out var stream) || ReferenceEquals(stream.Video, video)) throw;
+                }
+            }
+            catch (OperationCanceledException) when (closed.IsCancellationRequested && !ct.IsCancellationRequested)
+            { throw new DesktopSessionClosedException("桌面共享授权已结束。"); }
+        }
+    }
+    // Replace one PipeWire pipeline. The portal session, restore token and the other screens stay up.
+    internal async Task RebuildStreamAsync(uint node, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        CheckAlive();
+        PortalVideoStream created;
+        PortalVideoStream previous;
+        lock (streamLock)
+        {
+            if (remote is not { IsInvalid: false, IsClosed: false }) throw new IOException("PipeWire 连接已关闭。");
+            if (!streams.TryGetValue(node, out var existing)) throw new ArgumentException("所选显示器不可用。");
+            created = OpenStream(node);
+            streams[node] = (created, existing.Width, existing.Height);
+            previous = existing.Video;
+        }
+        await previous.DisposeAsync();
+    }
+    private PortalVideoStream OpenStream(uint node)
+    {
+        var descriptor = UnixFileDescriptor.Duplicate(checked((int)remote!.DangerousGetHandle()));
+        try { return new PortalVideoStream(node, descriptor); }
+        catch { UnixFileDescriptor.Close(descriptor); throw; }
     }
     private async Task KeyAsync(string method, int code, bool down, CancellationToken ct)
     {
@@ -271,8 +310,10 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
         }
         finally
         {
-            foreach (var stream in streams.Values) await stream.Video.DisposeAsync();
-            streams.Clear(); remote?.Dispose();
+            PortalVideoStream[] ending;
+            lock (streamLock) { ending = streams.Values.Select(s => s.Video).ToArray(); streams.Clear(); }
+            foreach (var stream in ending) await stream.DisposeAsync();
+            remote?.Dispose();
             await bus.DisposeAsync(); closed.Dispose();
         }
     }

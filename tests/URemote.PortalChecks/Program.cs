@@ -46,8 +46,14 @@ var black = new byte[64 * 4];
 var visible = new byte[64 * 4];
 for (var i = 0; i < visible.Length; i += 4) { visible[i] = 40; visible[i + 1] = 90; visible[i + 2] = 180; visible[i + 3] = 255; }
 Check(PortalCaptureHealth.NearBlack(black) && !PortalCaptureHealth.NearBlack(visible), "blank frames are near-black and a desktop frame is not");
-Check(PortalVideoStream.ReuseCachedFrame(TimeSpan.FromMilliseconds(20)) && !PortalVideoStream.ReuseCachedFrame(TimeSpan.FromMilliseconds(251)),
-    "portal capture does not replay a cached frame older than 250 ms");
+Check(PortalVideoStream.ReuseCachedFrame(TimeSpan.FromMilliseconds(20))
+    && PortalVideoStream.ReuseCachedFrame(TimeSpan.FromSeconds(30))
+    && !PortalVideoStream.ReuseCachedFrame(TimeSpan.FromMilliseconds(-1)),
+    "a static screen reuses its last frame at any age instead of timing out");
+Check(CapturePace.ContentChanging(TimeSpan.FromMilliseconds(100))
+    && !CapturePace.ContentChanging(TimeSpan.FromMilliseconds(251))
+    && !CapturePace.ContentChanging(TimeSpan.FromMilliseconds(-1)),
+    "target fps holds only while new samples are still arriving");
 var mapped = PortalOutputRefresh.Map([new PortalStreamBox(55, 0, 0, 3840, 2160)], [new WaylandOutputMode(7, 0, 0, 3840, 2160, 60000)]);
 Check(mapped.Count == 1 && mapped[55] == 60000, "portal stream refresh follows the Wayland mode instead of the PipeWire node id");
 var single = PortalOutputRefresh.Map([new PortalStreamBox(9, 0, 0, 0, 0)], [new WaylandOutputMode(3, 0, 0, 3840, 2160, 60000)]);

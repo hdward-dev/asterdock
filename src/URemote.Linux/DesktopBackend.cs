@@ -35,9 +35,11 @@ public static class DesktopBackend
     private static long pipelineQuietUntil;
     private static int captureRefreshActive;
     private static int portalGeneration;
+    private static int portalWantsInput;
     internal static PortalDesktopSession? CurrentPortal => Volatile.Read(ref portal);
     internal static int PortalGeneration => Volatile.Read(ref portalGeneration);
     internal static bool CaptureRefreshActive => Volatile.Read(ref captureRefreshActive) != 0;
+    internal static bool PortalInputEnabled => Volatile.Read(ref portalWantsInput) != 0;
     public static bool UsingPortal => Volatile.Read(ref portal) is not null;
     public static bool RecyclePending { get { lock (recycleLock) return recycleReason is not null; } }
     // True while a portal recycle is queued or a transport reset is being absorbed.
@@ -204,6 +206,7 @@ public static class DesktopBackend
             var globals = await WaylandCapabilities.DiscoverAsync(ct);
             if (HasNativeCapture(globals) && (!enableInput || HasNativeInput(globals))) return new Lease(false);
             if (Volatile.Read(ref portal) is not null) throw new InvalidOperationException("已有桌面共享会话。");
+            Interlocked.Exchange(ref portalWantsInput, enableInput ? 1 : 0);
             var opened = await PortalDesktopSession.OpenAsync(enableInput, ct);
             ResetOutputAliasesForTests();
             Volatile.Write(ref portal, opened);
@@ -220,6 +223,19 @@ public static class DesktopBackend
         var active = Volatile.Read(ref portal);
         if (active is not null) return await active.CaptureAsync(ResolveOutput(output), ct);
         return await WaylandScreenCapture.CaptureAsync(output, includeCursor, ct);
+    }
+    // One screen's PipeWire pipeline. Does not open a portal session, so it cannot prompt.
+    internal static async Task RebuildCaptureAsync(uint output, CancellationToken ct)
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        if (Volatile.Read(ref captureRefreshActive) != 0) await WaitCaptureReadyAsync(ct);
+        if (Volatile.Read(ref portal) is not { } active) return;
+        await active.RebuildStreamAsync(ResolveOutput(output), ct);
+    }
+    internal static bool HasPortalRestoreToken()
+    {
+        if (!OperatingSystem.IsLinux() || Volatile.Read(ref portal) is null) return false;
+        return new PortalRestoreStore(PortalInputEnabled).Peek() is not null;
     }
     // Portal stream boxes, copied so a later recycle cannot mutate a lock-screen mapping.
     internal static ScreenRect[] ScreenLayout()

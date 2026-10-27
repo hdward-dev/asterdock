@@ -75,9 +75,9 @@ internal sealed class PortalVideoStream : IAsyncDisposable
     private CapturedScreen? cached;
     private long cachedAt;
     private readonly uint output;
-    // A stuck pull must not keep re-encoding an ancient black frame at the full capture rate.
-    internal static readonly TimeSpan CachedFrameLifetime = TimeSpan.FromMilliseconds(250);
-    internal static bool ReuseCachedFrame(TimeSpan age) => age >= TimeSpan.Zero && age <= CachedFrameLifetime;
+    // KDE's screencast only produces a buffer on damage. Any previous frame is the static
+    // picture: replay it instead of failing the peer. Pacing, not this cache, decides the rate.
+    internal static bool ReuseCachedFrame(TimeSpan age) => age >= TimeSpan.Zero;
     private bool disposed;
     internal PortalVideoStream(uint output, int fd) : this(output,
         $"pipewiresrc fd={fd} path={output} do-timestamp=true ! videoconvert ! video/x-raw,format=BGRA ! appsink name=frames max-buffers=1 drop=true sync=false") { }
@@ -117,11 +117,13 @@ internal sealed class PortalVideoStream : IAsyncDisposable
             ct.ThrowIfCancellationRequested();
             var error = NativeGst.gst_bus_pop_filtered(bus, 2); // GST_MESSAGE_ERROR
             if (error != 0) { NativeGst.gst_mini_object_unref(error); throw new IOException("PipeWire 屏幕管线已失败。"); }
-            var fresh = cached is not null && ReuseCachedFrame(Stopwatch.GetElapsedTime(cachedAt));
-            sample = NativeGst.gst_app_sink_try_pull_sample(sink, fresh ? 0ul : 50_000_000ul);
+            // A queued sample always wins. The short wait only applies when one may be in flight;
+            // an idle monitor must not block here until the peer times out.
+            var haveCache = cached is not null && ReuseCachedFrame(Stopwatch.GetElapsedTime(cachedAt));
+            sample = NativeGst.gst_app_sink_try_pull_sample(sink, haveCache ? 5_000_000ul : 50_000_000ul);
             if (sample != 0) break;
-            if (NativeGst.gst_app_sink_is_eos(sink) != 0) throw new DesktopSessionClosedException("屏幕共享已结束。");
-            if (fresh && cached is not null) return cached with { Pixels = (byte[])cached.Pixels.Clone() };
+            if (NativeGst.gst_app_sink_is_eos(sink) != 0) throw new IOException("PipeWire 屏幕流已结束。");
+            if (haveCache && cached is not null) return cached with { Pixels = (byte[])cached.Pixels.Clone(), Repeated = true };
             if (deadline.Elapsed > TimeSpan.FromSeconds(10)) throw new TimeoutException("等待首帧超时。");
         } while (true);
         try

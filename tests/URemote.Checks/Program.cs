@@ -292,6 +292,22 @@ Check(units.Count == 2 && units[0].Length == 11 && units[1].Length == 11, "AUD p
 // Legacy capture config: screen 1, 1920x1080, 30fps, high quality.
 var config = HostCaptureProtocol.Decode([0x08, 7, 0x4a, 12, 0x10, 1, 0x18, 3, 0x28, 1, 0x30, 0x80, 0x0f, 0x38, 0xb8, 0x08]);
 Check(config is { Screen: 1, Width: 1920, Height: 1080, Fps: 30, Quality: 3, Sequence: 7 }, "official capture config fields");
+var paced = new HostVideoSettings([(2560, 1440), (3840, 2160)], frameRateLimits: [60, 60]);
+Check(paced.Get(0).Fps == 60 && paced.Get(1).Fps == 60 && paced.DisplayFps(0) == 60 && paced.DisplayFps(1) == 60,
+    "session target starts at each display rate with no 30 FPS cap");
+Check(paced.OutputFps(0, true) == 60 && paced.OutputFps(1, true) == 60,
+    "changing content on every screen starts at the display target");
+Check(paced.Apply(new(0, 2560, 1440, 60, 2, 1, 0, 1))
+    && paced.RequestedFps(0) == 60 && paced.Get(0).Fps == 60
+    && paced.OutputFps(0, true) == 60 && paced.OutputFps(1, true) == 60,
+    "naming one screen does not drop another screen while its content is changing");
+Check(paced.OutputFps(0, false) == HostVideoSettings.IdleFps
+    && paced.OutputFps(1, false) == HostVideoSettings.IdleFps,
+    "static content on every screen may drop below the target");
+Check(paced.Apply(new(0, 0, 0, 30, 0, 1, 0, 1)) && paced.Get(0).Fps == 30 && paced.RequestedFps(0) == 30
+    && paced.OutputFps(0, true) == 30, "a lower requested rate is the target and is not raised");
+Check(paced.Apply(new(0, 0, 0, 120, 0, 1, 0, 1)) && paced.Get(0).Fps == 60 && paced.RequestedFps(0) == 60,
+    "target is min(display refresh, requested fps) and never exceeds the display");
 var profiles = new HostVideoSettings([(2560, 1440), (1920, 1080)]);
 Check(profiles.Apply(new(-2, -1, -1, 60, 2, 1, 0, 1))
     && profiles.Get(0) is { Width: 2560, Height: 1440, Fps: 60, Crf: 23 }

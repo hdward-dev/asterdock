@@ -6,9 +6,9 @@
   <ItemGroup>
     <ProjectReference Include="../../src/URemote.Module/URemote.Module.csproj" />
     <ProjectReference Include="../../src/AsterDock.UI/AsterDock.UI.csproj" />
-    <PackageReference Include="Avalonia.Headless" Version="12.1.0" />
-    <PackageReference Include="Avalonia.Skia" Version="12.1.0" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.0" />
+    <PackageReference Include="Avalonia.Headless" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.2" />
     <PackageReference Include="Semi.Avalonia" Version="12.1.0.1" />
   </ItemGroup>
 </Project>

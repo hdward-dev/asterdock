@@ -49,7 +49,7 @@ MyApplication.Module/     Avalonia UI 和容器入口
   <ItemGroup>
     <ProjectReference Include="..\AsterDock.Contracts\AsterDock.Contracts.csproj" />
     <ProjectReference Include="..\AsterDock.UI\AsterDock.UI.csproj" Private="false" />
-    <PackageReference Include="Avalonia" Version="12.1.0" />
+    <PackageReference Include="Avalonia" Version="12.1.2" />
   </ItemGroup>
 
   <ItemGroup>

@@ -20,13 +20,13 @@ public sealed class NetworkAcceleratorApplicationModule :
         var context = _context ?? throw new InvalidOperationException("网络加速应用尚未完成容器初始化");
         var directory = Path.GetDirectoryName(typeof(NetworkAcceleratorApplicationModule).Assembly.Location)!;
         // One engine for every window. Each call still builds a new, unmeasured page.
-        _model ??= new NetworkAcceleratorViewModel(context.DataDirectory, directory, context.Feedback);
+        _model ??= new NetworkAcceleratorViewModel(context.DataDirectory, directory, context.Loading, context.Feedback);
         return new NetworkAcceleratorView(context, _model);
     }
 
     public IReadOnlyList<ApplicationQuickAction> GetQuickActions() =>
     [
-        new ApplicationQuickAction("toggle-connection", "启动/停止网络加速", () => _ = _model?.ToggleConnectionAsync())
+        new ApplicationQuickAction("toggle-connection", "启动/停止网络加速", () => _model?.Run(() => _model.ToggleConnectionAsync(), "连接失败"))
     ];
 
     public void Dispose()

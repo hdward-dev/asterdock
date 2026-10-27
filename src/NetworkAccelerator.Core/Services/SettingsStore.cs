@@ -1,5 +1,6 @@
 using NetworkAccelerator.Core.Models;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace NetworkAccelerator.Core.Services;
 
@@ -19,10 +20,13 @@ public sealed class SettingsStore
         if (!File.Exists(_path)) return new NetworkAcceleratorSettings();
         try
         {
-            await using var stream = File.OpenRead(_path);
-            return await JsonSerializer.DeserializeAsync<NetworkAcceleratorSettings>(stream, JsonOptions, cancellationToken)
-                       .ConfigureAwait(false)
-                   ?? new NetworkAcceleratorSettings();
+            var json = await File.ReadAllTextAsync(_path, cancellationToken).ConfigureAwait(false);
+            var settings = JsonSerializer.Deserialize<NetworkAcceleratorSettings>(json, JsonOptions)
+                           ?? new NetworkAcceleratorSettings();
+            if (JsonNode.Parse(json) is JsonObject document
+                && !document.ContainsKey(nameof(NetworkAcceleratorSettings.SystemProxyEnabled)))
+                settings.SystemProxyEnabled = !settings.TunEnabled;
+            return settings;
         }
         catch (JsonException)
         {

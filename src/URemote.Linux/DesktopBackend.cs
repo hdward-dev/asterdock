@@ -135,6 +135,41 @@ public static class DesktopBackend
     {
         lock (aliasLock) outputAlias.Clear();
     }
+    // Host output ids survive a portal refresh. Publish the current node's refresh under those ids too.
+    internal static Dictionary<uint, int> PublishRefresh(IReadOnlyList<PortalStreamBox> layout, IReadOnlyDictionary<uint, int> mapped)
+    {
+        var published = new Dictionary<uint, int>();
+        foreach (var box in layout)
+        {
+            var hz = mapped.GetValueOrDefault(box.Node);
+            if (hz <= 0) hz = box.RefreshMilliHz;
+            if (hz > 0) published[box.Node] = hz;
+        }
+        CopyAliasKeys(published);
+        return published;
+    }
+    internal static int StoredRefreshMilliHz(uint output)
+    {
+        var active = Volatile.Read(ref portal);
+        return active is null ? 0 : active.RefreshOf(output);
+    }
+    private static void CopyAliasKeys(Dictionary<uint, int> rates)
+    {
+        uint[] sources;
+        lock (aliasLock) sources = outputAlias.Keys.ToArray();
+        foreach (var source in sources)
+        {
+            var id = source;
+            var guard = 0;
+            lock (aliasLock)
+            {
+                while (outputAlias.TryGetValue(id, out var next) && next != id && guard++ < 8)
+                    id = next;
+            }
+            if (id != source && rates.TryGetValue(id, out var hz) && hz > 0)
+                rates[source] = hz;
+        }
+    }
     internal static async Task WaitCaptureReadyAsync(CancellationToken ct)
     {
         for (var i = 0; i < 200 && Volatile.Read(ref captureRefreshActive) != 0; i++)
@@ -278,7 +313,14 @@ public static class DesktopBackend
     {
         if (OperatingSystem.IsWindows()) return new WindowsDesktop.Pointer(output);
         if (OperatingSystem.IsMacOS()) return new MacDesktop.Pointer(output);
-        IDesktopPointer primary = Volatile.Read(ref portal) is { } active ? active.CreatePointer(output) : await WaylandVirtualPointer.CreateAsync(output, ct);
+        IDesktopPointer primary;
+        if (Volatile.Read(ref portal) is { } active)
+        {
+            // The host already has this screen's geometry. A pending or locked pipeline must not reject the pointer.
+            var known = width >= 2 && height >= 2 || OutputSize(output).Width >= 2;
+            primary = active.CreatePointer(output, allowUnbound: known);
+        }
+        else primary = await WaylandVirtualPointer.CreateAsync(output, ct);
         // KWin's lock screen ignores portal and wl_pointer injection. Keep a uinput absolute pointer ready to take over.
         if (!OperatingSystem.IsLinux()) return primary;
         return await LockScreenInput.WrapPointerAsync(output, primary, width, height, report ?? (_ => { }), ct);
@@ -334,7 +376,9 @@ public static class DesktopBackend
         var active = Volatile.Read(ref portal);
         if (active is null)
             return outputs.Where(item => item.MilliHz > 0).ToDictionary(item => item.Name, item => item.MilliHz);
-        return PortalOutputRefresh.Map(active.Layout, outputs);
+        var mapped = PortalOutputRefresh.Map(active.CopyLayout(), outputs);
+        active.RememberRefresh(mapped);
+        return PublishRefresh(active.CopyLayout(), mapped);
     }
 
     // Owns whichever portal session is current, including one swapped in by a lock-screen refresh.

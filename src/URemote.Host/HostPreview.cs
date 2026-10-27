@@ -802,6 +802,8 @@ public static class HostPreview
         return outputs.Select((output, index) =>
         {
             var milliHz = rates.GetValueOrDefault(output);
+            if (milliHz <= 0) milliHz = rates.GetValueOrDefault(DesktopBackend.ResolveOutput(output));
+            if (milliHz <= 0) milliHz = DesktopBackend.StoredRefreshMilliHz(output);
             var limit = HostDisplayInfo.FrameRateLimit(milliHz);
             report($"display-frame-rate;screen={index + 1};refresh-millihz={milliHz};max-fps={limit}");
             return limit;

@@ -11,6 +11,7 @@ static class LockInputChecks
         Packets(check);
         await KeyboardAsync(check);
         await PointerAsync(check);
+        await PendingPointerAsync(check);
         SessionLock.ResetForTests();
         LockInputNotices.ResetForTests();
     }
@@ -241,6 +242,60 @@ static class LockInputChecks
         check(opens == 1 && primary.Events.Count(item => item.Action == MouseAction.MoveAbsolute) == 2
             && logs.Single() == "pointer-backend=portal;reason=uinput-unavailable",
             "a missing /dev/uinput keeps portal pointer events and is logged once");
+    }
+
+    private static async Task PendingPointerAsync(Action<bool, string> check)
+    {
+        LockInputNotices.ResetForTests();
+        DesktopBackend.ResetOutputAliasesForTests();
+        SessionLock.ResetForTests();
+        SessionLock.ObserveScreensaver(true);
+        check(SessionLock.IsLocked == true, "the pending pointer case runs while the session is locked");
+        await using var session = PortalDesktopSession.CreateForTests();
+        session.AddPendingOutputForTests(4, 0, 0, 2560, 1440, 59951);
+        session.AddPendingOutputForTests(8, 2560, 0, 3840, 2160, 60000);
+        check(!session.HasPipelineForTests(4) && !session.HasPipelineForTests(8),
+            "a locked screen keeps its layout before any PipeWire pipeline exists");
+        IDesktopPointer? pending = null;
+        var threw = false;
+        try { pending = session.CreatePointer(4); }
+        catch (ArgumentException) { threw = true; }
+        check(!threw && pending is not null, "CreatePointer accepts a pending screen while locked");
+        try { session.CreatePointer(99); check(false, "an unknown output still has no pointer"); }
+        catch (ArgumentException) { check(true, "an unknown output still has no pointer"); }
+
+        var logs = new List<string>();
+        var source = new MutableLock(true);
+        FakeAbsolute? device = null;
+        await using var routed = await LockScreenInput.CreatePointerForTests(8, pending!, 3840, 2160, session.ScreenRectsForTests(), (requested, _) =>
+        {
+            device = new FakeAbsolute(requested);
+            return Task.FromResult<ILockPointer>(device);
+        }, source, logs.Add, CancellationToken.None);
+        await routed.ApplyAsync(new HostMouseMessage(MouseAction.MoveAbsolute, 0, 0), PointerCoordinates.MacNormalized, 3840, 2160);
+        check(device!.Moves.Single() == (2560, 0) && logs.Single() == "pointer-backend=uinput;reason=locked",
+            "a locked pending screen moves through uinput using the portal layout");
+
+        DesktopBackend.NoteOutputAliases(new Dictionary<uint, uint> { [4] = 9, [8] = 10 });
+        await using var refreshed = PortalDesktopSession.CreateForTests();
+        refreshed.AddPendingOutputForTests(9, 0, 0, 2560, 1440, 59951);
+        refreshed.AddPendingOutputForTests(10, 2560, 0, 3840, 2160, 60000);
+        IDesktopPointer? aliased = null;
+        threw = false;
+        try { aliased = refreshed.CreatePointer(4); }
+        catch (ArgumentException) { threw = true; }
+        check(!threw && aliased is not null && !refreshed.HasPipelineForTests(9),
+            "CreatePointer follows the stream id from before a refresh while the new pipeline is still pending");
+        await aliased!.DisposeAsync();
+        var rates = DesktopBackend.PublishRefresh(refreshed.CopyLayout(), new Dictionary<uint, int>());
+        check(rates[4] == 59951 && rates[8] == 60000 && rates[9] == 59951 && rates[10] == 60000,
+            "display refresh stays on the host output id when the portal node id changes");
+        var mapped = DesktopBackend.PublishRefresh(refreshed.CopyLayout(), new Dictionary<uint, int> { [9] = 59951, [10] = 60000 });
+        check(mapped[4] == 59951 && mapped[8] == 60000,
+            "a fresh Wayland mode is published for the output id the host still uses");
+        await pending!.DisposeAsync();
+        DesktopBackend.ResetOutputAliasesForTests();
+        SessionLock.ResetForTests();
     }
 
     private sealed class MutableLock(bool? initial) : ILockSource

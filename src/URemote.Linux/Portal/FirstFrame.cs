@@ -22,7 +22,10 @@ internal static class FirstFrameRetry
     // Short enough that two monitors cannot add up to the old 10s-per-screen startup failure.
     internal static readonly TimeSpan Probe = TimeSpan.FromMilliseconds(250);
     internal static readonly TimeSpan RebuildAfter = TimeSpan.FromSeconds(5);
-    internal static bool ShouldRebuild(TimeSpan pendingFor) => pendingFor >= RebuildAfter;
+    // A locked blank output produces no buffers. Rebuilding it frees PipeWire state the
+    // remote thread is still using. Leave that pipeline up until unlock refreshes capture.
+    internal static bool ShouldRebuild(TimeSpan pendingFor, bool? sessionLocked = null) =>
+        sessionLocked != true && pendingFor >= RebuildAfter;
 }
 
 // Logs each missing first frame once per portal generation, then once when a real buffer arrives.

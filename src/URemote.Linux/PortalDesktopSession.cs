@@ -1,4 +1,3 @@
-using Microsoft.Win32.SafeHandles;
 using URemote.Core;
 
 namespace URemote.Linux;
@@ -16,7 +15,6 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
     private readonly Dictionary<uint, string> touchMappings = [];
     private SharedDesktopTouch? touch;
     private PortalTouchSession? inputSession;
-    private SafeFileHandle? remote;
     private string? session;
     private bool enableInput, disposed;
     internal bool IsDisposed => disposed;
@@ -80,7 +78,6 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
         using var outputs = started.Get("streams") ?? throw new FormatException("未选择共享显示器。");
         outputs.Require("a(ua{sv})");
         if (outputs.Count is < 1 or > 5) throw new FormatException("请选择 1 至 5 个显示器。");
-        remote = await bus.OpenPipeWireAsync(session, token);
         for (var i = 0; i < outputs.Count; i++)
         {
             using var stream = outputs.Child(i); using var id = stream.Child(0); using var properties = stream.Child(1);
@@ -102,7 +99,7 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
             }
             using var mapping = properties.Get("mapping_id");
             if (mapping is not null && !string.IsNullOrWhiteSpace(mapping.Text())) touchMappings.Add(node, mapping.Text());
-            streams.Add(node, (OpenStream(node), width, height));
+            streams.Add(node, (await OpenStreamAsync(node, token), width, height));
             layout.Add(new(node, x, y, width, height));
         }
         CheckAlive();
@@ -161,27 +158,45 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
         }
     }
     // Replace one PipeWire pipeline. The portal session, restore token and the other screens stay up.
+    // The old pipeline reaches NULL before the new connection is opened.
     internal async Task RebuildStreamAsync(uint node, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         CheckAlive();
-        PortalVideoStream created;
+        // No buffers under the lock screen is normal. Do not tear the live pipewiresrc down.
+        if (SessionLock.IsLocked == true) return;
         PortalVideoStream previous;
+        int width, height;
         lock (streamLock)
         {
-            if (remote is not { IsInvalid: false, IsClosed: false }) throw new IOException("PipeWire 连接已关闭。");
             if (!streams.TryGetValue(node, out var existing)) throw new ArgumentException("所选显示器不可用。");
-            created = OpenStream(node);
-            streams[node] = (created, existing.Width, existing.Height);
             previous = existing.Video;
+            width = existing.Width;
+            height = existing.Height;
         }
         await previous.DisposeAsync();
+        var created = await OpenStreamAsync(node, ct);
+        var replaced = false;
+        try
+        {
+            lock (streamLock)
+            {
+                if (disposed) return;
+                streams[node] = (created, width, height);
+                replaced = true;
+            }
+        }
+        finally { if (!replaced) await created.DisposeAsync(); }
     }
-    private PortalVideoStream OpenStream(uint node)
+    // A new portal socket per pipeline. dup() of one fd is one PipeWire connection, and
+    // tearing one screen down frees nodes the other screen's data thread is still using.
+    private async Task<PortalVideoStream> OpenStreamAsync(uint node, CancellationToken ct)
     {
-        var descriptor = UnixFileDescriptor.Duplicate(checked((int)remote!.DangerousGetHandle()));
-        try { return new PortalVideoStream(node, descriptor); }
-        catch { UnixFileDescriptor.Close(descriptor); throw; }
+        if (session is null) throw new InvalidOperationException("桌面授权会话不存在。");
+        var handle = await bus.OpenPipeWireAsync(session, ct).ConfigureAwait(false);
+        var descriptor = (int)handle.DangerousGetHandle();
+        handle.SetHandleAsInvalid();
+        return new PortalVideoStream(node, descriptor);
     }
     private async Task KeyAsync(string method, int code, bool down, CancellationToken ct)
     {
@@ -326,7 +341,6 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
             PortalVideoStream[] ending;
             lock (streamLock) { ending = streams.Values.Select(s => s.Video).ToArray(); streams.Clear(); }
             foreach (var stream in ending) await stream.DisposeAsync();
-            remote?.Dispose();
             await bus.DisposeAsync(); closed.Dispose();
         }
     }

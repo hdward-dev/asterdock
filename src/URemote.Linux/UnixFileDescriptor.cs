@@ -22,7 +22,8 @@ internal static class UnixFileDescriptor
     [DllImport("libc", SetLastError = true)] private static extern int fcntl(int descriptor, int command, int argument);
     [DllImport("libc", SetLastError = true)] private static extern int close(int descriptor);
 
-    // pipewiresrc takes ownership of the fd it is given. Each pipeline needs its own duplicate.
+    // dup() shares one socket. Two pipewiresrc elements must not use duplicates of the same
+    // portal fd; each pipeline needs its own OpenPipeWireRemote connection.
     public static int Duplicate(int descriptor)
     {
         if (!OperatingSystem.IsLinux() || descriptor < 0) throw new IOException("无法复制 PipeWire 描述符。");

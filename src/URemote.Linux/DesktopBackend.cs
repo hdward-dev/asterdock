@@ -248,12 +248,15 @@ public static class DesktopBackend
         return (0, 0);
     }
     // One screen's PipeWire pipeline. Does not open a portal session, so it cannot prompt.
-    internal static async Task RebuildCaptureAsync(uint output, CancellationToken ct)
+    // Returns false when the screen is locked: a blank output is left running.
+    internal static async Task<bool> RebuildCaptureAsync(uint output, CancellationToken ct)
     {
-        if (!OperatingSystem.IsLinux()) return;
+        if (!OperatingSystem.IsLinux() || SessionLock.IsLocked == true) return false;
         if (Volatile.Read(ref captureRefreshActive) != 0) await WaitCaptureReadyAsync(ct);
-        if (Volatile.Read(ref portal) is not { } active) return;
+        if (SessionLock.IsLocked == true) return false;
+        if (Volatile.Read(ref portal) is not { } active) return false;
         await active.RebuildStreamAsync(ResolveOutput(output), ct);
+        return SessionLock.IsLocked != true;
     }
     internal static bool HasPortalRestoreToken()
     {

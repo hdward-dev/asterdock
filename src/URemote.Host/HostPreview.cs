@@ -104,15 +104,20 @@ public static class HostPreview
                                 profiles.AdoptSourceSize(index, (int)frame.Width, (int)frame.Height);
                                 continue;
                             }
+                            if (SessionLock.IsLocked == true)
+                            {
+                                since[index] = 0;
+                                continue;
+                            }
                             now = System.Diagnostics.Stopwatch.GetTimestamp();
                             if (since[index] == 0) since[index] = now;
-                            else if (FirstFrameRetry.ShouldRebuild(System.Diagnostics.Stopwatch.GetElapsedTime(since[index])))
+                            else if (FirstFrameRetry.ShouldRebuild(System.Diagnostics.Stopwatch.GetElapsedTime(since[index]), SessionLock.IsLocked))
                             {
                                 since[index] = now;
                                 try
                                 {
-                                    await DesktopBackend.RebuildCaptureAsync(outputs[index], token);
-                                    report($"capture-stream-rebuilt;screen={index + 1};reason=no-frame");
+                                    if (await DesktopBackend.RebuildCaptureAsync(outputs[index], token))
+                                        report($"capture-stream-rebuilt;screen={index + 1};reason=no-frame");
                                 }
                                 catch (Exception rebuild) when (rebuild is IOException or InvalidOperationException or TimeoutException
                                     or DesktopSessionClosedException or UnauthorizedAccessException or FormatException
@@ -698,6 +703,12 @@ public static class HostPreview
                 continue;
             }
             if (failure is not (TimeoutException or IOException or ObjectDisposedException)) throw;
+            if (SessionLock.IsLocked == true)
+            {
+                // The locker is not a dead stream. Keep the placeholder and the existing pipewiresrc.
+                await Task.Delay(TimeSpan.FromSeconds(5), ct);
+                continue;
+            }
             // A dead PipeWire stream is rebuilt for this screen only. The other screen and the peer stay up.
             // After repeated failures, wait and try again instead of cancelling the session.
             if (++rebuilds > 3)

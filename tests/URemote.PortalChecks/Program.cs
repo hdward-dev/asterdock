@@ -60,8 +60,9 @@ Check(placeholder.Pending && placeholder.Repeated && placeholder.Width == 3840 &
     && PortalCaptureHealth.NearBlack(placeholder.Pixels),
     "a missing first frame is a black placeholder of that monitor's size");
 Check(FirstFrameRetry.Probe < TimeSpan.FromSeconds(2) && !FirstFrameRetry.ShouldRebuild(TimeSpan.FromSeconds(4))
-    && FirstFrameRetry.ShouldRebuild(TimeSpan.FromSeconds(5)),
-    "a missing first frame is probed quickly and rebuilt only after it stays pending");
+    && FirstFrameRetry.ShouldRebuild(TimeSpan.FromSeconds(5))
+    && !FirstFrameRetry.ShouldRebuild(TimeSpan.FromSeconds(30), true),
+    "a missing first frame is probed quickly, rebuilt only after it stays pending, and never while locked");
 var firstFrames = new FirstFrameTracker(2);
 var lines = new List<string>();
 firstFrames.Observe(1, true, 3, lines.Add);

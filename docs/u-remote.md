@@ -36,19 +36,19 @@ U远程作为 Avalonia `IApplicationModule` 运行在 AsterDock 内，不启动�
 - 首次登录可在模块内输入手机号和短信验证码。只有点击发送按钮才发送短信，不自动重发。
   保存的登录令牌存放在私有身份文件（Linux 600 权限），只保存用于显示的脱敏手机号，不记录完整手机号和验证码。
 - “账号与设置”提供“退出登录”：先停止本机被控并关闭本应用的主控、终端和文件连接，再清除本机令牌和账号状态。当前平台的设备注册保留；旧平台身份退出后，下一次登录按当前平台重新初始化设备，并保留稳定的本机硬件标识。退出操作不自动发送短信。账号页以账号卡片显示登录状态和脱敏手机号；旧身份记录没有手机号时显示 UU 账号 ID。未登录时显示独立登录表单，高级设置默认折叠。
-- Linux/Wayland 按实际桌面能力选择后端：niri 使用 wlr-screencopy 和虚拟键鼠；KDE Plasma 使用桌面 Portal / PipeWire 采集与 Portal 键鼠控制。GNOME 等提供相同 Portal 接口的 Wayland 桌面可沿用该后端，仍需对应环境实测。主页底栏显示当前桌面环境及 Wayland / X11 会话类型；X11 被控尚未适配。
+- Linux 按会话选择后端：存在 `WAYLAND_DISPLAY` 或 `XDG_SESSION_TYPE=wayland` 时仍走 Wayland（niri 使用 wlr-screencopy 和虚拟键鼠；KDE Plasma 使用桌面 Portal / PipeWire 采集与 Portal 键鼠控制，锁屏刷新和 uinput 不变）。没有 Wayland 且设置了 `DISPLAY` 时使用 X11（RandR 显示器、MIT-SHM 采集、XDamage 变化检测、XTest 键鼠、CLIPBOARD 文本）。XFCE / xfwm4 这类没有 Portal 和 PipeWire 的会话走 X11。主页底栏显示当前桌面环境及 Wayland / X11 会话类型。
 - 壁纸预览支持 KDE 图片配置、主题默认壁纸和壁纸包的明暗版本（包括 SVG）；本机卡片直接生成预览，开启被控后沿用壁纸上传流程。验证码按钮显示 60 秒重发倒计时并在到期后恢复可用。
   Portal 后端在开启被控时由系统弹窗授权共享的显示器和键鼠权限，不保存授权令牌；取消授权不会上线，停止被控会关闭共享会话。最多选择 5 个显示器；重新开启时需重新授权，显示器列表以系统选择器授权结果为准。
-  两种后端共用持续 FFmpeg/libx264 编码，原始分辨率 / 默认目标 30 FPS（客户端可请求最高 60 FPS）。
+  各后端共用持续 FFmpeg/libx264 编码，原始分辨率 / 默认目标 30 FPS（客户端可请求最高 60 FPS）。X11 每屏目标帧率是 min(显示器刷新率, 控制端请求)，画面变化时按目标帧率发送，静止画面可以更低，但不会超过目标。
   采用 CPU/SHM 管线，非 GPU 零拷贝；没有实现动态码率和即时关键帧反馈，丢包恢复依赖每秒关键帧。
 - 系统音频通过 PipeWire `pw-cat` 的输出监视器获取，48 kHz 双声道 / 20 ms Opus 帧，经 SRTP 发送。不采集麦克风。
-- 文本剪贴板使用 `wl-copy` / `wl-paste`，支持 V3 文本通知及 V4 格式读取响应；V3 文本使用 UTF-8，V4 Windows Unicode 格式使用以空字符结尾的 UTF-16LE。
+- Wayland 文本剪贴板使用 `wl-copy` / `wl-paste`，X11 使用 CLIPBOARD 选区（UTF8_STRING）。两者都支持 V3 文本通知及 V4 格式读取响应；V3 文本使用 UTF-8，V4 Windows Unicode 格式使用以空字符结尾的 UTF-16LE。
   当前上限 64 KiB，已加入 Windows Unicode 格式协商及 V4 分块接收；不支持文件/图片。Windows/iOS 官方客户端兼容性需实测。
 - 远程终端已接入官方 4.41.0 握手、环境检查、会话列表、新建/恢复、输入输出、窗口调整和关闭。
   使用当前用户的原生 Linux PTY；与键鼠共用本机允许开关。远端断开保留会话，本机停止被控或退出宿主清理会话。
   最多 8 个终端，每个仅在内存保留最多 64 KiB 输出供重连恢复；暂不支持终端重命名，同时只允许一个主控连接。
   本机加密完整回环、Ctrl+C、恢复 Shell 状态测试通过；官方客户端已由用户确认成功创建会话，`uname -a` 正确返回；Ctrl+C 和恢复会话仍待官方客户端实测。
-- 被控后端支持 Windows、Linux/Wayland 和 macOS。Windows 使用 DXGI Desktop Duplication 采集、SendInput 键鼠、系统剪贴板和当前用户的 cmd 终端；本机预览用 GDI 截屏，避免 DXGI 首帧全黑。远程视频仍是 8 位 BGRA 经 H.264 发出，不携带 HDR。需要本机 PATH 或 `%LOCALAPPDATA%\AsterDock\tools\ffmpeg` 中的 ffmpeg。Windows 触控注入和系统声音尚未接入。
+- 被控后端支持 Windows、Linux（Wayland 与 X11）和 macOS。Windows 使用 DXGI Desktop Duplication 采集、SendInput 键鼠、系统剪贴板和当前用户的 cmd 终端；本机预览用 GDI 截屏，避免 DXGI 首帧全黑。远程视频仍是 8 位 BGRA 经 H.264 发出，不携带 HDR。需要本机 PATH 或 `%LOCALAPPDATA%\AsterDock\tools\ffmpeg` 中的 ffmpeg。Windows 触控注入和系统声音尚未接入。
 
 ## 验证状态
 

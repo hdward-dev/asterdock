@@ -80,7 +80,10 @@ internal static class HostInput
                     if (accepted)
                         for (var screen = 0; screen < outputs.Count; screen++)
                             if (update.Screen < 0 || update.Screen == screen)
+                            {
+                                DesktopBackend.NoteRequestedFrameRate(outputs[screen], profiles.Get(screen).Fps);
                                 report($"video-quality-applied;screen={screen + 1};" + profiles.Describe(screen));
+                            }
                     media.SendData(message.ChannelLabel, HostCaptureProtocol.Reply(update, accepted));
                     report(accepted ? "capture-settings-applied" : "capture-settings-rejected");
                     continue;

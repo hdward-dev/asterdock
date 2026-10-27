@@ -210,6 +210,8 @@ await api.GetDevicesAsync();
 Check(handler.Requests == 1, "device API sends direct .NET request");
 HostSessionTests.Run(Check);
 WaylandTests.Run(Check);
+X11BackendTests.Run(Check);
+await X11BackendTests.LiveAsync(Check);
 ControlInputTests.Run(Check);
 DisplayInfoTests.Run(Check);
 await SignalClientTests.Run(Check);

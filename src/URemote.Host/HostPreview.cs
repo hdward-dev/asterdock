@@ -398,6 +398,7 @@ public static class HostPreview
         {
         if (profiles.SingleVideoStream && profiles.SelectedScreen != index) return;
         var profile = profiles.Get(index);
+        DesktopBackend.NoteRequestedFrameRate(output, profile.Fps);
         var seenGeneration = DesktopBackend.PortalGeneration;
         CapturedScreen first;
         while (true)

@@ -212,6 +212,8 @@ HostSessionTests.Run(Check);
 WaylandTests.Run(Check);
 X11BackendTests.Run(Check);
 await X11BackendTests.LiveAsync(Check);
+X11WallpaperTests.Run(Check);
+await X11WallpaperTests.LiveAsync(Check);
 ControlInputTests.Run(Check);
 DisplayInfoTests.Run(Check);
 await SignalClientTests.Run(Check);

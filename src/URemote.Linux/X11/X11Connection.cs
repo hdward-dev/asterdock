@@ -76,13 +76,57 @@ internal sealed class X11Connection : IDisposable
 
     internal byte[] Grab(X11Monitor monitor, bool includeCursor)
     {
+        lock (gate) return GrabUnlocked(monitor, includeCursor);
+    }
+
+    internal (byte[] Pixels, int Width, int Height) GrabRoot()
+    {
+        lock (gate)
+        {
+            var monitor = new X11Monitor(0, 0, 0, rootWidth, rootHeight, 60_000, "root");
+            return (GrabUnlocked(monitor, includeCursor: false), rootWidth, rootHeight);
+        }
+    }
+
+    internal (string? Output, int? Workspace) WallpaperHint()
+    {
         lock (gate)
         {
             ThrowIfDisposed();
-            var pixels = hasShm && !shmBroken ? GrabShared(monitor) : GrabDirect(monitor);
-            if (includeCursor && hasFixes) TryOverlayCursor(pixels, monitor);
-            return pixels;
+            string? output = null;
+            if (hasRandR)
+            {
+                nuint primary = 0;
+                try { primary = X11Native.XRRGetOutputPrimary(display, root); }
+                catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException) { }
+                if (primary != 0 && primary <= uint.MaxValue)
+                    output = monitors.FirstOrDefault(item => item.Id == (uint)primary)?.Name;
+            }
+            return (output, CurrentWorkspace());
         }
+    }
+
+    private byte[] GrabUnlocked(X11Monitor monitor, bool includeCursor)
+    {
+        ThrowIfDisposed();
+        var pixels = hasShm && !shmBroken ? GrabShared(monitor) : GrabDirect(monitor);
+        if (includeCursor && hasFixes) TryOverlayCursor(pixels, monitor);
+        return pixels;
+    }
+
+    private int? CurrentWorkspace()
+    {
+        var atom = X11Native.XInternAtom(display, "_NET_CURRENT_DESKTOP", 1);
+        if (atom == 0) return null;
+        if (X11Native.XGetWindowProperty(display, root, atom, 0, 1, 0, 6, out _, out var format, out var count, out _, out var data) != 0)
+            return null;
+        try
+        {
+            if (data == IntPtr.Zero || format != 32 || count < 1) return null;
+            var workspace = Marshal.ReadInt64(data);
+            return workspace is >= 0 and <= 64 ? (int)workspace : null;
+        }
+        finally { if (data != IntPtr.Zero) X11Native.XFree(data); }
     }
 
     internal bool ConsumeDamage(uint output)

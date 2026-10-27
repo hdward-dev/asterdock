@@ -1,4 +1,3 @@
-using Microsoft.Win32.SafeHandles;
 using URemote.Core;
 
 namespace URemote.Linux;
@@ -9,13 +8,14 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
     private readonly PortalBus bus;
     private readonly SemaphoreSlim inputGate = new(1);
     private readonly CancellationTokenSource closed = new();
-    private readonly Dictionary<uint, (PortalVideoStream Video, int Width, int Height)> streams = [];
+    private readonly object streamLock = new();
+    // Video stays null until the pipeline exists. Geometry and refresh stay for a pending or locked screen.
+    private readonly Dictionary<uint, (PortalVideoStream? Video, int Width, int Height)> streams = [];
     private readonly List<PortalStreamBox> layout = [];
     private readonly HashSet<(string Method, int Code)> held = [];
     private readonly Dictionary<uint, string> touchMappings = [];
     private SharedDesktopTouch? touch;
     private PortalTouchSession? inputSession;
-    private SafeFileHandle? remote;
     private string? session;
     private bool enableInput, disposed;
     internal bool IsDisposed => disposed;
@@ -79,7 +79,6 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
         using var outputs = started.Get("streams") ?? throw new FormatException("未选择共享显示器。");
         outputs.Require("a(ua{sv})");
         if (outputs.Count is < 1 or > 5) throw new FormatException("请选择 1 至 5 个显示器。");
-        remote = await bus.OpenPipeWireAsync(session, token);
         for (var i = 0; i < outputs.Count; i++)
         {
             using var stream = outputs.Child(i); using var id = stream.Child(0); using var properties = stream.Child(1);
@@ -101,11 +100,30 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
             }
             using var mapping = properties.Get("mapping_id");
             if (mapping is not null && !string.IsNullOrWhiteSpace(mapping.Text())) touchMappings.Add(node, mapping.Text());
-            streams.Add(node, (new PortalVideoStream(node, checked((int)remote.DangerousGetHandle())), width, height));
-            layout.Add(new(node, x, y, width, height));
+            // The output is known before PipeWire delivers a buffer. A locked screen may never deliver one.
+            lock (streamLock)
+            {
+                layout.Add(new(node, x, y, width, height));
+                streams[node] = (null, width, height);
+            }
+            var opened = await OpenStreamAsync(node, token);
+            var installed = false;
+            try
+            {
+                lock (streamLock)
+                {
+                    if (!disposed)
+                    {
+                        streams[node] = (opened, width, height);
+                        installed = true;
+                    }
+                }
+            }
+            finally { if (!installed) await opened.DisposeAsync(); }
+            if (!installed) break;
         }
         CheckAlive();
-        Outputs = streams.Keys.Select(id => new WaylandGlobal(id, "wl_output", 1)).ToArray();
+        Outputs = layout.Select(box => new WaylandGlobal(box.Node, "wl_output", 1)).ToArray();
         if (input)
         {
             if (touchMappings.Count != streams.Count || touchMappings.Values.Distinct().Count() != streams.Count)
@@ -118,18 +136,103 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
     }
     private void CheckAlive()
     {
-        if (disposed || closed.IsCancellationRequested || bus.IsClosed || inputSession is { Connected: false })
+        if (disposed || closed.IsCancellationRequested || bus is not { IsClosed: false } || inputSession is { Connected: false })
             throw new DesktopSessionClosedException("桌面共享授权已结束，请重新开启被控并授权。");
     }
     public Task CheckAliveAsync(CancellationToken ct) { ct.ThrowIfCancellationRequested(); CheckAlive(); return Task.CompletedTask; }
     public async Task<CapturedScreen> CaptureAsync(uint output, CancellationToken ct)
     {
         CheckAlive();
-        if (!streams.TryGetValue(output, out var stream)) throw new ArgumentException("所选显示器不可用。");
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct, closed.Token);
-        try { return await stream.Video.CaptureAsync(stop.Token); }
-        catch (OperationCanceledException) when (closed.IsCancellationRequested && !ct.IsCancellationRequested)
-        { throw new DesktopSessionClosedException("桌面共享授权已结束。"); }
+        for (var attempt = 0; ; attempt++)
+        {
+            PortalVideoStream pipeline;
+            lock (streamLock)
+            {
+                if (!streams.TryGetValue(output, out var stream) || stream.Video is not { } ready)
+                {
+                    var box = FindBox(output);
+                    if (box.Width >= 2 && box.Height >= 2)
+                        return CapturePlaceholder.Create(output, box.Width, box.Height);
+                    throw new ArgumentException("所选显示器不可用。");
+                }
+                pipeline = ready;
+            }
+            try { return await pipeline.CaptureAsync(stop.Token, FirstFrameRetry.Probe); }
+            catch (TimeoutException)
+            {
+                // No buffer yet. The caller keeps this screen pending instead of failing the host.
+                int width, height;
+                lock (streamLock)
+                {
+                    if (!streams.TryGetValue(output, out var known)) throw;
+                    width = known.Width;
+                    height = known.Height;
+                }
+                if (width < 2 || height < 2) throw;
+                return CapturePlaceholder.Create(output, width, height);
+            }
+            catch (ObjectDisposedException) when (attempt == 0)
+            {
+                lock (streamLock)
+                {
+                    if (!streams.TryGetValue(output, out var stream) || ReferenceEquals(stream.Video, pipeline)) throw;
+                }
+            }
+            catch (OperationCanceledException) when (closed.IsCancellationRequested && !ct.IsCancellationRequested)
+            { throw new DesktopSessionClosedException("桌面共享授权已结束。"); }
+        }
+    }
+    // Replace one PipeWire pipeline. The portal session, restore token and the other screens stay up.
+    // The old pipeline reaches NULL before the new connection is opened.
+    internal async Task RebuildStreamAsync(uint node, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        CheckAlive();
+        // No buffers under the lock screen is normal. Do not tear the live pipewiresrc down.
+        if (SessionLock.IsLocked == true) return;
+        PortalVideoStream? previous;
+        int width, height;
+        lock (streamLock)
+        {
+            if (streams.TryGetValue(node, out var existing))
+            {
+                previous = existing.Video;
+                width = existing.Width;
+                height = existing.Height;
+            }
+            else
+            {
+                var box = FindBox(node);
+                if (box.Node != node) throw new ArgumentException("所选显示器不可用。");
+                previous = null;
+                width = box.Width;
+                height = box.Height;
+            }
+        }
+        if (previous is not null) await previous.DisposeAsync();
+        var created = await OpenStreamAsync(node, ct);
+        var replaced = false;
+        try
+        {
+            lock (streamLock)
+            {
+                if (disposed) return;
+                streams[node] = (created, width, height);
+                replaced = true;
+            }
+        }
+        finally { if (!replaced) await created.DisposeAsync(); }
+    }
+    // A new portal socket per pipeline. dup() of one fd is one PipeWire connection, and
+    // tearing one screen down frees nodes the other screen's data thread is still using.
+    private async Task<PortalVideoStream> OpenStreamAsync(uint node, CancellationToken ct)
+    {
+        if (session is null) throw new InvalidOperationException("桌面授权会话不存在。");
+        var handle = await bus.OpenPipeWireAsync(session, ct).ConfigureAwait(false);
+        var descriptor = (int)handle.DangerousGetHandle();
+        handle.SetHandleAsInvalid();
+        return new PortalVideoStream(node, descriptor);
     }
     private async Task KeyAsync(string method, int code, bool down, CancellationToken ct)
     {
@@ -174,10 +277,87 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
         fallback.CheckAlive();
         return fallback;
     }
-    public IDesktopPointer CreatePointer(uint output)
+    public IDesktopPointer CreatePointer(uint output) => CreatePointer(output, allowUnbound: false);
+
+    // A pending or locked output is still a screen: layout keeps its node and geometry when the
+    // pipeline has no buffer. The pointer follows that node and starts sending once a stream is bound.
+    internal IDesktopPointer CreatePointer(uint output, bool allowUnbound)
+        => new Pointer(this, BindOutput(output, allowUnbound));
+
+    private uint BindOutput(uint output, bool allowUnbound)
     {
-        if (!streams.ContainsKey(output)) throw new ArgumentException("所选显示器不可用。");
-        return new Pointer(this, output);
+        var resolved = DesktopBackend.ResolveOutput(output);
+        lock (streamLock)
+        {
+            if (Known(resolved)) return resolved;
+            if (Known(output)) return output;
+        }
+        if (allowUnbound) return resolved;
+        throw new ArgumentException("所选显示器不可用。");
+    }
+
+    private bool Known(uint node) => streams.ContainsKey(node) || layout.Any(box => box.Node == node);
+
+    private PortalStreamBox FindBox(uint node)
+    {
+        foreach (var box in layout)
+            if (box.Node == node) return box;
+        return default;
+    }
+
+    internal void RememberRefresh(IReadOnlyDictionary<uint, int> mapped)
+    {
+        lock (streamLock)
+        {
+            for (var i = 0; i < layout.Count; i++)
+            {
+                var box = layout[i];
+                if (!mapped.TryGetValue(box.Node, out var hz) || hz <= 0 || hz == box.RefreshMilliHz) continue;
+                layout[i] = box with { RefreshMilliHz = hz };
+            }
+        }
+    }
+
+    internal PortalStreamBox[] CopyLayout()
+    {
+        lock (streamLock) return layout.ToArray();
+    }
+
+    internal int RefreshOf(uint output)
+    {
+        var resolved = DesktopBackend.ResolveOutput(output);
+        lock (streamLock)
+        {
+            foreach (var box in layout)
+                if ((box.Node == output || box.Node == resolved) && box.RefreshMilliHz > 0)
+                    return box.RefreshMilliHz;
+        }
+        return 0;
+    }
+
+    internal static PortalDesktopSession CreateForTests() => new(null!);
+
+    internal void AddPendingOutputForTests(uint node, int x, int y, int width, int height, int refreshMilliHz)
+    {
+        lock (streamLock)
+        {
+            layout.RemoveAll(box => box.Node == node);
+            layout.Add(new PortalStreamBox(node, x, y, width, height, refreshMilliHz));
+            streams.Remove(node);
+            Outputs = layout.Select(box => new WaylandGlobal(box.Node, "wl_output", 1)).ToArray();
+        }
+    }
+
+    internal bool HasPipelineForTests(uint node)
+    {
+        lock (streamLock) return streams.TryGetValue(node, out var stream) && stream.Video is not null;
+    }
+
+    internal ScreenRect[] ScreenRectsForTests()
+    {
+        lock (streamLock)
+            return layout.Where(box => box.Width > 0 && box.Height > 0)
+                .Select(box => new ScreenRect(box.Node, box.X, box.Y, box.Width, box.Height)).ToArray();
     }
     public Task<IDesktopTouch?> CreateTouchAsync(CancellationToken ct)
     {
@@ -271,9 +451,11 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
         }
         finally
         {
-            foreach (var stream in streams.Values) await stream.Video.DisposeAsync();
-            streams.Clear(); remote?.Dispose();
-            await bus.DisposeAsync(); closed.Dispose();
+            PortalVideoStream[] ending;
+            lock (streamLock) { ending = streams.Values.Select(s => s.Video).OfType<PortalVideoStream>().ToArray(); streams.Clear(); }
+            foreach (var stream in ending) await stream.DisposeAsync();
+            if (bus is not null) await bus.DisposeAsync();
+            closed.Dispose();
         }
     }
 }

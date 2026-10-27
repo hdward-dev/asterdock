@@ -46,8 +46,40 @@ var black = new byte[64 * 4];
 var visible = new byte[64 * 4];
 for (var i = 0; i < visible.Length; i += 4) { visible[i] = 40; visible[i + 1] = 90; visible[i + 2] = 180; visible[i + 3] = 255; }
 Check(PortalCaptureHealth.NearBlack(black) && !PortalCaptureHealth.NearBlack(visible), "blank frames are near-black and a desktop frame is not");
-Check(PortalVideoStream.ReuseCachedFrame(TimeSpan.FromMilliseconds(20)) && !PortalVideoStream.ReuseCachedFrame(TimeSpan.FromMilliseconds(251)),
-    "portal capture does not replay a cached frame older than 250 ms");
+Check(PortalVideoStream.ReuseCachedFrame(TimeSpan.FromMilliseconds(20))
+    && PortalVideoStream.ReuseCachedFrame(TimeSpan.FromSeconds(30))
+    && !PortalVideoStream.ReuseCachedFrame(TimeSpan.FromMilliseconds(-1)),
+    "a static screen reuses its last frame at any age instead of timing out");
+Check(CapturePace.ContentChanging(TimeSpan.FromMilliseconds(100))
+    && !CapturePace.ContentChanging(TimeSpan.FromMilliseconds(251))
+    && !CapturePace.ContentChanging(TimeSpan.FromMilliseconds(-1)),
+    "target fps holds only while new samples are still arriving");
+var placeholder = CapturePlaceholder.Create(7, 3840, 2160);
+Check(placeholder.Pending && placeholder.Repeated && placeholder.Width == 3840 && placeholder.Height == 2160
+    && placeholder.Stride == 3840 * 4 && placeholder.ShmFormat == 1 && placeholder.Pixels.Length == 3840 * 2160 * 4
+    && PortalCaptureHealth.NearBlack(placeholder.Pixels),
+    "a missing first frame is a black placeholder of that monitor's size");
+Check(FirstFrameRetry.Probe < TimeSpan.FromSeconds(2) && !FirstFrameRetry.ShouldRebuild(TimeSpan.FromSeconds(4))
+    && FirstFrameRetry.ShouldRebuild(TimeSpan.FromSeconds(5))
+    && !FirstFrameRetry.ShouldRebuild(TimeSpan.FromSeconds(30), true),
+    "a missing first frame is probed quickly, rebuilt only after it stays pending, and never while locked");
+var firstFrames = new FirstFrameTracker(2);
+var lines = new List<string>();
+firstFrames.Observe(1, true, 3, lines.Add);
+firstFrames.Observe(1, true, 3, lines.Add);
+firstFrames.Observe(0, false, 3, lines.Add);
+firstFrames.Observe(1, false, 3, lines.Add);
+firstFrames.Observe(1, false, 3, lines.Add);
+firstFrames.Observe(1, true, 4, lines.Add);
+firstFrames.Observe(1, false, 4, lines.Add);
+Check(lines.SequenceEqual(new[]
+{
+    "capture-first-frame-pending;screen=2",
+    "capture-first-frame-arrived;screen=2",
+    "capture-first-frame-pending;screen=2",
+    "capture-first-frame-arrived;screen=2"
+}), "a pending screen is logged once per portal generation and again when its first frame arrives");
+Array.Clear(placeholder.Pixels);
 var mapped = PortalOutputRefresh.Map([new PortalStreamBox(55, 0, 0, 3840, 2160)], [new WaylandOutputMode(7, 0, 0, 3840, 2160, 60000)]);
 Check(mapped.Count == 1 && mapped[55] == 60000, "portal stream refresh follows the Wayland mode instead of the PipeWire node id");
 var single = PortalOutputRefresh.Map([new PortalStreamBox(9, 0, 0, 0, 0)], [new WaylandOutputMode(3, 0, 0, 3840, 2160, 60000)]);

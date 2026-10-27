@@ -1,6 +1,6 @@
 namespace URemote.Linux;
 
-public readonly record struct PortalStreamBox(uint Node, int X, int Y, int Width, int Height);
+public readonly record struct PortalStreamBox(uint Node, int X, int Y, int Width, int Height, int RefreshMilliHz = 0);
 
 // Portal stream ids are PipeWire nodes, not wl_output names. Match geometry, then fall back
 // so a single shared monitor still receives its real refresh instead of 0.

@@ -1,5 +1,3 @@
-using System.Buffers.Binary;
-using System.Diagnostics;
 using URemote.Linux;
 
 static class X11WallpaperTests
@@ -87,55 +85,21 @@ static class X11WallpaperTests
         check(queried?.Image == "/tmp/primary-workspace0.png", "xfconf-query listing prefers the primary monitor image");
     }
 
-    public static async Task LiveAsync(Action<bool, string> check)
+    public static async Task NoCaptureAsync(Action<bool, string> check)
     {
-        if (!OperatingSystem.IsLinux() || !File.Exists("/usr/bin/Xvfb") || !File.Exists("/usr/bin/ffmpeg")) return;
-        var displayNumber = Enumerable.Range(20, 30).First(number => !File.Exists("/tmp/.X11-unix/X" + number));
-        var display = ":" + displayNumber;
-        var savedDisplay = Environment.GetEnvironmentVariable("DISPLAY");
-        var savedWayland = Environment.GetEnvironmentVariable("WAYLAND_DISPLAY");
-        var savedSession = Environment.GetEnvironmentVariable("XDG_SESSION_TYPE");
-        var savedWallpaper = Environment.GetEnvironmentVariable("UREMOTE_WALLPAPER");
-        Process? server = null;
+        var saved = Environment.GetEnvironmentVariable("UREMOTE_WALLPAPER");
+        var home = Directory.CreateTempSubdirectory("uremote-wallpaper-none-").FullName;
         try
         {
-            server = Process.Start(new ProcessStartInfo("Xvfb", $"{display} -screen 0 1920x1200x24 -ac")
-            { UseShellExecute = false, RedirectStandardError = true });
-            var ready = SpinWait.SpinUntil(() => File.Exists("/tmp/.X11-unix/X" + displayNumber), TimeSpan.FromSeconds(5));
-            check(ready && server is { HasExited: false }, "wallpaper Xvfb display started");
-            if (!ready || server is not { HasExited: false }) return;
-            Environment.SetEnvironmentVariable("WAYLAND_DISPLAY", null);
-            Environment.SetEnvironmentVariable("XDG_SESSION_TYPE", null);
             Environment.SetEnvironmentVariable("UREMOTE_WALLPAPER", null);
-            Environment.SetEnvironmentVariable("DISPLAY", display);
-            X11Wallpaper.ResetSnapshotCacheForTests();
-            var png = await LinuxWallpaper.RenderAsync("/usr/bin/ffmpeg", CancellationToken.None, home: Path.GetTempPath(), shell: null,
+            var png = await LinuxWallpaper.RenderAsync("/usr/bin/ffmpeg", CancellationToken.None, home, shell: null,
                 onSource: null, desktop: new DesktopEnvironmentInfo("未知桌面", "X11"));
-            check(png is not null && IsPng(png, 960, 540), "unknown X11 desktop falls back to a 960x540 root snapshot");
+            check(png is null, "an X11 desktop with no configured wallpaper returns no preview");
         }
         finally
         {
-            Environment.SetEnvironmentVariable("DISPLAY", savedDisplay);
-            Environment.SetEnvironmentVariable("WAYLAND_DISPLAY", savedWayland);
-            Environment.SetEnvironmentVariable("XDG_SESSION_TYPE", savedSession);
-            Environment.SetEnvironmentVariable("UREMOTE_WALLPAPER", savedWallpaper);
-            X11Wallpaper.ResetSnapshotCacheForTests();
-            if (server is not null)
-            {
-                try { if (!server.HasExited) server.Kill(true); server.WaitForExit(2000); }
-                catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception) { }
-                server.Dispose();
-            }
-            try { if (File.Exists("/tmp/.X11-unix/X" + displayNumber)) File.Delete("/tmp/.X11-unix/X" + displayNumber); }
-            catch (IOException) { }
+            Environment.SetEnvironmentVariable("UREMOTE_WALLPAPER", saved);
+            Directory.Delete(home, true);
         }
-    }
-
-    private static bool IsPng(byte[] png, int width, int height)
-    {
-        ReadOnlySpan<byte> signature = [137, 80, 78, 71, 13, 10, 26, 10];
-        return png.Length >= 24 && png.AsSpan(0, 8).SequenceEqual(signature)
-            && BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(16)) == width
-            && BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(20)) == height;
     }
 }

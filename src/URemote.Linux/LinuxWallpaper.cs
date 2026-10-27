@@ -75,13 +75,6 @@ public static class LinuxWallpaper
             }
             source = backdrop.Image ?? "";
         }
-        if (string.IsNullOrEmpty(source) && LinuxSessionKind.UseX11() && desktop?.Name is not ("KDE Plasma" or "niri"))
-        {
-            var snapshot = await X11Wallpaper.SnapshotAsync(ffmpeg, ct);
-            if (snapshot is null) return null;
-            onSource?.Invoke("x11-snapshot");
-            return snapshot;
-        }
         if (string.IsNullOrEmpty(source)) return null;
         if(source.StartsWith("file://",StringComparison.Ordinal))source=new Uri(source).LocalPath;
         var scratch=Path.Combine(Path.GetTempPath(),"uremote-wallpaper-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(scratch);

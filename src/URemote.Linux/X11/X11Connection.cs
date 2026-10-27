@@ -79,15 +79,6 @@ internal sealed class X11Connection : IDisposable
         lock (gate) return GrabUnlocked(monitor, includeCursor);
     }
 
-    internal (byte[] Pixels, int Width, int Height) GrabRoot()
-    {
-        lock (gate)
-        {
-            var monitor = new X11Monitor(0, 0, 0, rootWidth, rootHeight, 60_000, "root");
-            return (GrabUnlocked(monitor, includeCursor: false), rootWidth, rootHeight);
-        }
-    }
-
     internal (string? Output, int? Workspace) WallpaperHint()
     {
         lock (gate)

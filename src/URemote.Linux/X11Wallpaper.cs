@@ -8,21 +8,12 @@ namespace URemote.Linux;
 /// <summary>
 /// One wallpaper resolver for the desktop <see cref="DesktopEnvironmentInfo"/> already selected.
 /// XFCE reads xfce4-desktop. GNOME, Cinnamon, MATE and Unity read gsettings.
-/// An X11 session whose resolver has no image falls back to one root snapshot per refresh interval.
+/// A desktop with no configured wallpaper returns nothing; the card keeps its placeholder.
 /// </summary>
 internal static class X11Wallpaper
 {
     internal readonly record struct Source(string? Image, string? Color, string? SecondColor, bool Vertical);
     internal sealed record Slot(string Monitor, int? Workspace, int? ImageStyle, int? ColorStyle, string? Image, string? Color, string? SecondColor);
-
-    private static readonly object cacheGate = new();
-    private static byte[]? cachedSnapshot;
-    private static long cachedAt;
-
-    internal static void ResetSnapshotCacheForTests()
-    {
-        lock (cacheGate) { cachedSnapshot = null; cachedAt = 0; }
-    }
 
     internal static Source? ResolveXfce(string configRoot)
     {
@@ -142,40 +133,6 @@ internal static class X11Wallpaper
             }
             var bytes = await File.ReadAllBytesAsync(output, ct);
             return bytes.Length is > 0 and <= 5_000_000 ? bytes : null;
-        }
-        finally { Directory.Delete(scratch, true); }
-    }
-
-    internal static async Task<byte[]?> SnapshotAsync(string ffmpeg, CancellationToken ct)
-    {
-        lock (cacheGate)
-        {
-            if (cachedSnapshot is not null && Stopwatch.GetElapsedTime(cachedAt) < TimeSpan.FromSeconds(30))
-                return (byte[])cachedSnapshot.Clone();
-        }
-        ct.ThrowIfCancellationRequested();
-        byte[] pixels;
-        int width, height;
-        try
-        {
-            using var connection = X11Connection.Open(null);
-            (pixels, width, height) = connection.GrabRoot();
-        }
-        catch (Exception e) when (e is InvalidOperationException or IOException or FormatException or DllNotFoundException or EntryPointNotFoundException or NotSupportedException or ObjectDisposedException)
-        { return null; }
-        var scratch = Directory.CreateTempSubdirectory("uremote-wallpaper-").FullName;
-        try
-        {
-            var raw = Path.Combine(scratch, "root.raw");
-            var output = Path.Combine(scratch, "wallpaper.png");
-            await File.WriteAllBytesAsync(raw, pixels, ct);
-            Array.Clear(pixels);
-            await LinuxWallpaper.RunTool(ffmpeg, ["-hide_banner", "-loglevel", "error", "-nostdin", "-f", "rawvideo", "-pix_fmt", "bgr0", "-video_size", width + "x" + height, "-i", raw,
-                "-frames:v", "1", "-vf", "scale=960:540:force_original_aspect_ratio=increase,crop=960:540", "-map_metadata", "-1", output], ct);
-            var bytes = await File.ReadAllBytesAsync(output, ct);
-            if (bytes.Length is <= 0 or > 5_000_000) return null;
-            lock (cacheGate) { cachedSnapshot = bytes; cachedAt = Stopwatch.GetTimestamp(); }
-            return (byte[])bytes.Clone();
         }
         finally { Directory.Delete(scratch, true); }
     }

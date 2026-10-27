@@ -487,7 +487,7 @@ dotnet build src/MyApplication.Module/MyApplication.Module.csproj
 - `.deps.json`
 - 业务专属的第三方托管依赖
 
-`.appbundle` 由官方脚本创建时会移除由容器统一提供的 `AsterDock.Contracts`、Avalonia、SkiaSharp、主题库和其原生运行库，以及所有 `.pdb` 调试符号。应用包只能由版本兼容的星栈容器加载；业务专属依赖必须保留。
+`.appbundle` 由官方脚本创建时会移除由容器统一提供的 `AsterDock.Contracts`、Avalonia、SkiaSharp、HarfBuzzSharp、主题库，以及这些库在应用根目录和 `runtimes` 下的本机文件（`libSkiaSharp`、`libHarfBuzzSharp`、`libAvaloniaNative`、`av_libglesv2`）和所有 `.pdb` 调试符号。这些本机文件按文件名删除，`runtimes` 目录和其中的业务本机库会保留，只有清空后的目录会被去掉。应用包只能由版本兼容的星栈容器加载；PDFium 等业务专属本机库必须保留在 `runtimes/<RID>/native/`。
 
 然后通过星栈设置页加载目录或 `.appbundle`，验证：
 
@@ -510,7 +510,7 @@ dotnet build src/MyApplication.Module/MyApplication.Module.csproj
 - [ ] `version` 已更新
 - [ ] 描述、分类和显示顺序已填写
 - [ ] 入口 DLL 和所有依赖已复制
-- [ ] Windows/macOS 本机运行库完整
+- [ ] Windows、macOS 和 Linux 本机运行库完整（例如发票应用的 PDFium）
 - [ ] UI 不阻塞主线程
 - [ ] 新窗口通过 `IWindowService` 打开并由容器跟踪
 - [ ] 容器导航仅通过 `IApplicationContext.Shell` 完成

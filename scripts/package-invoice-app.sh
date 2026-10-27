@@ -31,13 +31,40 @@ mkdir -p "$STAGING"
 trap 'rm -rf "$STAGING"' EXIT
 cp -R "$SOURCE"/. "$STAGING"
 
-# These assemblies and native assets are supplied by the AsterDock host.
-rm -rf "$STAGING/runtimes"
-rm -f "$STAGING"/*.pdb
+# Host assemblies and Avalonia/Skia/HarfBuzz natives are supplied by AsterDock.
+# Do not delete runtimes/: a RID build may still place PDFium under
+# runtimes/<rid>/native, and the flattened libpdfium/pdfium file must stay.
 for pattern in AsterDock.Contracts.dll AsterDock.UI.dll 'Avalonia*.dll' HarfBuzzSharp.dll 'Irihi.*.dll' MicroCom.Runtime.dll 'Semi.*.dll' SkiaSharp.dll Tmds.DBus.Protocol.dll 'Ursa*.dll'; do
   rm -f "$STAGING"/$pattern
 done
-rm -f "$STAGING"/libAvaloniaNative.* "$STAGING"/libHarfBuzzSharp.* "$STAGING"/libSkiaSharp.*
+find "$STAGING" -type f \( \
+    -name 'libAvaloniaNative.*' -o \
+    -name 'libHarfBuzzSharp.*' -o \
+    -name 'libSkiaSharp.*' -o \
+    -name 'av_libglesv2.*' -o \
+    -name '*.pdb' \
+  \) -delete
+if [[ -d "$STAGING/runtimes" ]]; then
+  find "$STAGING/runtimes" -depth -type d -empty -delete
+fi
+
+pdfium_name="libpdfium.so"
+case "$RUNTIME_IDENTIFIER" in
+  win-*) pdfium_name="pdfium.dll" ;;
+  osx-*) pdfium_name="libpdfium.dylib" ;;
+esac
+if [[ ! -f "$STAGING/$pdfium_name" && ! -f "$STAGING/runtimes/$RUNTIME_IDENTIFIER/native/$pdfium_name" ]]; then
+  echo "Invoice Printer package is missing $pdfium_name for $RUNTIME_IDENTIFIER." >&2
+  exit 1
+fi
+if find "$STAGING" -type f \( \
+    -name 'libAvaloniaNative.*' -o -name 'libHarfBuzzSharp.*' -o -name 'libSkiaSharp.*' -o \
+    -name 'av_libglesv2.*' -o -name '*.pdb' -o -name 'SkiaSharp.dll' -o -name 'HarfBuzzSharp.dll' -o \
+    -name 'Avalonia*.dll' \
+  \) | grep -q .; then
+  echo "Host-supplied assets are still in the Invoice Printer package." >&2
+  exit 1
+fi
 
 (cd "$STAGING" && zip -qr "$OUTPUT" .)
 echo "$OUTPUT"

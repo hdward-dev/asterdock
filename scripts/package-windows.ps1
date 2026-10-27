@@ -17,10 +17,33 @@ $publishDirectory = Join-Path $temporaryDirectory "publish"
 $installerPath = Join-Path $OutputDirectory "AsterDock-$RuntimeIdentifier.msi"
 $projectPath = Join-Path $repoRoot "src/AsterDock.Host/AsterDock.Host.csproj"
 $wixSource = Join-Path $repoRoot "build/windows/AsterDock.wxs"
+$brandIconSource = Join-Path $repoRoot "src/AsterDock.Host/Assets/Brand/AsterDock.ico"
+$brandIcon = Join-Path $temporaryDirectory "AsterDock.exe"
+$shortcutIconScript = Join-Path $repoRoot "scripts/build-shortcut-icon.py"
 
 New-Item -ItemType Directory -Path $publishDirectory, $OutputDirectory -Force | Out-Null
 
+function Invoke-AsterDockPython {
+    param([Parameter(Mandatory = $true)][string[]]$Arguments)
+    foreach ($name in @("python", "python3")) {
+        $command = Get-Command $name -ErrorAction SilentlyContinue
+        if ($null -ne $command) {
+            & $command.Source @Arguments
+            return
+        }
+    }
+    $py = Get-Command py -ErrorAction SilentlyContinue
+    if ($null -ne $py) {
+        & $py.Source -3 @Arguments
+        return
+    }
+    throw "Python 3 is required to build the AsterDock shortcut icon from AsterDock.ico."
+}
+
 try {
+    Invoke-AsterDockPython -Arguments @($shortcutIconScript, $brandIconSource, $brandIcon)
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
     dotnet publish $projectPath `
         --configuration Release `
         --runtime $RuntimeIdentifier `
@@ -38,6 +61,7 @@ try {
         -arch $architecture `
         -d "PublishDir=$publishDirectory" `
         -d "ProductVersion=$Version" `
+        -d "BrandIcon=$brandIcon" `
         -o $installerPath
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 

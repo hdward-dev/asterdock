@@ -54,6 +54,9 @@ jobs:
       - name: Check application catalog generation
         run: python -m unittest discover -s tests -p test_app_catalog.py
 
+      - name: Check Windows shortcut icon
+        run: python -m unittest discover -s tests -p test_shortcut_icon.py
+
       - name: Check update versions and installer downloads
         run: dotnet run --project tests/Update.Checks --configuration Release
 

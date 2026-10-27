@@ -110,7 +110,7 @@ public sealed partial class URemoteView : UserControl, IDisposable
         try
         {
             if (Environment.GetEnvironmentVariable("UREMOTE_NO_AUTO_START") != "1") _ = RefreshDevicesAsync();
-            if (!(OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsWindows())) { status.Text = "当前被控后端支持 Windows、Linux / Wayland 和 macOS"; hostSwitch.IsEnabled = false; return; }
+            if (!(OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsWindows())) { status.Text = "当前被控后端支持 Windows、Linux 和 macOS"; hostSwitch.IsEnabled = false; return; }
             var globals = await DesktopBackend.DiscoverAsync(lifetime.Token);
             if (disposed) return;
             ReplaceScreens(globals.Where(g => g.Interface == "wl_output").Select(g => g.Name).Order().Take(5).ToArray(), _ => true, "开启被控后读取显示器；若出现系统授权窗口，请选择需要共享的屏幕。");
@@ -121,7 +121,7 @@ public sealed partial class URemoteView : UserControl, IDisposable
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (Exception e) { if (!disposed) { hostBadge.Text = "○  被控不可用"; ApplyTheme(hostBadge, TextBlock.ForegroundProperty, "AppMutedBrush"); status.Text = "桌面共享不可用";
-            detail.Text = e is NotSupportedException or InvalidOperationException ? e.Message : OperatingSystem.IsWindows() ? e.Message : "请检查 Wayland 会话、桌面 Portal 服务及 GLib / GStreamer 原生库。";
+            detail.Text = e is NotSupportedException or InvalidOperationException ? e.Message : OperatingSystem.IsWindows() ? e.Message : LinuxSessionKind.UseX11() ? "请检查 X11 显示、DISPLAY 以及 RANDR / MIT-SHM 扩展。" : "请检查 Wayland 会话、桌面 Portal 服务及 GLib / GStreamer 原生库。";
             if (Environment.GetEnvironmentVariable("UREMOTE_NO_AUTO_START") != "1") StartCore(); } }
     }
     private async void Start()

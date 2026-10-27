@@ -522,6 +522,8 @@ public static class HostPreview
         try
         {
         var profile = profiles.Get(index);
+        // X11 paces inside capture. Wayland pacing stays in this loop. Both read the same request.
+        DesktopBackend.NoteRequestedFrameRate(output, profiles.RequestedFps(index));
         CapturedScreen first;
         while (true)
         {

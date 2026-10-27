@@ -26,6 +26,7 @@ public interface IDesktopTouch : IAsyncDisposable
 public static class DesktopBackend
 {
     private static PortalDesktopSession? portal;
+    private static X11DesktopSession? x11;
     private static readonly SemaphoreSlim lifecycle = new(1);
     private static readonly object recycleLock = new();
     private static readonly object aliasLock = new();
@@ -220,6 +221,8 @@ public static class DesktopBackend
     {
         if (OperatingSystem.IsWindows()) return await WindowsDesktop.DiscoverAsync(ct);
         if (OperatingSystem.IsMacOS()) return await MacDesktop.DiscoverAsync(ct);
+        if (LinuxSessionKind.UseX11())
+            return Volatile.Read(ref x11) is { } x11Session ? x11Session.Outputs() : X11DesktopSession.Discover(ct);
         if (Volatile.Read(ref portal) is { } active)
         {
             await active.CheckAliveAsync(ct);
@@ -238,6 +241,13 @@ public static class DesktopBackend
         await lifecycle.WaitAsync(ct);
         try
         {
+            if (LinuxSessionKind.UseX11())
+            {
+                if (Volatile.Read(ref x11) is not null) throw new InvalidOperationException("已有桌面共享会话。");
+                var x11Opened = await X11DesktopSession.OpenAsync(enableInput, ct);
+                Volatile.Write(ref x11, x11Opened);
+                return new X11Lease();
+            }
             var globals = await WaylandCapabilities.DiscoverAsync(ct);
             if (HasNativeCapture(globals) && (!enableInput || HasNativeInput(globals))) return new Lease(false);
             if (Volatile.Read(ref portal) is not null) throw new InvalidOperationException("已有桌面共享会话。");
@@ -254,6 +264,10 @@ public static class DesktopBackend
     {
         if (OperatingSystem.IsWindows()) return await WindowsDesktop.CaptureAsync(output, includeCursor, ct);
         if (OperatingSystem.IsMacOS()) return await MacDesktop.CaptureAsync(output, includeCursor, ct);
+        if (LinuxSessionKind.UseX11())
+            return Volatile.Read(ref x11) is { } x11Session
+                ? await x11Session.CaptureAsync(output, includeCursor, ct)
+                : await X11DesktopSession.CaptureOneShotAsync(output, includeCursor, ct);
         if (Volatile.Read(ref captureRefreshActive) != 0) await WaitCaptureReadyAsync(ct);
         var active = Volatile.Read(ref portal);
         if (active is not null) return await active.CaptureAsync(ResolveOutput(output), ct);
@@ -313,6 +327,8 @@ public static class DesktopBackend
     {
         if (OperatingSystem.IsWindows()) return new WindowsDesktop.Pointer(output);
         if (OperatingSystem.IsMacOS()) return new MacDesktop.Pointer(output);
+        if (LinuxSessionKind.UseX11())
+            return (Volatile.Read(ref x11) ?? throw new InvalidOperationException("X11 桌面会话未打开。")).CreatePointer(output, width, height);
         IDesktopPointer primary;
         if (Volatile.Read(ref portal) is { } active)
         {
@@ -337,6 +353,11 @@ public static class DesktopBackend
         {
             report("keyboard-backend=macos");
             return new MacDesktop.Keyboard();
+        }
+        if (LinuxSessionKind.UseX11())
+        {
+            report("keyboard-backend=x11");
+            return (Volatile.Read(ref x11) ?? throw new InvalidOperationException("X11 桌面会话未打开。")).CreateKeyboard();
         }
         if (Volatile.Read(ref portal) is { } active)
             return await LockScreenInput.WrapKeyboardAsync(active.CreateKeyboard(), "portal", report, ct);
@@ -365,12 +386,20 @@ public static class DesktopBackend
     public static Task TypeTextAsync(string text, CancellationToken ct)
     {
         HostControlInput.ValidateText(text);
+        if (LinuxSessionKind.UseX11())
+            return (Volatile.Read(ref x11) ?? throw new InvalidOperationException("X11 桌面会话未打开。")).TypeTextAsync(text, ct);
         return OperatingSystem.IsWindows() ? WindowsDesktop.TypeTextAsync(text, ct) : OperatingSystem.IsMacOS() ? MacDesktop.TypeTextAsync(text, ct) : Volatile.Read(ref portal) is { } active ? active.TypeTextAsync(text, ct) : WaylandVirtualKeyboard.TypeTextAsync(text, ct);
     }
     public static async Task<IReadOnlyDictionary<uint, int>> ReadRefreshRatesAsync(CancellationToken ct)
     {
         if (OperatingSystem.IsWindows()) return await WindowsDesktop.RefreshAsync(ct);
         if (OperatingSystem.IsMacOS()) return await MacDesktop.RefreshAsync(ct);
+        if (LinuxSessionKind.UseX11())
+        {
+            if (Volatile.Read(ref x11) is { } x11Session) return x11Session.RefreshRates();
+            using var connection = X11Connection.Open(null);
+            return connection.Monitors(refresh: true).ToDictionary(monitor => monitor.Id, monitor => monitor.MilliHz);
+        }
         // Portal node ids are not wl_output names, but the compositor still publishes the mode.
         var outputs = await WaylandOutputRefresh.ReadOutputsAsync(ct);
         var active = Volatile.Read(ref portal);
@@ -379,6 +408,22 @@ public static class DesktopBackend
         var mapped = PortalOutputRefresh.Map(active.CopyLayout(), outputs);
         active.RememberRefresh(mapped);
         return PublishRefresh(active.CopyLayout(), mapped);
+    }
+
+    public static void NoteRequestedFrameRate(uint output, int fps) => X11FrameRateNotes.Note(output, fps);
+
+    private sealed class X11Lease : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync()
+        {
+            await lifecycle.WaitAsync();
+            try
+            {
+                var current = Interlocked.Exchange(ref x11, null);
+                if (current is not null) await current.DisposeAsync();
+            }
+            finally { lifecycle.Release(); }
+        }
     }
 
     // Owns whichever portal session is current, including one swapped in by a lock-screen refresh.

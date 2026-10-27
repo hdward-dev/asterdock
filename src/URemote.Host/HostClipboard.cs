@@ -28,6 +28,12 @@ internal sealed class HostClipboard : IAsyncDisposable
             this.send = send; this.report = report; read = clipboard.ReadAsync; write = clipboard.WriteAsync;
             return;
         }
+        if (LinuxSessionKind.UseX11())
+        {
+            var x11Clipboard = new X11Clipboard(); clipboardOwner = x11Clipboard;
+            this.send = send; this.report = report; read = x11Clipboard.ReadAsync; write = x11Clipboard.WriteAsync;
+            return;
+        }
         var wayland = new WaylandClipboard(); clipboardOwner = wayland;
         this.send = send; this.report = report; read = wayland.ReadAsync; write = wayland.WriteAsync;
     }

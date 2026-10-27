@@ -57,6 +57,9 @@ jobs:
       - name: Check update versions and installer downloads
         run: dotnet run --project tests/Update.Checks --configuration Release
 
+      - name: Check CUPS printer listing across locales
+        run: dotnet run --project tests/InvoicePrinter.Checks --configuration Release
+
       - name: Build solution
         run: dotnet build AsterDock.slnx --configuration Release --no-restore
 

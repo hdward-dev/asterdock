@@ -135,7 +135,20 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
                 if (!streams.TryGetValue(output, out var stream)) throw new ArgumentException("所选显示器不可用。");
                 video = stream.Video;
             }
-            try { return await video.CaptureAsync(stop.Token); }
+            try { return await video.CaptureAsync(stop.Token, FirstFrameRetry.Probe); }
+            catch (TimeoutException)
+            {
+                // No buffer yet. The caller keeps this screen pending instead of failing the host.
+                int width, height;
+                lock (streamLock)
+                {
+                    if (!streams.TryGetValue(output, out var known)) throw;
+                    width = known.Width;
+                    height = known.Height;
+                }
+                if (width < 2 || height < 2) throw;
+                return CapturePlaceholder.Create(output, width, height);
+            }
             catch (ObjectDisposedException) when (attempt == 0)
             {
                 lock (streamLock)

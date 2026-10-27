@@ -224,6 +224,29 @@ public static class DesktopBackend
         if (active is not null) return await active.CaptureAsync(ResolveOutput(output), ct);
         return await WaylandScreenCapture.CaptureAsync(output, includeCursor, ct);
     }
+    // One screen with no buffer, or a dead pipeline, becomes a black frame of that monitor's size.
+    internal static async Task<CapturedScreen> CaptureOrPendingAsync(uint output, CancellationToken ct)
+    {
+        try { return await CaptureAsync(output, ct: ct); }
+        catch (Exception e) when (!ct.IsCancellationRequested && e is TimeoutException or IOException or ObjectDisposedException or FormatException or ArgumentException)
+        {
+            var size = OutputSize(output);
+            var width = size.Width >= 2 ? size.Width : 1280;
+            var height = size.Height >= 2 ? size.Height : 720;
+            return CapturePlaceholder.Create(output, width, height);
+        }
+    }
+    // Portal logical size for a stream that has not delivered a buffer yet.
+    internal static (int Width, int Height) OutputSize(uint output)
+    {
+        var active = Volatile.Read(ref portal);
+        if (active is null) return (0, 0);
+        var node = ResolveOutput(output);
+        foreach (var box in active.Layout)
+            if (box.Node == node && box.Width >= 2 && box.Height >= 2)
+                return (box.Width, box.Height);
+        return (0, 0);
+    }
     // One screen's PipeWire pipeline. Does not open a portal session, so it cannot prompt.
     internal static async Task RebuildCaptureAsync(uint output, CancellationToken ct)
     {

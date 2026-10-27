@@ -98,17 +98,18 @@ internal sealed class PortalVideoStream : IAsyncDisposable
         }
         catch { Close(); throw; }
     }
-    internal async Task<CapturedScreen> CaptureAsync(CancellationToken ct)
+    internal Task<CapturedScreen> CaptureAsync(CancellationToken ct) => CaptureAsync(ct, TimeSpan.FromSeconds(10));
+    internal async Task<CapturedScreen> CaptureAsync(CancellationToken ct, TimeSpan firstFrameBudget)
     {
         await gate.WaitAsync(ct);
         try
         {
             ObjectDisposedException.ThrowIf(disposed, this);
-            return await Task.Run(() => Capture(ct), ct);
+            return await Task.Run(() => Capture(ct, firstFrameBudget), ct);
         }
         finally { gate.Release(); }
     }
-    private CapturedScreen Capture(CancellationToken ct)
+    private CapturedScreen Capture(CancellationToken ct, TimeSpan firstFrameBudget)
     {
         var deadline = Stopwatch.StartNew();
         nint sample;
@@ -124,7 +125,7 @@ internal sealed class PortalVideoStream : IAsyncDisposable
             if (sample != 0) break;
             if (NativeGst.gst_app_sink_is_eos(sink) != 0) throw new IOException("PipeWire 屏幕流已结束。");
             if (haveCache && cached is not null) return cached with { Pixels = (byte[])cached.Pixels.Clone(), Repeated = true };
-            if (deadline.Elapsed > TimeSpan.FromSeconds(10)) throw new TimeoutException("等待首帧超时。");
+            if (deadline.Elapsed > firstFrameBudget) throw new TimeoutException("等待首帧超时。");
         } while (true);
         try
         {

@@ -7,6 +7,7 @@ internal sealed class HostVideoSettings
     private readonly VideoProfile[] profiles;
     private readonly int[] frameRateLimits;
     private readonly int[] requestedFps;
+    private readonly bool[] sizeLocked;
     public bool SingleVideoStream { get; }
     private int selectedScreen;
     // A session starts without evidence of congestion. Do not force every quality tier
@@ -77,6 +78,7 @@ internal sealed class HostVideoSettings
         customBitrates = dimensions.Select(_ => 8000000).ToArray();
         // No 30 FPS startup cap. Until the controller asks, the target is this screen's refresh rate.
         requestedFps = (int[])this.frameRateLimits.Clone();
+        sizeLocked = new bool[dimensions.Length];
         profiles = dimensions.Select((d, i) => new VideoProfile(d.Width, d.Height,
             this.frameRateLimits[i], Math.Min(8000000, networkCeiling), 23)).ToArray();
     }
@@ -90,6 +92,21 @@ internal sealed class HostVideoSettings
         return contentChanging ? target : Math.Min(target, IdleFps);
     }
     public VideoProfile Get(int index) => Volatile.Read(ref profiles[index]);
+    // A real first buffer can be larger than the placeholder used to publish the host.
+    // An explicit controller size is left alone; the native ceiling still grows.
+    public void AdoptSourceSize(int index, int width, int height)
+    {
+        if ((uint)index >= profiles.Length) return;
+        width &= ~1;
+        height &= ~1;
+        if (width is < 2 or > 16384 || height is < 2 or > 16384) return;
+        if (width > native[index].Width || height > native[index].Height)
+            native[index] = (Math.Max(width, native[index].Width), Math.Max(height, native[index].Height));
+        if (sizeLocked[index]) return;
+        var current = Get(index);
+        if (current.Width == width && current.Height == height) return;
+        Volatile.Write(ref profiles[index], current with { Width = width, Height = height, Recovery = current.Recovery + 1 });
+    }
     public bool Apply(CaptureUpdate update)
     {
         // Official Windows quality changes use screen=-2 and size=-1/-1:
@@ -103,6 +120,7 @@ internal sealed class HostVideoSettings
             var p = Get(i);
             var width = update.Width > 0 ? Math.Clamp(update.Width, 320, native[i].Width) & ~1 : p.Width;
             var height = update.Height > 0 ? Math.Clamp(update.Height, 240, native[i].Height) & ~1 : p.Height;
+            if (update.Width > 0 || update.Height > 0) sizeLocked[i] = true;
             var fps = update.Fps > 0 ? Math.Clamp(update.Fps, Math.Min(15, frameRateLimits[i]), frameRateLimits[i]) : p.Fps;
             if (update.Fps > 0) Volatile.Write(ref requestedFps[i], fps);
             if (update.Quality != 0) qualities[i] = update.Quality;

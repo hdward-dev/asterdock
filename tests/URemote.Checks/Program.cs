@@ -308,6 +308,15 @@ Check(paced.Apply(new(0, 0, 0, 30, 0, 1, 0, 1)) && paced.Get(0).Fps == 30 && pac
     && paced.OutputFps(0, true) == 30, "a lower requested rate is the target and is not raised");
 Check(paced.Apply(new(0, 0, 0, 120, 0, 1, 0, 1)) && paced.Get(0).Fps == 60 && paced.RequestedFps(0) == 60,
     "target is min(display refresh, requested fps) and never exceeds the display");
+var placeholderSize = new HostVideoSettings([(1920, 1080)]);
+placeholderSize.AdoptSourceSize(0, 3840, 2160);
+Check(placeholderSize.Get(0) is { Width: 3840, Height: 2160, Recovery: 1 },
+    "a real first frame replaces the placeholder size and restarts the encoder");
+Check(placeholderSize.Apply(new(0, 2560, 1440, 0, 0, 1, 0, 1)) && placeholderSize.Get(0).Width == 2560,
+    "an explicit controller size replaces the adopted frame size");
+placeholderSize.AdoptSourceSize(0, 3840, 2160);
+Check(placeholderSize.Get(0).Width == 2560,
+    "an explicit controller size is kept when another real frame arrives");
 var profiles = new HostVideoSettings([(2560, 1440), (1920, 1080)]);
 Check(profiles.Apply(new(-2, -1, -1, 60, 2, 1, 0, 1))
     && profiles.Get(0) is { Width: 2560, Height: 1440, Fps: 60, Crf: 23 }

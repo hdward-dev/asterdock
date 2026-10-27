@@ -61,6 +61,7 @@ static class X11BackendTests
 
     public static async Task LiveAsync(Action<bool, string> check)
     {
+        DesktopBackend.ResetCaptureForTests();
         if (!OperatingSystem.IsLinux() || !File.Exists("/usr/bin/Xvfb")) return;
         var displayNumber = Enumerable.Range(20, 30).First(number => !File.Exists("/tmp/.X11-unix/X" + number));
         var display = ":" + displayNumber;
@@ -94,6 +95,17 @@ static class X11BackendTests
             var rates = await DesktopBackend.ReadRefreshRatesAsync(CancellationToken.None);
             check(rates[output] == 60_000, "Xvfb refresh of zero becomes 60 Hz");
             await using var session = await DesktopBackend.OpenAsync(true, CancellationToken.None);
+            check(!DesktopBackend.X11DamageSubscribedForTests && DesktopBackend.X11ShmBuffersForTests == 0 && !DesktopBackend.CaptureStreamsOpenForTests,
+                "X11 damage and shared-memory capture stay down until a viewer arms capture");
+            var idle = await DesktopBackend.CaptureAsync(output, false, CancellationToken.None);
+            check(idle.Pending && idle.Width == 1920 && idle.Height == 1200, "an idle X11 session returns geometry without grabbing");
+            Array.Clear(idle.Pixels);
+            DesktopBackend.SetCaptureGraceForTests(TimeSpan.FromMilliseconds(200));
+            var armed = new List<string>();
+            await DesktopBackend.ArmForViewerAsync([output], false, armed.Add, CancellationToken.None);
+            check(armed.Count == 1 && armed[0] == "capture-armed;reason=viewer-requested;screens=1", "X11 capture arms when a viewer is requested");
+            check(!DesktopBackend.X11DamageSupportedForTests || DesktopBackend.X11DamageSubscribedForTests,
+                "XDamage is subscribed while capture is armed");
             var first = await DesktopBackend.CaptureAsync(output, true, CancellationToken.None);
             check(first.Width == 1920 && first.Height == 1200 && first.ShmFormat == 1 && first.Pixels.Length == 1920 * 1200 * 4,
                 "X11 capture returns tightly packed BGR0");
@@ -117,6 +129,17 @@ static class X11BackendTests
                 finally { Array.Clear(painted.Pixels); }
                 painter.Stop();
             }
+
+            DesktopBackend.ReleaseCapture();
+            var released = false;
+            var releaseWatch = Stopwatch.StartNew();
+            while (releaseWatch.Elapsed < TimeSpan.FromSeconds(2))
+            {
+                if (!DesktopBackend.CaptureStreamsOpenForTests && !DesktopBackend.X11DamageSubscribedForTests && DesktopBackend.X11ShmBuffersForTests == 0)
+                { released = true; break; }
+                await Task.Delay(20);
+            }
+            check(released, "XDamage and shared-memory buffers are released after the capture grace period");
 
             await using var pointer = await DesktopBackend.CreatePointerAsync(output, CancellationToken.None, width: 1920, height: 1200);
             await pointer.ApplyAsync(new HostMouseMessage(MouseAction.MoveAbsolute, 100d / 1920, 80d / 1200), PointerCoordinates.MacNormalized, 1920, 1200);
@@ -162,6 +185,7 @@ static class X11BackendTests
             Environment.SetEnvironmentVariable("WAYLAND_DISPLAY", savedWayland);
             Environment.SetEnvironmentVariable("XDG_SESSION_TYPE", savedSession);
             X11FrameRateNotes.ResetForTests();
+            DesktopBackend.ResetCaptureForTests();
             Stop(windowManager);
             Stop(server);
             try { if (File.Exists("/tmp/.X11-unix/X" + displayNumber)) File.Delete("/tmp/.X11-unix/X" + displayNumber); }

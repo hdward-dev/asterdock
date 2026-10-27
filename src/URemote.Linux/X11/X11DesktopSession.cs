@@ -13,7 +13,8 @@ internal sealed class X11DesktopSession : IAsyncDisposable
     private readonly Dictionary<uint, Slot> slots = [];
     private readonly object gate = new();
     private X11Monitor[] monitors;
-    private bool disposed;
+    private int armedScreens;
+    private bool captureArmed, disposed;
 
     private X11DesktopSession(X11Connection connection)
     {
@@ -82,8 +83,57 @@ internal sealed class X11DesktopSession : IAsyncDisposable
         }
     }
 
+    internal bool DamageSubscribed => connection.DamageSubscribed;
+    internal bool DamageSupported => connection.DamageSupported;
+    internal int ShmBuffers => connection.ShmBufferCount;
+
+    internal (int Width, int Height) SizeOf(uint output)
+    {
+        try
+        {
+            var monitor = Find(output);
+            return (monitor.Width, monitor.Height);
+        }
+        catch (ArgumentException) { return (0, 0); }
+    }
+
+    internal void ArmCapture(IReadOnlyList<uint> screens)
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            armedScreens = screens.Count;
+            captureArmed = true;
+        }
+        connection.SubscribeDamage();
+    }
+
+    internal int ReleaseCapture()
+    {
+        int released;
+        lock (gate)
+        {
+            if (disposed) return 0;
+            released = captureArmed ? armedScreens : 0;
+            captureArmed = false;
+            armedScreens = 0;
+            foreach (var slot in slots.Values)
+                if (slot.Pixels is not null) Array.Clear(slot.Pixels);
+            slots.Clear();
+        }
+        connection.ReleaseCaptureResources();
+        return released;
+    }
+
     internal async Task<CapturedScreen> CaptureAsync(uint output, bool includeCursor, CancellationToken ct)
     {
+        if (!captureArmed)
+        {
+            var idle = SizeOf(output);
+            var width = idle.Width >= 2 ? idle.Width : 1280;
+            var height = idle.Height >= 2 ? idle.Height : 720;
+            return CapturePlaceholder.Create(output, width, height);
+        }
         var monitor = Find(output);
         var slot = SlotFor(monitor);
         var requested = X11FrameRateNotes.Requested(output);
@@ -110,6 +160,13 @@ internal sealed class X11DesktopSession : IAsyncDisposable
             pixels = connection.Grab(monitor, includeCursor);
             lock (gate)
             {
+                if (!captureArmed)
+                {
+                    Array.Clear(pixels);
+                    var width = monitor.Width >= 2 ? monitor.Width : 1280;
+                    var height = monitor.Height >= 2 ? monitor.Height : 720;
+                    return CapturePlaceholder.Create(monitor.Id, width, height);
+                }
                 if (slot.Pixels is not null) Array.Clear(slot.Pixels);
                 slot.Pixels = (byte[])pixels.Clone();
                 slot.Width = monitor.Width;

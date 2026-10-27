@@ -15,14 +15,22 @@ public static class HostPreview
         if (OperatingSystem.IsMacOS() && enableAudio) { enableAudio = false; report("audio-unavailable"); }
         await using var ownedTerminals = terminalManager is null ? new HostTerminalManager() : null;
         terminalManager ??= ownedTerminals!;
-        var dimensions = new List<(int Width, int Height)>();
-        foreach (var output in outputs)
+        // A missing first buffer used to wait 10s per screen and then throw, which
+        // retried the whole host. Probe quickly, publish with a black placeholder,
+        // and keep rebuilding only that stream until a real frame arrives.
+        var tracker = new FirstFrameTracker(outputs.Count);
+        var probed = await Task.WhenAll(outputs.Select(output => ProbeOutputAsync(output, ct)));
+        var dimensions = new (int Width, int Height)[probed.Length];
+        var waiting = new bool[probed.Length];
+        for (var index = 0; index < probed.Length; index++)
         {
-            var f = await DesktopBackend.CaptureAsync(output, ct: ct);
-            dimensions.Add(((int)f.Width, (int)f.Height)); Array.Clear(f.Pixels);
+            tracker.Observe(index, probed[index].Pending, DesktopBackend.PortalGeneration, report);
+            dimensions[index] = ((int)probed[index].Width, (int)probed[index].Height);
+            waiting[index] = probed[index].Pending;
+            Array.Clear(probed[index].Pixels);
         }
         var frameRateLimits = await ReadFrameRateLimitsAsync(outputs, report, ct);
-        var profiles = new HostVideoSettings(dimensions.ToArray(), frameRateLimits: frameRateLimits);
+        var profiles = new HostVideoSettings(dimensions, frameRateLimits: frameRateLimits);
         var sessions = new HostSignalSessions();
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var token = stop.Token;
@@ -40,6 +48,7 @@ public static class HostPreview
         Task audio = Task.CompletedTask;
         var sender = SendCandidatesAsync();
         var receiver = ReceiveAsync();
+        var firstFrames = WatchFirstFramesAsync();
         try
         {
             await Task.WhenAny(sender, receiver);
@@ -51,7 +60,77 @@ public static class HostPreview
             stop.Cancel();
             refreshRequests.Writer.TryComplete();
             try { await refreshPump; } catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+            try { await firstFrames; } catch (OperationCanceledException) when (token.IsCancellationRequested) { }
             await ClosePeerAsync();
+        }
+
+        async Task WatchFirstFramesAsync()
+        {
+            var since = new long[outputs.Count];
+            var generation = DesktopBackend.PortalGeneration;
+            var now = System.Diagnostics.Stopwatch.GetTimestamp();
+            for (var index = 0; index < waiting.Length; index++)
+                if (waiting[index]) since[index] = now;
+            try
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    var current = DesktopBackend.PortalGeneration;
+                    if (current != generation)
+                    {
+                        generation = current;
+                        Array.Fill(waiting, true);
+                        Array.Clear(since);
+                    }
+                    for (var index = 0; index < outputs.Count; index++)
+                    {
+                        if (!waiting[index]) continue;
+                        CapturedScreen frame;
+                        try { frame = await ProbeOutputAsync(outputs[index], token); }
+                        catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
+                        catch (Exception)
+                        {
+                            var size = DesktopBackend.OutputSize(outputs[index]);
+                            frame = CapturePlaceholder.Create(outputs[index], size.Width >= 2 ? size.Width : 1280, size.Height >= 2 ? size.Height : 720);
+                        }
+                        try
+                        {
+                            tracker.Observe(index, frame.Pending, DesktopBackend.PortalGeneration, report);
+                            if (!frame.Pending)
+                            {
+                                waiting[index] = false;
+                                since[index] = 0;
+                                dimensions[index] = ((int)frame.Width, (int)frame.Height);
+                                profiles.AdoptSourceSize(index, (int)frame.Width, (int)frame.Height);
+                                continue;
+                            }
+                            if (SessionLock.IsLocked == true)
+                            {
+                                since[index] = 0;
+                                continue;
+                            }
+                            now = System.Diagnostics.Stopwatch.GetTimestamp();
+                            if (since[index] == 0) since[index] = now;
+                            else if (FirstFrameRetry.ShouldRebuild(System.Diagnostics.Stopwatch.GetElapsedTime(since[index]), SessionLock.IsLocked))
+                            {
+                                since[index] = now;
+                                try
+                                {
+                                    if (await DesktopBackend.RebuildCaptureAsync(outputs[index], token))
+                                        report($"capture-stream-rebuilt;screen={index + 1};reason=no-frame");
+                                }
+                                catch (Exception rebuild) when (rebuild is IOException or InvalidOperationException or TimeoutException
+                                    or DesktopSessionClosedException or UnauthorizedAccessException or FormatException
+                                    or NotSupportedException or ObjectDisposedException)
+                                { }
+                            }
+                        }
+                        finally { Array.Clear(frame.Pixels); }
+                    }
+                    await Task.Delay(TimeSpan.FromSeconds(1), token);
+                }
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         }
 
         async Task RefreshPumpAsync()
@@ -162,13 +241,17 @@ public static class HostPreview
                 try { update = sessions.Accept(frame); }
                 catch (FormatException e)
                 {
-                    // Reject this packet without allowing a malformed/stale notification to terminate another peer.
-                    var field = e.Data["field"] as string;
-                    var eventName = frame.Packet?.Data?[0]?.GetValue<string>();
-                    report("rejected-event=" + (eventName is "soac" or "released" or "be-controlled" ? eventName : "other"));
-                    report("signal-packet-rejected; field=" +
-                        (field is "client_id" or "ice_id" or "app_control_id" or "type" or "sdp" ? field : "other"));
-                    continue;
+                    // A dead media peer must not keep the previous app_control_id. Drop that key and
+                    // read the packet again; a still-live viewer is left untouched.
+                    if (!TryRecoverStaleControl(frame, e, out update))
+                    {
+                        var field = e.Data["field"] as string;
+                        var eventName = frame.Packet?.Data?[0]?.GetValue<string>();
+                        report("rejected-event=" + (eventName is "soac" or "released" or "be-controlled" ? eventName : "other"));
+                        report("signal-packet-rejected; field=" +
+                            (field is "client_id" or "ice_id" or "app_control_id" or "type" or "sdp" ? field : "other"));
+                        continue;
+                    }
                 }
                 switch (update.Action)
                 {
@@ -199,7 +282,7 @@ public static class HostPreview
                         // the primary video track, just like iOS. Route screen selection onto it.
                         var mobileSingleStream = !dataOnly && (update.Peer.Options.ClientType == 1 || platformCode is 2 or 3);
                         frameRateLimits = await ReadFrameRateLimitsAsync(outputs, report, token);
-                        profiles = new HostVideoSettings(dimensions.ToArray(), mobileSingleStream, frameRateLimits);
+                        profiles = new HostVideoSettings(((int Width, int Height)[])dimensions.Clone(), mobileSingleStream, frameRateLimits);
                         report("video-routing=" + (mobileSingleStream ? "selected-screen-on-primary-track" : "independent-screen-tracks"));
                         Volatile.Write(ref answered, false);
                         active = id;
@@ -256,7 +339,7 @@ public static class HostPreview
                             await signal.SendEventAsync("ice_finished_log", new JsonObject
                             { ["app_control_id"] = id.AppControlId, ["ice_id"] = id.IceId }, ct: peerToken);
                             report("ice-completion-notified");
-                        }, report, profiles, recyclePortal);
+                        }, report, profiles, recyclePortal, tracker);
                         input = terminal ? HostTerminalPeer.RunAsync(media, terminalManager, enableInput && !OperatingSystem.IsMacOS(), peerStop.Token, report)
                             : HostInput.RunAsync(media, outputs, peerStop.Token, report, enableInput && !fileOnly, enableClipboard && !fileOnly, profiles, inputApplied: () =>
                             {
@@ -288,6 +371,13 @@ public static class HostPreview
                                 return;
                             }
                             report("peer-pipeline-failure;type=" + error?.GetType().Name + ";site=" + site);
+                            // Drop this control id now, before the receive loop reads the retry.
+                            // RemoveIfMatch leaves a newer be-controlled that already replaced it.
+                            sessions.RemoveIfMatch(id);
+                            // Same path as a local disconnect: clear_out drops the server's control
+                            // session, then ClosePeerAsync forgets whatever peer is still current.
+                            if (!token.IsCancellationRequested && Interlocked.Exchange(ref disconnectRequested, 1) == 0)
+                                disconnects.Writer.TryWrite(mediaLifetime);
                             try { mediaLifetime.Cancel(); } catch (ObjectDisposedException) { }
                             activeMedia.Dispose();
                             report("peer-pipeline-ended; publisher-kept-online");
@@ -327,6 +417,30 @@ public static class HostPreview
                         break;
                 }
             }
+
+            bool ControlMediaEnded() => active is null
+                || peerStop?.IsCancellationRequested == true
+                || media?.State is RTCPeerConnectionState.closed or RTCPeerConnectionState.failed or RTCPeerConnectionState.disconnected;
+
+            bool TryRecoverStaleControl(UuSignalFrame signalFrame, FormatException error, out HostSignalUpdate recovered)
+            {
+                recovered = new(HostSignalAction.Ignored);
+                var stale = error.Data["field"] as string == "app_control_id" || error.Message == "Conflicting peer identity.";
+                if (!stale || !ControlMediaEnded() || !TryControlKey(signalFrame, out var client, out var ice)) return false;
+                sessions.Remove(new HostPeerId(client, ice, "stale"));
+                try { recovered = sessions.Accept(signalFrame); return true; }
+                catch (FormatException) { return false; }
+            }
+
+            static bool TryControlKey(UuSignalFrame signalFrame, out string client, out string ice)
+            {
+                client = "";
+                ice = "";
+                if (signalFrame.Packet?.Data is not JsonArray values || values.Count < 2 || values[1] is not JsonObject payload) return false;
+                if (payload["client_id"] is not JsonValue clientValue || !clientValue.TryGetValue<string>(out client!) || string.IsNullOrEmpty(client)) return false;
+                var data = payload["data"] as JsonObject ?? payload;
+                return data["ice_id"] is JsonValue iceValue && iceValue.TryGetValue<string>(out ice!) && !string.IsNullOrEmpty(ice);
+            }
         }
 
         async Task ClosePeerAsync()
@@ -347,7 +461,7 @@ public static class HostPreview
         }
     }
 
-    private static async Task StreamAsync(HostMediaPeer media, string ffmpeg, IReadOnlyList<uint> outputs, CancellationToken ct, bool enableInput, Func<Task> onConnected, Action<string> report, HostVideoSettings profiles, Func<string, bool>? recyclePortal)
+    private static async Task StreamAsync(HostMediaPeer media, string ffmpeg, IReadOnlyList<uint> outputs, CancellationToken ct, bool enableInput, Func<Task> onConnected, Action<string> report, HostVideoSettings profiles, Func<string, bool>? recyclePortal, FirstFrameTracker tracker)
     {
         using var connectionDeadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         connectionDeadline.CancelAfter(TimeSpan.FromSeconds(45));
@@ -367,15 +481,20 @@ public static class HostPreview
             {
                 var selected = profiles.SelectedScreen;
                 report("video-source-selected;screen=" + selected + ";track=0");
-                await StreamOutputAsync(media, ffmpeg, outputs[selected], selected, report, ct, profiles, recyclePortal, 0);
+                await StreamOutputAsync(media, ffmpeg, outputs[selected], selected, report, ct, profiles, recyclePortal, tracker, 0);
             }
             return;
         }
         using var streamsStop = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var tasks = outputs.Select((output, index) => StreamOutputAsync(media, ffmpeg, output, index, report, streamsStop.Token, profiles, recyclePortal)).ToList();
-        await Task.WhenAny(tasks);
-        streamsStop.Cancel();
-        await Task.WhenAll(tasks);
+        var tasks = outputs.Select((output, index) => StreamOutputAsync(media, ffmpeg, output, index, report, streamsStop.Token, profiles, recyclePortal, tracker)).ToList();
+        // One screen's capture stall is recovered inside StreamOutputAsync. It must not cancel the others.
+        try { await Task.WhenAll(tasks); }
+        finally
+        {
+            streamsStop.Cancel();
+            try { await Task.WhenAll(tasks); }
+            catch (Exception) { }
+        }
     }
 
     private static async Task StreamAudioAsync(HostMediaPeer media, Action<string> report, CancellationToken ct)
@@ -392,18 +511,23 @@ public static class HostPreview
     }
 
     private static async Task StreamOutputAsync(HostMediaPeer media, string ffmpeg, uint output, int index,
-        Action<string> report, CancellationToken ct, HostVideoSettings profiles, Func<string, bool>? recyclePortal, int? videoTrack = null)
+        Action<string> report, CancellationToken ct, HostVideoSettings profiles, Func<string, bool>? recyclePortal, FirstFrameTracker tracker, int? videoTrack = null)
     {
+        var rebuilds = 0;
+        var gaveUp = false;
         while (!ct.IsCancellationRequested)
         {
         if (profiles.SingleVideoStream && profiles.SelectedScreen != index) return;
-        var profile = profiles.Get(index);
-        DesktopBackend.NoteRequestedFrameRate(output, profile.Fps);
         var seenGeneration = DesktopBackend.PortalGeneration;
+        try
+        {
+        var profile = profiles.Get(index);
+        // X11 paces inside capture. Wayland pacing stays in this loop. Both read the same request.
+        DesktopBackend.NoteRequestedFrameRate(output, profiles.RequestedFps(index));
         CapturedScreen first;
         while (true)
         {
-            try { first = await DesktopBackend.CaptureAsync(output, ct: ct); break; }
+            try { first = await ProbeOutputAsync(output, ct); break; }
             catch (Exception e) when (RefreshInterrupt(e, seenGeneration))
             {
                 report($"portal-capture-refresh-retry;screen={index + 1}");
@@ -411,6 +535,9 @@ public static class HostPreview
                 seenGeneration = DesktopBackend.PortalGeneration;
             }
         }
+        tracker.Observe(index, first.Pending, DesktopBackend.PortalGeneration, report);
+        if (!first.Pending) profiles.AdoptSourceSize(index, (int)first.Width, (int)first.Height);
+        profile = profiles.Get(index);
         await using var encoder = new StreamingH264Encoder(ffmpeg, (int)first.Width, (int)first.Height, first.YInverted, first.ShmFormat, profile.Fps, profile.Width, profile.Height, profile.Bitrate, profile.Crf);
         report($"video-encoder-config;screen={index + 1};width={profile.Width};height={profile.Height};fps={profile.Fps};bitrate={profile.Bitrate};crf={profile.Crf}");
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -424,15 +551,31 @@ public static class HostPreview
             {
                 try
                 {
-                var cadence = System.Diagnostics.Stopwatch.StartNew();
-                var period = (double)System.Diagnostics.Stopwatch.Frequency / profile.Fps;
-                double nextFrame = 0;
+                var lastSent = System.Diagnostics.Stopwatch.GetTimestamp();
+                var lastNew = lastSent;
                 while (true)
                 {
                     try
                     {
-                        if (frame.Width != first.Width || frame.Height != first.Height || frame.ShmFormat != first.ShmFormat || frame.YInverted != first.YInverted)
+                        tracker.Observe(index, frame.Pending, DesktopBackend.PortalGeneration, report);
+                        var geometryChanged = frame.Width != first.Width || frame.Height != first.Height || frame.ShmFormat != first.ShmFormat || frame.YInverted != first.YInverted;
+                        // The placeholder kept the host online. A real buffer with the monitor's
+                        // actual geometry restarts this encoder without failing the session.
+                        if (geometryChanged && first.Pending && !frame.Pending)
+                        {
+                            profiles.AdoptSourceSize(index, (int)frame.Width, (int)frame.Height);
+                            break;
+                        }
+                        if (geometryChanged)
                             throw new IOException("Display format changed; reconnect required.");
+                        if (frame.Pending)
+                        {
+                            Volatile.Write(ref darkness.Value, 0);
+                            blackFrames = 0;
+                        }
+                        else
+                        {
+                        profiles.AdoptSourceSize(index, (int)frame.Width, (int)frame.Height);
                         var dark = PortalCaptureHealth.NearBlack(frame.Pixels);
                         Volatile.Write(ref darkness.Value, dark ? 1 : 0);
                         if (dark)
@@ -447,17 +590,25 @@ public static class HostPreview
                             }
                         }
                         else blackFrames = 0;
+                        }
                         await encoder.WriteAsync(frame.Pixels, (int)frame.Stride, stop.Token);
                     }
                     finally { Array.Clear(frame.Pixels); }
                     if (profiles.Get(index) != profile || (profiles.SingleVideoStream && profiles.SelectedScreen != index)
                         || media.ConsumeKeyFrameRequest(videoTrack ?? index)) break;
-                    nextFrame += period;
-                    var remaining = (nextFrame - cadence.ElapsedTicks) * 1000 / System.Diagnostics.Stopwatch.Frequency;
-                    if (remaining > 0)
-                        await Task.Delay(TimeSpan.FromMilliseconds(Math.Ceiling(remaining)), stop.Token);
-                    else nextFrame = cadence.ElapsedTicks; // Skip missed deadlines instead of bursting to catch up.
-                    try { frame = await DesktopBackend.CaptureAsync(output, ct: stop.Token); }
+                    // Target is min(display refresh, requested fps). A new sample, or a repeat still
+                    // inside the motion hold, is sent on that cadence and never faster.
+                    // Only a screen that stays still past the hold drops to the idle rate.
+                    var sinceNew = System.Diagnostics.Stopwatch.GetElapsedTime(lastNew);
+                    if (!frame.Repeated) lastNew = System.Diagnostics.Stopwatch.GetTimestamp();
+                    var changing = !frame.Repeated || CapturePace.ContentChanging(sinceNew);
+                    var interval = TimeSpan.FromSeconds(1.0 / profiles.OutputFps(index, changing));
+                    var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(lastSent);
+                    if (elapsed < interval)
+                        await Task.Delay(interval - elapsed, stop.Token);
+                    else { /* Encode overran this interval; do not burst to catch up. */ }
+                    lastSent = System.Diagnostics.Stopwatch.GetTimestamp();
+                    try { frame = await ProbeOutputAsync(output, stop.Token); }
                     catch (Exception e) when (RefreshInterrupt(e, seenGeneration))
                     {
                         report($"portal-capture-refresh-retry;screen={index + 1}");
@@ -480,6 +631,7 @@ public static class HostPreview
             var count = 0; long sentBytes = 0;
             var windowBytes = 0L; var windowFrames = 0; var lowWindows = 0;
             var windowStart = System.Diagnostics.Stopwatch.GetTimestamp();
+            var fpsWindowStart = windowStart; var fpsWindowFrames = 0;
             try
             {
             await foreach (var encoded in encoder.ReadAsync(stop.Token))
@@ -493,6 +645,16 @@ public static class HostPreview
                     windowBytes += encoded.Length;
                     count++;
                     windowFrames++;
+                    fpsWindowFrames++;
+                    var fpsElapsed = System.Diagnostics.Stopwatch.GetElapsedTime(fpsWindowStart);
+                    if (fpsElapsed >= TimeSpan.FromSeconds(2) && fpsWindowFrames > 0)
+                    {
+                        var current = profiles.Get(index);
+                        var actual = fpsWindowFrames / fpsElapsed.TotalSeconds;
+                        report($"video-fps;screen={index + 1};display-hz={profiles.DisplayFps(index)};requested={profiles.RequestedFps(index)};target={current.Fps};actual={actual.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}");
+                        fpsWindowStart = System.Diagnostics.Stopwatch.GetTimestamp();
+                        fpsWindowFrames = 0;
+                    }
                     if (count == 1 || count % 150 == 0)
                         report($"video-frames-sent={count};screen={index + 1};fps={count / watch.Elapsed.TotalSeconds:F1};encoded-mbps={sentBytes * 8 / watch.Elapsed.TotalSeconds / 1000000:F2}");
                     var windowElapsed = System.Diagnostics.Stopwatch.GetElapsedTime(windowStart);
@@ -529,7 +691,72 @@ public static class HostPreview
             await Task.WhenAll(producer, consumer);
         }
         finally { stop.Cancel(); Array.Clear(first.Pixels); }
+        rebuilds = 0;
+        gaveUp = false;
         }
+        catch (Exception raw) when (!ct.IsCancellationRequested)
+        {
+            var failure = Root(raw);
+            if (failure is OperationCanceledException) throw;
+            if (DesktopBackend.CaptureRefreshActive || RefreshInterrupt(failure, seenGeneration))
+            {
+                report($"portal-capture-refresh-retry;screen={index + 1}");
+                await DesktopBackend.WaitCaptureReadyAsync(ct);
+                continue;
+            }
+            if (failure is not (TimeoutException or IOException or ObjectDisposedException)) throw;
+            if (SessionLock.IsLocked == true)
+            {
+                // The locker is not a dead stream. Keep the placeholder and the existing pipewiresrc.
+                await Task.Delay(TimeSpan.FromSeconds(5), ct);
+                continue;
+            }
+            // A dead PipeWire stream is rebuilt for this screen only. The other screen and the peer stay up.
+            // After repeated failures, wait and try again instead of cancelling the session.
+            if (++rebuilds > 3)
+            {
+                if (!gaveUp)
+                {
+                    gaveUp = true;
+                    report($"capture-stream-rebuilt;screen={index + 1};reason=gave-up");
+                }
+                await Task.Delay(TimeSpan.FromSeconds(5), ct);
+                rebuilds = 0;
+            }
+            var reason = failure is TimeoutException ? "no-frame" : "pipeline-error";
+            try
+            {
+                if (rebuilds >= 3 && DesktopBackend.HasPortalRestoreToken())
+                {
+                    await DesktopBackend.RefreshPortalAsync(DesktopBackend.PortalInputEnabled, ct);
+                    reason = "portal-restore";
+                }
+                else await DesktopBackend.RebuildCaptureAsync(output, ct);
+            }
+            catch (Exception refresh) when (refresh is IOException or InvalidOperationException or TimeoutException
+                or DesktopSessionClosedException or UnauthorizedAccessException or FormatException or NotSupportedException or ObjectDisposedException)
+            {
+                if (!gaveUp)
+                {
+                    gaveUp = true;
+                    report($"capture-stream-rebuilt;screen={index + 1};reason=gave-up");
+                }
+                await Task.Delay(TimeSpan.FromSeconds(5), ct);
+                rebuilds = 0;
+                continue;
+            }
+            report($"capture-stream-rebuilt;screen={index + 1};reason={reason}");
+        }
+        }
+    }
+
+    private static Task<CapturedScreen> ProbeOutputAsync(uint output, CancellationToken ct)
+        => DesktopBackend.CaptureOrPendingAsync(output, ct);
+
+    private static Exception Root(Exception error)
+    {
+        while (error is AggregateException aggregate && aggregate.InnerException is not null) error = aggregate.InnerException;
+        return error;
     }
 
     private static bool RefreshInterrupt(Exception error, int seenGeneration) =>
@@ -577,6 +804,8 @@ public static class HostPreview
         return outputs.Select((output, index) =>
         {
             var milliHz = rates.GetValueOrDefault(output);
+            if (milliHz <= 0) milliHz = rates.GetValueOrDefault(DesktopBackend.ResolveOutput(output));
+            if (milliHz <= 0) milliHz = DesktopBackend.StoredRefreshMilliHz(output);
             var limit = HostDisplayInfo.FrameRateLimit(milliHz);
             report($"display-frame-rate;screen={index + 1};refresh-millihz={milliHz};max-fps={limit}");
             return limit;

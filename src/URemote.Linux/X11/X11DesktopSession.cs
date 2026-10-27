@@ -121,7 +121,7 @@ internal sealed class X11DesktopSession : IAsyncDisposable
             lock (gate) pixels = (byte[])slot.Pixels.Clone();
         }
         NoteRate(monitor, slot, requested, target);
-        return Frame(monitor, pixels);
+        return Frame(monitor, pixels, repeated: !changed);
     }
 
     internal IDesktopPointer CreatePointer(uint output, uint width, uint height)
@@ -206,8 +206,8 @@ internal sealed class X11DesktopSession : IAsyncDisposable
         slot.Window = Stopwatch.GetTimestamp();
     }
 
-    private static CapturedScreen Frame(X11Monitor monitor, byte[] pixels)
-        => new(monitor.Id, (uint)monitor.Width, (uint)monitor.Height, (uint)(monitor.Width * 4), 1, false, pixels);
+    private static CapturedScreen Frame(X11Monitor monitor, byte[] pixels, bool repeated = false)
+        => new(monitor.Id, (uint)monitor.Width, (uint)monitor.Height, (uint)(monitor.Width * 4), 1, false, pixels, Repeated: repeated);
 
     private void ThrowIfDisposed()
     {

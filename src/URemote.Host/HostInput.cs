@@ -22,7 +22,7 @@ internal static class HostInput
         {
         foreach (var output in enableInput ? outputs : Array.Empty<uint>())
         {
-            var screen = await DesktopBackend.CaptureAsync(output, ct: ct);
+            var screen = await DesktopBackend.CaptureOrPendingAsync(output, ct);
             Array.Clear(screen.Pixels);
             var pointer = await DesktopBackend.CreatePointerAsync(output, ct, report, screen.Width, screen.Height);
             displays.Add((screen.Width, screen.Height, pointer));
@@ -80,10 +80,7 @@ internal static class HostInput
                     if (accepted)
                         for (var screen = 0; screen < outputs.Count; screen++)
                             if (update.Screen < 0 || update.Screen == screen)
-                            {
-                                DesktopBackend.NoteRequestedFrameRate(outputs[screen], profiles.Get(screen).Fps);
                                 report($"video-quality-applied;screen={screen + 1};" + profiles.Describe(screen));
-                            }
                     media.SendData(message.ChannelLabel, HostCaptureProtocol.Reply(update, accepted));
                     report(accepted ? "capture-settings-applied" : "capture-settings-rejected");
                     continue;

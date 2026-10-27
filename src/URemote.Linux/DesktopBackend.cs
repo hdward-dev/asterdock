@@ -36,9 +36,11 @@ public static class DesktopBackend
     private static long pipelineQuietUntil;
     private static int captureRefreshActive;
     private static int portalGeneration;
+    private static int portalWantsInput;
     internal static PortalDesktopSession? CurrentPortal => Volatile.Read(ref portal);
     internal static int PortalGeneration => Volatile.Read(ref portalGeneration);
     internal static bool CaptureRefreshActive => Volatile.Read(ref captureRefreshActive) != 0;
+    internal static bool PortalInputEnabled => Volatile.Read(ref portalWantsInput) != 0;
     public static bool UsingPortal => Volatile.Read(ref portal) is not null;
     public static bool RecyclePending { get { lock (recycleLock) return recycleReason is not null; } }
     // True while a portal recycle is queued or a transport reset is being absorbed.
@@ -134,6 +136,41 @@ public static class DesktopBackend
     {
         lock (aliasLock) outputAlias.Clear();
     }
+    // Host output ids survive a portal refresh. Publish the current node's refresh under those ids too.
+    internal static Dictionary<uint, int> PublishRefresh(IReadOnlyList<PortalStreamBox> layout, IReadOnlyDictionary<uint, int> mapped)
+    {
+        var published = new Dictionary<uint, int>();
+        foreach (var box in layout)
+        {
+            var hz = mapped.GetValueOrDefault(box.Node);
+            if (hz <= 0) hz = box.RefreshMilliHz;
+            if (hz > 0) published[box.Node] = hz;
+        }
+        CopyAliasKeys(published);
+        return published;
+    }
+    internal static int StoredRefreshMilliHz(uint output)
+    {
+        var active = Volatile.Read(ref portal);
+        return active is null ? 0 : active.RefreshOf(output);
+    }
+    private static void CopyAliasKeys(Dictionary<uint, int> rates)
+    {
+        uint[] sources;
+        lock (aliasLock) sources = outputAlias.Keys.ToArray();
+        foreach (var source in sources)
+        {
+            var id = source;
+            var guard = 0;
+            lock (aliasLock)
+            {
+                while (outputAlias.TryGetValue(id, out var next) && next != id && guard++ < 8)
+                    id = next;
+            }
+            if (id != source && rates.TryGetValue(id, out var hz) && hz > 0)
+                rates[source] = hz;
+        }
+    }
     internal static async Task WaitCaptureReadyAsync(CancellationToken ct)
     {
         for (var i = 0; i < 200 && Volatile.Read(ref captureRefreshActive) != 0; i++)
@@ -214,6 +251,7 @@ public static class DesktopBackend
             var globals = await WaylandCapabilities.DiscoverAsync(ct);
             if (HasNativeCapture(globals) && (!enableInput || HasNativeInput(globals))) return new Lease(false);
             if (Volatile.Read(ref portal) is not null) throw new InvalidOperationException("已有桌面共享会话。");
+            Interlocked.Exchange(ref portalWantsInput, enableInput ? 1 : 0);
             var opened = await PortalDesktopSession.OpenAsync(enableInput, ct);
             ResetOutputAliasesForTests();
             Volatile.Write(ref portal, opened);
@@ -235,6 +273,45 @@ public static class DesktopBackend
         if (active is not null) return await active.CaptureAsync(ResolveOutput(output), ct);
         return await WaylandScreenCapture.CaptureAsync(output, includeCursor, ct);
     }
+    // One screen with no buffer, or a dead pipeline, becomes a black frame of that monitor's size.
+    internal static async Task<CapturedScreen> CaptureOrPendingAsync(uint output, CancellationToken ct)
+    {
+        try { return await CaptureAsync(output, ct: ct); }
+        catch (Exception e) when (!ct.IsCancellationRequested && e is TimeoutException or IOException or ObjectDisposedException or FormatException or ArgumentException)
+        {
+            var size = OutputSize(output);
+            var width = size.Width >= 2 ? size.Width : 1280;
+            var height = size.Height >= 2 ? size.Height : 720;
+            return CapturePlaceholder.Create(output, width, height);
+        }
+    }
+    // Portal logical size for a stream that has not delivered a buffer yet.
+    internal static (int Width, int Height) OutputSize(uint output)
+    {
+        var active = Volatile.Read(ref portal);
+        if (active is null) return (0, 0);
+        var node = ResolveOutput(output);
+        foreach (var box in active.Layout)
+            if (box.Node == node && box.Width >= 2 && box.Height >= 2)
+                return (box.Width, box.Height);
+        return (0, 0);
+    }
+    // One screen's PipeWire pipeline. Does not open a portal session, so it cannot prompt.
+    // Returns false when the screen is locked: a blank output is left running.
+    internal static async Task<bool> RebuildCaptureAsync(uint output, CancellationToken ct)
+    {
+        if (!OperatingSystem.IsLinux() || SessionLock.IsLocked == true) return false;
+        if (Volatile.Read(ref captureRefreshActive) != 0) await WaitCaptureReadyAsync(ct);
+        if (SessionLock.IsLocked == true) return false;
+        if (Volatile.Read(ref portal) is not { } active) return false;
+        await active.RebuildStreamAsync(ResolveOutput(output), ct);
+        return SessionLock.IsLocked != true;
+    }
+    internal static bool HasPortalRestoreToken()
+    {
+        if (!OperatingSystem.IsLinux() || Volatile.Read(ref portal) is null) return false;
+        return new PortalRestoreStore(PortalInputEnabled).Peek() is not null;
+    }
     // Portal stream boxes, copied so a later recycle cannot mutate a lock-screen mapping.
     internal static ScreenRect[] ScreenLayout()
     {
@@ -252,7 +329,14 @@ public static class DesktopBackend
         if (OperatingSystem.IsMacOS()) return new MacDesktop.Pointer(output);
         if (LinuxSessionKind.UseX11())
             return (Volatile.Read(ref x11) ?? throw new InvalidOperationException("X11 桌面会话未打开。")).CreatePointer(output, width, height);
-        IDesktopPointer primary = Volatile.Read(ref portal) is { } active ? active.CreatePointer(output) : await WaylandVirtualPointer.CreateAsync(output, ct);
+        IDesktopPointer primary;
+        if (Volatile.Read(ref portal) is { } active)
+        {
+            // The host already has this screen's geometry. A pending or locked pipeline must not reject the pointer.
+            var known = width >= 2 && height >= 2 || OutputSize(output).Width >= 2;
+            primary = active.CreatePointer(output, allowUnbound: known);
+        }
+        else primary = await WaylandVirtualPointer.CreateAsync(output, ct);
         // KWin's lock screen ignores portal and wl_pointer injection. Keep a uinput absolute pointer ready to take over.
         if (!OperatingSystem.IsLinux()) return primary;
         return await LockScreenInput.WrapPointerAsync(output, primary, width, height, report ?? (_ => { }), ct);
@@ -321,7 +405,9 @@ public static class DesktopBackend
         var active = Volatile.Read(ref portal);
         if (active is null)
             return outputs.Where(item => item.MilliHz > 0).ToDictionary(item => item.Name, item => item.MilliHz);
-        return PortalOutputRefresh.Map(active.Layout, outputs);
+        var mapped = PortalOutputRefresh.Map(active.CopyLayout(), outputs);
+        active.RememberRefresh(mapped);
+        return PublishRefresh(active.CopyLayout(), mapped);
     }
 
     public static void NoteRequestedFrameRate(uint output, int fps) => X11FrameRateNotes.Note(output, fps);

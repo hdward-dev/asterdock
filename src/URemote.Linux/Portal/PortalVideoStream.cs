@@ -11,6 +11,9 @@ internal static class NativeGst
     [DllImport(Gst)] internal static extern nint gst_parse_launch(string description, out nint error);
     [DllImport(Gst)] internal static extern nint gst_bin_get_by_name(nint bin, string name);
     [DllImport(Gst)] internal static extern int gst_element_set_state(nint element, int state);
+    [DllImport(Gst)] internal static extern int gst_element_get_state(nint element, out int state, out int pending, ulong timeout);
+    [DllImport(Gst)] internal static extern nint gst_bus_pop(nint bus);
+    [DllImport(Gst)] internal static extern void gst_bus_set_flushing(nint bus, int flushing);
     [DllImport(Gst)] internal static extern void gst_object_unref(nint value);
     [DllImport(Gst)] internal static extern void gst_mini_object_unref(nint value);
     [DllImport(Gst)] internal static extern nint gst_element_get_bus(nint element);
@@ -70,25 +73,31 @@ internal static class NativeGst
 
 internal sealed class PortalVideoStream : IAsyncDisposable
 {
+    // One NULL transition at a time, including across screens. Overlapping teardowns race the PipeWire data thread.
+    private static readonly SemaphoreSlim lifetime = new(1, 1);
     private readonly SemaphoreSlim gate = new(1);
     private nint pipeline, sink, bus;
     private CapturedScreen? cached;
     private long cachedAt;
     private readonly uint output;
-    // A stuck pull must not keep re-encoding an ancient black frame at the full capture rate.
-    internal static readonly TimeSpan CachedFrameLifetime = TimeSpan.FromMilliseconds(250);
-    internal static bool ReuseCachedFrame(TimeSpan age) => age >= TimeSpan.Zero && age <= CachedFrameLifetime;
+    // KDE's screencast only produces a buffer on damage. Any previous frame is the static
+    // picture: replay it instead of failing the peer. Pacing, not this cache, decides the rate.
+    internal static bool ReuseCachedFrame(TimeSpan age) => age >= TimeSpan.Zero;
     private bool disposed;
-    internal PortalVideoStream(uint output, int fd) : this(output,
-        $"pipewiresrc fd={fd} path={output} do-timestamp=true ! videoconvert ! video/x-raw,format=BGRA ! appsink name=frames max-buffers=1 drop=true sync=false") { }
+    internal PortalVideoStream(uint output, int fd) : this(output, fd,
+        $"pipewiresrc fd={fd} path={output} do-timestamp=true always-copy=true ! videoconvert ! video/x-raw,format=BGRA ! appsink name=frames max-buffers=1 drop=true sync=false") { }
     // Internal overload allows tests to use videotestsrc without a screen or Portal authorization.
-    internal PortalVideoStream(uint output, string pipelineDescription)
+    internal PortalVideoStream(uint output, string pipelineDescription) : this(output, -1, pipelineDescription) { }
+    private PortalVideoStream(uint output, int fd, string pipelineDescription)
     {
         this.output = output;
         NativeGst.Initialize();
+        lifetime.Wait();
+        var parsed = false;
         try
         {
             pipeline = NativeGst.gst_parse_launch(pipelineDescription, out var error);
+            parsed = pipeline != 0;
             NativeGlib.Check(error, "创建屏幕管线");
             if (pipeline == 0) throw new IOException("无法创建屏幕管线。");
             sink = NativeGst.gst_bin_get_by_name(pipeline, "frames");
@@ -96,19 +105,28 @@ internal sealed class PortalVideoStream : IAsyncDisposable
             if (sink == 0 || bus == 0) throw new IOException("无法创建屏幕接收器。");
             if (NativeGst.gst_element_set_state(pipeline, 4) == 0) throw new IOException("无法启动屏幕管线。");
         }
-        catch { Close(); throw; }
+        catch
+        {
+            CloseCore();
+            // parse_launch stores the fd on the element, which closes it from NULL.
+            // Close it ourselves only when no element was created.
+            if (!parsed && fd >= 0) UnixFileDescriptor.Close(fd);
+            throw;
+        }
+        finally { lifetime.Release(); }
     }
-    internal async Task<CapturedScreen> CaptureAsync(CancellationToken ct)
+    internal Task<CapturedScreen> CaptureAsync(CancellationToken ct) => CaptureAsync(ct, TimeSpan.FromSeconds(10));
+    internal async Task<CapturedScreen> CaptureAsync(CancellationToken ct, TimeSpan firstFrameBudget)
     {
         await gate.WaitAsync(ct);
         try
         {
             ObjectDisposedException.ThrowIf(disposed, this);
-            return await Task.Run(() => Capture(ct), ct);
+            return await Task.Run(() => Capture(ct, firstFrameBudget), ct);
         }
         finally { gate.Release(); }
     }
-    private CapturedScreen Capture(CancellationToken ct)
+    private CapturedScreen Capture(CancellationToken ct, TimeSpan firstFrameBudget)
     {
         var deadline = Stopwatch.StartNew();
         nint sample;
@@ -117,12 +135,14 @@ internal sealed class PortalVideoStream : IAsyncDisposable
             ct.ThrowIfCancellationRequested();
             var error = NativeGst.gst_bus_pop_filtered(bus, 2); // GST_MESSAGE_ERROR
             if (error != 0) { NativeGst.gst_mini_object_unref(error); throw new IOException("PipeWire 屏幕管线已失败。"); }
-            var fresh = cached is not null && ReuseCachedFrame(Stopwatch.GetElapsedTime(cachedAt));
-            sample = NativeGst.gst_app_sink_try_pull_sample(sink, fresh ? 0ul : 50_000_000ul);
+            // A queued sample always wins. The short wait only applies when one may be in flight;
+            // an idle monitor must not block here until the peer times out.
+            var haveCache = cached is not null && ReuseCachedFrame(Stopwatch.GetElapsedTime(cachedAt));
+            sample = NativeGst.gst_app_sink_try_pull_sample(sink, haveCache ? 5_000_000ul : 50_000_000ul);
             if (sample != 0) break;
-            if (NativeGst.gst_app_sink_is_eos(sink) != 0) throw new DesktopSessionClosedException("屏幕共享已结束。");
-            if (fresh && cached is not null) return cached with { Pixels = (byte[])cached.Pixels.Clone() };
-            if (deadline.Elapsed > TimeSpan.FromSeconds(10)) throw new TimeoutException("等待首帧超时。");
+            if (NativeGst.gst_app_sink_is_eos(sink) != 0) throw new IOException("PipeWire 屏幕流已结束。");
+            if (haveCache && cached is not null) return cached with { Pixels = (byte[])cached.Pixels.Clone(), Repeated = true };
+            if (deadline.Elapsed > firstFrameBudget) throw new TimeoutException("等待首帧超时。");
         } while (true);
         try
         {
@@ -184,11 +204,24 @@ internal sealed class PortalVideoStream : IAsyncDisposable
         if (last < 0 || Math.Max((long)offset, last) + width * 4L > (long)size) throw new FormatException("视频平面超出缓冲区。");
         return checked((int)WaylandScreenCapture.ValidateBuffer((uint)width, (uint)height, (uint)width * 4));
     }
-    private void Close()
+    private void CloseCore()
     {
-        if (pipeline != 0) NativeGst.gst_element_set_state(pipeline, 1);
+        // GST_STATE_NULL is asynchronous. Unref before the data thread finishes
+        // client_node_transport and pw_impl_node_set_io runs on a freed node.
+        if (pipeline != 0)
+        {
+            NativeGst.gst_element_set_state(pipeline, 1);
+            NativeGst.gst_element_get_state(pipeline, out _, out _, 5_000_000_000ul);
+        }
+        if (bus != 0)
+        {
+            NativeGst.gst_bus_set_flushing(bus, 1);
+            nint message;
+            while ((message = NativeGst.gst_bus_pop(bus)) != 0)
+                NativeGst.gst_mini_object_unref(message);
+            NativeGst.gst_object_unref(bus);
+        }
         if (sink != 0) NativeGst.gst_object_unref(sink);
-        if (bus != 0) NativeGst.gst_object_unref(bus);
         if (pipeline != 0) NativeGst.gst_object_unref(pipeline);
         pipeline = sink = bus = 0;
         if (cached is not null) Array.Clear(cached.Pixels);
@@ -197,7 +230,14 @@ internal sealed class PortalVideoStream : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await gate.WaitAsync();
-        try { if (!disposed) { disposed = true; Close(); } }
+        try
+        {
+            if (disposed) return;
+            disposed = true;
+            await lifetime.WaitAsync();
+            try { CloseCore(); }
+            finally { lifetime.Release(); }
+        }
         finally { gate.Release(); }
     }
 }

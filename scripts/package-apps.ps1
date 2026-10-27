@@ -1,9 +1,12 @@
 param(
-    [string]$OutputDirectory = ""
+    [string]$OutputDirectory = "",
+    # Package one installable app id (for example invoice-printer). Empty packages every app.
+    [string]$Name = ""
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot "appbundle-assets.ps1")
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $OutputDirectory = Join-Path $repoRoot "artifacts/release/apps"
 }
@@ -15,6 +18,12 @@ $applications = @(Get-ChildItem -Path (Join-Path $repoRoot "src/*.Module/app.jso
         @{ Name = $manifest.id; Project = $_.Directory.Name }
     }
 })
+if (-not [string]::IsNullOrWhiteSpace($Name)) {
+    $applications = @($applications | Where-Object { $_.Name -eq $Name })
+    if ($applications.Count -eq 0) {
+        throw "No installable application with id '$Name'."
+    }
+}
 
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 
@@ -71,26 +80,18 @@ foreach ($application in $applications) {
             }
         }
 
-        # These assemblies and native assets are supplied by the AsterDock host.
-        $sharedAssemblyPatterns = @(
-            "AsterDock.Contracts.dll", "AsterDock.UI.dll", "Avalonia*.dll", "HarfBuzzSharp.dll",
-            "Irihi.*.dll", "MicroCom.Runtime.dll", "Semi.*.dll", "SkiaSharp.dll",
-            "Tmds.DBus.Protocol.dll", "Ursa*.dll"
-        )
-        foreach ($pattern in $sharedAssemblyPatterns) {
-            Get-ChildItem -Path $stagingDirectory -File -Filter $pattern | Remove-Item -Force
-        }
-        Get-ChildItem -Path $stagingDirectory -File -Filter "libAvaloniaNative.*" | Remove-Item -Force
-        Get-ChildItem -Path $stagingDirectory -File -Filter "libHarfBuzzSharp.*" | Remove-Item -Force
-        Get-ChildItem -Path $stagingDirectory -File -Filter "libSkiaSharp.*" | Remove-Item -Force
-        Get-ChildItem -Path $stagingDirectory -Filter "*.pdb" -File -Recurse | Remove-Item -Force
-        Remove-Item -LiteralPath (Join-Path $stagingDirectory "runtimes") -Recurse -Force -ErrorAction SilentlyContinue
+        # Host assemblies and Avalonia/Skia/HarfBuzz natives are supplied by AsterDock.
+        # Application natives under runtimes/<rid>/native, including PDFium, stay in the bundle.
+        Remove-HostSuppliedAppAssets -StagingDirectory $stagingDirectory
 
         [System.IO.Compression.ZipFile]::CreateFromDirectory(
             $stagingDirectory,
             $bundlePath,
             [System.IO.Compression.CompressionLevel]::Optimal,
             $false)
+        if ($application.Name -eq "invoice-printer") {
+            Assert-InvoicePrinterPdfium -StagingDirectory $stagingDirectory -BundlePath $bundlePath
+        }
         Write-Output $bundlePath
     }
     finally {

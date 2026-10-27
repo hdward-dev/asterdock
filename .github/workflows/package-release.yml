@@ -289,6 +289,8 @@ jobs:
       # module except home, plus VMCUBE-QEMU-<rid>.zip. A later change that also
       # writes VMCUBE-SPICE-<rid>.zip is uploaded by the glob below; this job
       # does not need a new step for that zip.
+      # Invoice Printer packaging fails if linux-x64/arm64, win-x64/arm64, or
+      # osx-x64/arm64 PDFium is missing from the universal appbundle.
       - name: Package universal lightweight applications
         shell: pwsh
         run: ./scripts/package-apps.ps1

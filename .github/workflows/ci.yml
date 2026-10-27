@@ -63,6 +63,13 @@ jobs:
       - name: Check isolated file sharing runtime and HTTP lifecycle
         run: dotnet run --project tests/FileShare.Checks --configuration Release --no-build
 
+      - name: Check Invoice Printer packaging keeps PDFium
+        shell: pwsh
+        run: |
+          ./tests/test-appbundle-assets.ps1
+          ./scripts/package-apps.ps1 -Name invoice-printer -OutputDirectory artifacts/invoice-printer-check
+          ./tests/test-appbundle-assets.ps1 -Bundle artifacts/invoice-printer-check/AsterDock-App-invoice-printer.appbundle
+
   release-resolver:
     name: Check Nightly and stable tag rules
     runs-on: ubuntu-24.04

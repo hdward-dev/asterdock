@@ -8,10 +8,22 @@
     <MajorUpgrade DowngradeErrorMessage="已安装更新版本的 AsterDock。" />
     <MediaTemplate EmbedCab="yes" />
 
+    <!--
+      Advertised shortcuts do not use the icon embedded in AsterDock.Host.exe.
+      Windows Installer copies this row to %SystemRoot%\Installer\{ProductCode}\AsterDock.exe
+      and the Start Menu shortcut, Desktop shortcut, and Apps & Features icon all read it.
+      The id ends in .exe so it matches the shortcut target. package-windows.ps1 builds
+      that PE from src/AsterDock.Host/Assets/Brand/AsterDock.ico. The .ico is PNG-compressed,
+      and storing those bytes directly shows a blank shortcut icon.
+    -->
+    <Icon Id="AsterDock.exe" SourceFile="$(var.BrandIcon)" />
+    <Property Id="ARPPRODUCTICON" Value="AsterDock.exe" />
+
     <StandardDirectory Id="ProgramFiles6432Folder">
       <Directory Id="INSTALLFOLDER" Name="AsterDock" />
     </StandardDirectory>
     <StandardDirectory Id="ProgramMenuFolder" />
+    <StandardDirectory Id="DesktopFolder" />
 
     <Feature Id="MainFeature" Title="AsterDock" Level="1">
       <ComponentRef Id="MainExecutable" />
@@ -29,6 +41,15 @@
                     Directory="ProgramMenuFolder"
                     Name="AsterDock"
                     WorkingDirectory="INSTALLFOLDER"
+                    Icon="AsterDock.exe"
+                    IconIndex="0"
+                    Advertise="yes" />
+          <Shortcut Id="DesktopShortcut"
+                    Directory="DesktopFolder"
+                    Name="AsterDock"
+                    WorkingDirectory="INSTALLFOLDER"
+                    Icon="AsterDock.exe"
+                    IconIndex="0"
                     Advertise="yes" />
         </File>
       </Component>

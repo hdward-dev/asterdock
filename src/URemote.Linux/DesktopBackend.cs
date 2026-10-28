@@ -388,7 +388,9 @@ public static class DesktopBackend
         HostControlInput.ValidateText(text);
         if (LinuxSessionKind.UseX11())
             return (Volatile.Read(ref x11) ?? throw new InvalidOperationException("X11 桌面会话未打开。")).TypeTextAsync(text, ct);
-        return OperatingSystem.IsWindows() ? WindowsDesktop.TypeTextAsync(text, ct) : OperatingSystem.IsMacOS() ? MacDesktop.TypeTextAsync(text, ct) : Volatile.Read(ref portal) is { } active ? active.TypeTextAsync(text, ct) : WaylandVirtualKeyboard.TypeTextAsync(text, ct);
+        if (OperatingSystem.IsWindows()) return WindowsDesktop.TypeTextAsync(text, ct);
+        if (OperatingSystem.IsMacOS()) return MacDesktop.TypeTextAsync(text, ct);
+        return Volatile.Read(ref portal) is { } active ? CommittedTextInjector.InjectPortalAsync(active, text, ct) : WaylandVirtualKeyboard.TypeTextAsync(text, ct);
     }
     public static async Task<IReadOnlyDictionary<uint, int>> ReadRefreshRatesAsync(CancellationToken ct)
     {

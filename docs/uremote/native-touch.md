@@ -27,13 +27,22 @@ recreate them on another screen. Unmapped or ambiguous outputs are rejected.
 
 ## Text input compatibility
 
-Native committed text is sent through `EI_DEVICE_CAP_TEXT` when advertised by
-the compositor, using libei 1.6 UTF-8 support. Library version alone does not
-prove the compositor supports text. Without that capability, committed phone
-text is rejected with a structural diagnostic instead of dropping the remote
-connection. Physical keyboard input still works, including typing through the
-controlled desktop's input method. Automatic clipboard-based text injection is
-not implemented; it must not be represented as native IME input.
+Native committed text is sent through `EI_DEVICE_CAP_TEXT` when the session is
+unlocked and the compositor advertises it, using libei 1.6 UTF-8 frames of at
+most 254 bytes. Library version alone does not prove the compositor supports
+text. KDE Plasma commonly omits that capability. `NotifyKeyboardKeysym` cannot
+be used after `ConnectToEIS`. The fallback is KWin fake-input `keyboard_keysym`
+(protocol version 6), including while the screen is locked, because the lock
+filter still delivers those key events to the greeter and ignores EIS text.
+If that global is absent, an unlocked session tries the virtual-keyboard
+Unicode map. Clipboard paste with Ctrl+V is only the last resort: the previous
+text clipboard is restored, a non-text clipboard is left untouched, and the
+typed characters are not logged. A missing path reports
+`committed-text-unavailable` and leaves the remote connection up. Physical
+keyboard input still works, including typing through the controlled desktop's
+input method. Success is `committed-text-applied`, with one
+`committed-text-route=` line naming `eis`, `kwin-keysym`, `virtual-keyboard`,
+or `paste`.
 
 ## Verification
 

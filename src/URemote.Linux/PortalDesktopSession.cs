@@ -253,11 +253,17 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
         try { await KeyAsync(method, code, false, timeout.Token); }
         catch (Exception e) when (e is IOException or InvalidOperationException or OperationCanceledException or DesktopSessionClosedException) { }
     }
+    internal bool SupportsCommittedText => !disposed && inputSession?.SupportsText == true;
     public Task TypeTextAsync(string text, CancellationToken ct)
     {
-        ct.ThrowIfCancellationRequested(); CheckAlive(); HostControlInput.ValidateText(text);
+        ct.ThrowIfCancellationRequested(); CheckAlive();
         if (!enableInput || inputSession is null) throw new InvalidOperationException("文字输入未授权。");
-        if (!inputSession.Text(text)) throw new NotSupportedException("当前桌面未提供 EIS 文字输入，请使用被控端输入法或复制粘贴。");
+        // libei rejects UTF-8 frames longer than 254 bytes. Each chunk is its own frame.
+        foreach (var chunk in CommittedText.EisChunks(text))
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!inputSession.Text(chunk)) throw new NotSupportedException("当前桌面未提供 EIS 文字输入，请使用被控端输入法或复制粘贴。");
+        }
         return Task.CompletedTask;
     }
     internal bool TryApplyTouch(uint output, HostTouchEvent input)

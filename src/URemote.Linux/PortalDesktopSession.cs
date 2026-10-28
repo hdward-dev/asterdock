@@ -105,7 +105,7 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
             RememberOutput(node, x, y, width, height);
         }
         CheckAlive();
-        Outputs = layout.Select(box => new WaylandGlobal(box.Node, "wl_output", 1)).ToArray();
+        PublishOutputs();
         if (input)
         {
             if (touchMappings.Count != streams.Count || touchMappings.Values.Distinct().Count() != streams.Count)
@@ -387,6 +387,40 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
         }
     }
 
+    // Hardware mode from the wl_output matched to this stream. Capture and the display list
+    // use it; the portal logical size stays on Width/Height for pointer layout.
+    internal void RememberModes(IReadOnlyDictionary<uint, PortalDisplayBinding> bound)
+    {
+        lock (streamLock)
+        {
+            for (var i = 0; i < layout.Count; i++)
+            {
+                var box = layout[i];
+                if (!bound.TryGetValue(box.Node, out var mode)) continue;
+                var hz = mode.RefreshMilliHz > 0 ? mode.RefreshMilliHz : box.RefreshMilliHz;
+                var width = mode.Width >= 2 ? mode.Width : box.ModeWidth;
+                var height = mode.Height >= 2 ? mode.Height : box.ModeHeight;
+                if (hz == box.RefreshMilliHz && width == box.ModeWidth && height == box.ModeHeight) continue;
+                layout[i] = box with { RefreshMilliHz = hz, ModeWidth = width, ModeHeight = height };
+            }
+        }
+    }
+
+    private void PublishOutputs()
+    {
+        lock (streamLock)
+        {
+            layout.Sort(static (a, b) =>
+            {
+                var compare = a.X.CompareTo(b.X);
+                if (compare != 0) return compare;
+                compare = a.Y.CompareTo(b.Y);
+                return compare != 0 ? compare : a.Node.CompareTo(b.Node);
+            });
+            Outputs = layout.Select(box => new WaylandGlobal(box.Node, "wl_output", 1)).ToArray();
+        }
+    }
+
     internal PortalStreamBox[] CopyLayout()
     {
         lock (streamLock) return layout.ToArray();
@@ -413,8 +447,8 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
             layout.RemoveAll(box => box.Node == node);
             layout.Add(new PortalStreamBox(node, x, y, width, height, refreshMilliHz));
             streams.Remove(node);
-            Outputs = layout.Select(box => new WaylandGlobal(box.Node, "wl_output", 1)).ToArray();
         }
+        PublishOutputs();
     }
 
     internal bool HasPipelineForTests(uint node)

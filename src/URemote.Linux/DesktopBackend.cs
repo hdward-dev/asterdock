@@ -316,8 +316,23 @@ public static class DesktopBackend
         if (active is null) return (0, 0);
         var node = ResolveOutput(output);
         foreach (var box in active.Layout)
+            if (box.Node == node && box.ModeWidth >= 2 && box.ModeHeight >= 2)
+                return (box.ModeWidth, box.ModeHeight);
+        foreach (var box in active.Layout)
             if (box.Node == node && box.Width >= 2 && box.Height >= 2)
                 return (box.Width, box.Height);
+        return (0, 0);
+    }
+    // Matched wl_output mode. Zero means this screen has no hardware binding yet, so a
+    // later real frame may still replace a placeholder. A binding is a hard ceiling.
+    internal static (int Width, int Height) BoundMode(uint output)
+    {
+        var active = Volatile.Read(ref portal);
+        if (active is null) return (0, 0);
+        var node = ResolveOutput(output);
+        foreach (var box in active.Layout)
+            if ((box.Node == node || box.Node == output) && box.ModeWidth >= 2 && box.ModeHeight >= 2)
+                return (box.ModeWidth, box.ModeHeight);
         return (0, 0);
     }
     // One screen's PipeWire pipeline. Does not open a portal session, so it cannot prompt.
@@ -512,8 +527,9 @@ public static class DesktopBackend
         var active = Volatile.Read(ref portal);
         if (active is null)
             return outputs.Where(item => item.MilliHz > 0).ToDictionary(item => item.Name, item => item.MilliHz);
-        var mapped = PortalOutputRefresh.Map(active.CopyLayout(), outputs);
-        active.RememberRefresh(mapped);
+        var bound = PortalOutputRefresh.Bind(active.CopyLayout(), outputs);
+        active.RememberModes(bound);
+        var mapped = bound.Where(item => item.Value.RefreshMilliHz > 0).ToDictionary(item => item.Key, item => item.Value.RefreshMilliHz);
         return PublishRefresh(active.CopyLayout(), mapped);
     }
 

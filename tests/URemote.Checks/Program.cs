@@ -317,6 +317,25 @@ Check(placeholderSize.Apply(new(0, 2560, 1440, 0, 0, 1, 0, 1)) && placeholderSiz
 placeholderSize.AdoptSourceSize(0, 3840, 2160);
 Check(placeholderSize.Get(0).Width == 2560,
     "an explicit controller size is kept when another real frame arrives");
+var dualModes = new HostVideoSettings([(3840, 2160), (3840, 2160)], frameRateLimits: [60, 60]);
+dualModes.BindCeiling(0, 2560, 1440);
+dualModes.BindCeiling(1, 3840, 2160);
+Check(dualModes.Get(0) is { Width: 2560, Height: 1440, Fps: 60 } && dualModes.Get(1) is { Width: 3840, Height: 2160 },
+    "each screen ceiling replaces a stale 4K profile without touching the other screen");
+Check(dualModes.RejectsSourceSize(0, 3840, 2160) && !dualModes.RejectsSourceSize(1, 3840, 2160)
+    && !dualModes.RejectsSourceSize(0, 2560, 1440),
+    "a 4K buffer is foreign on the 1440p screen and native on the 4K screen");
+dualModes.AdoptSourceSize(0, 3840, 2160);
+dualModes.AdoptSourceSize(0, 1970, 1108);
+Check(dualModes.Get(0) is { Width: 2560, Height: 1440 },
+    "neither a foreign 4K frame nor a logical-size buffer replaces the 1440p mode");
+Check(dualModes.Apply(new(0, 3840, 2160, 30, 2, 1, 0, 1))
+    && dualModes.Get(0) is { Width: 2560, Height: 1440, Fps: 30 }
+    && dualModes.Get(1) is { Width: 3840, Height: 2160, Fps: 60 },
+    "a controller 4K request is clamped to that screen and does not retarget the other track");
+dualModes.AdoptSourceSize(0, 3840, 2160);
+Check(dualModes.Get(0).Width == 2560,
+    "the clamped screen stays at its mode after another 4K buffer");
 var profiles = new HostVideoSettings([(2560, 1440), (1920, 1080)]);
 Check(profiles.Apply(new(-2, -1, -1, 60, 2, 1, 0, 1))
     && profiles.Get(0) is { Width: 2560, Height: 1440, Fps: 60, Crf: 23 }

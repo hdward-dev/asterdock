@@ -89,6 +89,30 @@ var placed = PortalOutputRefresh.Map(
     [new WaylandOutputMode(2, 1920, 0, 2560, 1440, 120000), new WaylandOutputMode(1, 0, 0, 1920, 1080, 60000)]);
 Check(placed[4] == 60000 && placed[8] == 120000, "multiple portal streams match Wayland outputs by position and size");
 Check(PortalOutputRefresh.Map([new PortalStreamBox(1, 0, 0, 100, 100)], []).Count == 0, "missing Wayland modes stay empty for the 60 FPS fallback");
+var scaled = PortalOutputRefresh.Bind(
+    [new PortalStreamBox(2, 1970, 0, 2259, 1271), new PortalStreamBox(1, 0, 0, 1970, 1108)],
+    [new WaylandOutputMode(11, 1970, 0, 3840, 2160, 60000), new WaylandOutputMode(10, 0, 0, 2560, 1440, 59951)]);
+Check(scaled[1].RefreshMilliHz == 59951 && scaled[1].Width == 2560 && scaled[1].Height == 1440
+    && scaled[2].RefreshMilliHz == 60000 && scaled[2].Width == 3840 && scaled[2].Height == 2160,
+    "fractional logical sizes bind each panel's hardware mode and refresh, including the origin");
+var bothClaimed = PortalOutputRefresh.Bind(
+    [new PortalStreamBox(1, 0, 0, 3840, 2160), new PortalStreamBox(2, 1970, 0, 3840, 2160)],
+    [new WaylandOutputMode(10, 0, 0, 2560, 1440, 59951), new WaylandOutputMode(11, 1970, 0, 3840, 2160, 60000)]);
+Check(bothClaimed[1].Width == 2560 && bothClaimed[1].Height == 1440 && bothClaimed[1].RefreshMilliHz == 59951
+    && bothClaimed[2].Width == 3840 && bothClaimed[2].RefreshMilliHz == 60000,
+    "a 4K portal size at the origin still binds the left panel instead of the DP mode");
+var oneMode = PortalOutputRefresh.Map(
+    [new PortalStreamBox(1, 0, 0, 1970, 1108), new PortalStreamBox(2, 1970, 0, 2259, 1271)],
+    [new WaylandOutputMode(11, 1970, 0, 3840, 2160, 60000)]);
+Check(oneMode.Count == 1 && oneMode[2] == 60000 && !oneMode.ContainsKey(1),
+    "one visible mode does not copy its refresh onto the other positioned screen");
+await using (var ordered = PortalDesktopSession.CreateForTests())
+{
+    ordered.AddPendingOutputForTests(8, 1970, 0, 2259, 1271, 60000);
+    ordered.AddPendingOutputForTests(4, 0, 0, 1970, 1108, 59951);
+    Check(ordered.Outputs.Select(item => item.Name).SequenceEqual(new uint[] { 4, 8 }),
+        "portal screens are published left to right even when the chooser lists DP first");
+}
 CommittedTextTests.Run(Check);
 await CaptureOnDemandChecks.RunAsync(Check);
 await LockInputChecks.RunAsync(Check);

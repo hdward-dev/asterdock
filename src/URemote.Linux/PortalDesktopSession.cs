@@ -9,8 +9,9 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
     private readonly SemaphoreSlim inputGate = new(1);
     private readonly CancellationTokenSource closed = new();
     private readonly object streamLock = new();
-    // Video stays null until the pipeline exists. Geometry and refresh stay for a pending or locked screen.
-    private readonly Dictionary<uint, (PortalVideoStream? Video, int Width, int Height)> streams = [];
+    // Video stays null until a viewer arms capture. Geometry and refresh stay for display-list and pointers.
+    private readonly Dictionary<uint, (IPortalPipe? Video, int Width, int Height)> streams = [];
+    private int pipesArmed;
     private readonly List<PortalStreamBox> layout = [];
     private readonly HashSet<(string Method, int Code)> held = [];
     private readonly Dictionary<uint, string> touchMappings = [];
@@ -100,27 +101,8 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
             }
             using var mapping = properties.Get("mapping_id");
             if (mapping is not null && !string.IsNullOrWhiteSpace(mapping.Text())) touchMappings.Add(node, mapping.Text());
-            // The output is known before PipeWire delivers a buffer. A locked screen may never deliver one.
-            lock (streamLock)
-            {
-                layout.Add(new(node, x, y, width, height));
-                streams[node] = (null, width, height);
-            }
-            var opened = await OpenStreamAsync(node, token);
-            var installed = false;
-            try
-            {
-                lock (streamLock)
-                {
-                    if (!disposed)
-                    {
-                        streams[node] = (opened, width, height);
-                        installed = true;
-                    }
-                }
-            }
-            finally { if (!installed) await opened.DisposeAsync(); }
-            if (!installed) break;
+            // Authorization and geometry only. pipewiresrc starts when a viewer arms capture.
+            RememberOutput(node, x, y, width, height);
         }
         CheckAlive();
         Outputs = layout.Select(box => new WaylandGlobal(box.Node, "wl_output", 1)).ToArray();
@@ -134,9 +116,89 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
         }
         CheckAlive();
     }
+    private void RememberOutput(uint node, int x, int y, int width, int height)
+    {
+        lock (streamLock)
+        {
+            layout.Add(new(node, x, y, width, height));
+            streams[node] = (null, width, height);
+        }
+    }
+
+    // Test hook for the startup path: layout is recorded and no PipeWire node is created.
+    internal void RememberOutputForTests(uint node, int x, int y, int width, int height) => RememberOutput(node, x, y, width, height);
+
+    internal Func<uint, CancellationToken, Task<IPortalPipe>>? PipeOverrideForTests { get; set; }
+
+    internal async Task OpenPipesAsync(IReadOnlyList<uint> nodes, CancellationToken ct)
+    {
+        Interlocked.Exchange(ref pipesArmed, 1);
+        foreach (var requested in nodes.Distinct())
+        {
+            ct.ThrowIfCancellationRequested();
+            if (Volatile.Read(ref pipesArmed) == 0 || disposed) return;
+            var node = DesktopBackend.ResolveOutput(requested);
+            IPortalPipe? existing;
+            int width, height;
+            lock (streamLock)
+            {
+                var known = streams.TryGetValue(node, out var slot) || (requested != node && streams.TryGetValue(requested, out slot));
+                if (!known && FindBox(node).Node != node && FindBox(requested).Node != requested)
+                    continue;
+                existing = known ? slot.Video : null;
+                width = known ? slot.Width : 0;
+                height = known ? slot.Height : 0;
+                if (width == 0 || height == 0)
+                {
+                    var box = FindBox(node);
+                    if (box.Node != node) box = FindBox(requested);
+                    width = box.Width;
+                    height = box.Height;
+                }
+            }
+            if (existing is not null) continue;
+            var opened = await OpenStreamAsync(node, ct).ConfigureAwait(false);
+            var installed = false;
+            try
+            {
+                lock (streamLock)
+                {
+                    if (!disposed && Volatile.Read(ref pipesArmed) != 0)
+                    {
+                        streams[node] = (opened, width, height);
+                        installed = true;
+                    }
+                }
+            }
+            finally { if (!installed) await opened.DisposeAsync().ConfigureAwait(false); }
+            if (!installed) return;
+            if (opened is PortalVideoStream video)
+                video.WatchFirstBuffer(() => DesktopBackend.NoteCaptureBuffer(requested));
+        }
+    }
+
+    internal async Task<int> ClosePipesAsync()
+    {
+        if (disposed) return 0;
+        Interlocked.Exchange(ref pipesArmed, 0);
+        IPortalPipe[] ending;
+        lock (streamLock)
+        {
+            ending = streams.Values.Select(slot => slot.Video).OfType<IPortalPipe>().ToArray();
+            foreach (var node in streams.Keys.ToArray())
+            {
+                var slot = streams[node];
+                streams[node] = (null, slot.Width, slot.Height);
+            }
+        }
+        foreach (var stream in ending)
+            await stream.DisposeAsync().ConfigureAwait(false);
+        return ending.Length;
+    }
+
     private void CheckAlive()
     {
-        if (disposed || closed.IsCancellationRequested || bus is not { IsClosed: false } || inputSession is { Connected: false })
+        if (disposed || closed.IsCancellationRequested || bus is { IsClosed: true } || inputSession is { Connected: false })
             throw new DesktopSessionClosedException("桌面共享授权已结束，请重新开启被控并授权。");
     }
     public Task CheckAliveAsync(CancellationToken ct) { ct.ThrowIfCancellationRequested(); CheckAlive(); return Task.CompletedTask; }
@@ -146,7 +208,7 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct, closed.Token);
         for (var attempt = 0; ; attempt++)
         {
-            PortalVideoStream pipeline;
+            IPortalPipe pipeline;
             lock (streamLock)
             {
                 if (!streams.TryGetValue(output, out var stream) || stream.Video is not { } ready)
@@ -189,9 +251,9 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
     {
         ct.ThrowIfCancellationRequested();
         CheckAlive();
-        // No buffers under the lock screen is normal. Do not tear the live pipewiresrc down.
-        if (SessionLock.IsLocked == true) return;
-        PortalVideoStream? previous;
+        // Idle means no pipeline. Locked means the live pipeline stays up. Neither path opens or rebuilds here.
+        if (Volatile.Read(ref pipesArmed) == 0 || SessionLock.IsLocked == true) return;
+        IPortalPipe? previous;
         int width, height;
         lock (streamLock)
         {
@@ -226,8 +288,9 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
     }
     // A new portal socket per pipeline. dup() of one fd is one PipeWire connection, and
     // tearing one screen down frees nodes the other screen's data thread is still using.
-    private async Task<PortalVideoStream> OpenStreamAsync(uint node, CancellationToken ct)
+    private async Task<IPortalPipe> OpenStreamAsync(uint node, CancellationToken ct)
     {
+        if (PipeOverrideForTests is { } factory) return await factory(node, ct).ConfigureAwait(false);
         if (session is null) throw new InvalidOperationException("桌面授权会话不存在。");
         var handle = await bus.OpenPipeWireAsync(session, ct).ConfigureAwait(false);
         var descriptor = (int)handle.DangerousGetHandle();
@@ -451,8 +514,8 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
         }
         finally
         {
-            PortalVideoStream[] ending;
-            lock (streamLock) { ending = streams.Values.Select(s => s.Video).OfType<PortalVideoStream>().ToArray(); streams.Clear(); }
+            IPortalPipe[] ending;
+            lock (streamLock) { ending = streams.Values.Select(s => s.Video).OfType<IPortalPipe>().ToArray(); streams.Clear(); }
             foreach (var stream in ending) await stream.DisposeAsync();
             if (bus is not null) await bus.DisposeAsync();
             closed.Dispose();

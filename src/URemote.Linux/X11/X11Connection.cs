@@ -19,12 +19,15 @@ internal sealed class X11Connection : IDisposable
     private int screen;
     private int damageEvent;
     private int fd;
-    private bool hasRandR, hasShm, hasDamage, hasXTest, hasFixes, shmBroken, disposed;
+    private bool hasRandR, hasShm, hasDamage, damageSupported, hasXTest, hasFixes, shmBroken, disposed;
     private int rootWidth, rootHeight;
 
     internal IntPtr HandleForTests => display;
     internal bool HasXTest { get { lock (gate) return hasXTest; } }
     internal bool HasDamage { get { lock (gate) return hasDamage; } }
+    internal bool DamageSupported { get { lock (gate) return damageSupported; } }
+    internal bool DamageSubscribed { get { lock (gate) return damage != 0; } }
+    internal int ShmBufferCount { get { lock (gate) return buffers.Count; } }
     internal bool HasShm { get { lock (gate) return hasShm && !shmBroken; } }
     internal int Screen => screen;
 
@@ -55,13 +58,42 @@ internal sealed class X11Connection : IDisposable
         if (rootWidth is < 1 or > 16384 || rootHeight is < 1 or > 16384)
             throw new FormatException("X11 根窗口尺寸无效。");
         ProbeExtensions();
-        if (hasDamage)
-        {
-            damage = X11Native.XDamageCreate(display, root, 1); // Delta rectangles.
-            if (damage == 0 || X11Native.TakeError(display) != 0) { damage = 0; hasDamage = false; }
-            else X11Native.XDamageSubtract(display, damage, 0, 0);
-        }
+        // XDamage stays down until a viewer arms capture. Monitor geometry does not need it.
         ReloadMonitors();
+    }
+
+    internal void SubscribeDamage()
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            if (damage != 0 || !hasDamage) return;
+            damage = X11Native.XDamageCreate(display, root, 1);
+            if (damage == 0 || X11Native.TakeError(display) != 0)
+            {
+                damage = 0;
+                hasDamage = false;
+                return;
+            }
+            X11Native.XDamageSubtract(display, damage, 0, 0);
+            foreach (var monitor in monitors) dirty[monitor.Id] = true;
+        }
+    }
+
+    internal void ReleaseCaptureResources()
+    {
+        lock (gate)
+        {
+            if (disposed) return;
+            if (damage != 0)
+            {
+                X11Native.XDamageDestroy(display, damage);
+                X11Native.TakeError(display);
+                damage = 0;
+            }
+            foreach (var buffer in buffers.Values) buffer.Dispose(display);
+            buffers.Clear();
+        }
     }
 
     internal IReadOnlyList<X11Monitor> Monitors(bool refresh = false)
@@ -124,7 +156,7 @@ internal sealed class X11Connection : IDisposable
     {
         lock (gate)
         {
-            if (disposed || !hasDamage) return true;
+            if (disposed || !hasDamage || damage == 0) return true;
             DrainEvents();
             var changed = dirty.TryGetValue(output, out var flag) && flag;
             dirty[output] = false;
@@ -225,7 +257,7 @@ internal sealed class X11Connection : IDisposable
     {
         hasShm = X11Native.HasShm && Query(() => X11Native.XShmQueryExtension(display) != 0);
         hasRandR = X11Native.HasRandR && Query(() => X11Native.XRRQueryExtension(display, out _, out _) != 0);
-        hasDamage = X11Native.HasDamage && Query(() =>
+        hasDamage = damageSupported = X11Native.HasDamage && Query(() =>
         {
             if (X11Native.XDamageQueryExtension(display, out var damageBase, out _) == 0) return false;
             damageEvent = damageBase;

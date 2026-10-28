@@ -46,6 +46,7 @@ public static class HostPreview
         Task video = Task.CompletedTask;
         Task input = Task.CompletedTask;
         Task audio = Task.CompletedTask;
+        var captureHeld = 0;
         var sender = SendCandidatesAsync();
         var receiver = ReceiveAsync();
         var firstFrames = WatchFirstFramesAsync();
@@ -274,6 +275,13 @@ public static class HostPreview
                         var terminal = update.Peer.Options.CaptureType == 8;
                         var fileOnly = update.Peer.Options.CaptureType == 5;
                         var dataOnly = terminal || fileOnly;
+                        if (!dataOnly && outputs.Count > 0)
+                        {
+                            // Open pipelines now, in parallel with ICE and SDP. The log is synchronous.
+                            var arming = DesktopBackend.ArmForViewerAsync(outputs, dataOnly, report, token);
+                            Interlocked.Exchange(ref captureHeld, 1);
+                            _ = ReportArmAsync(arming);
+                        }
                         report("session-capture-type=" + update.Peer.Options.CaptureType);
                         report("session-type-value=" + update.Peer.Options.TypeValue);
                         var platform = request["controller_platform"]?.ToJsonString();
@@ -443,8 +451,19 @@ public static class HostPreview
             }
         }
 
+        async Task ReportArmAsync(Task arming)
+        {
+            try { await arming.ConfigureAwait(false); }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+            catch (Exception e) when (e is IOException or InvalidOperationException or DesktopSessionClosedException
+                or UnauthorizedAccessException or TimeoutException or NotSupportedException or FormatException or ObjectDisposedException)
+            { report("capture-arm-failed;type=" + e.GetType().Name); }
+        }
+
         async Task ClosePeerAsync()
         {
+            if (Interlocked.Exchange(ref captureHeld, 0) == 1)
+                DesktopBackend.ReleaseCapture();
             if (active is { } oldPeer) sessions.Remove(oldPeer);
             active = null;
             connectionChanged?.Invoke(null);

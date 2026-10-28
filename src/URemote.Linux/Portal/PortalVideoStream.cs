@@ -71,7 +71,12 @@ internal static class NativeGst
     }
 }
 
-internal sealed class PortalVideoStream : IAsyncDisposable
+internal interface IPortalPipe : IAsyncDisposable
+{
+    Task<CapturedScreen> CaptureAsync(CancellationToken ct, TimeSpan firstFrameBudget);
+}
+
+internal sealed class PortalVideoStream : IPortalPipe
 {
     // One NULL transition at a time, including across screens. Overlapping teardowns race the PipeWire data thread.
     private static readonly SemaphoreSlim lifetime = new(1, 1);
@@ -116,7 +121,29 @@ internal sealed class PortalVideoStream : IAsyncDisposable
         finally { lifetime.Release(); }
     }
     internal Task<CapturedScreen> CaptureAsync(CancellationToken ct) => CaptureAsync(ct, TimeSpan.FromSeconds(10));
-    internal async Task<CapturedScreen> CaptureAsync(CancellationToken ct, TimeSpan firstFrameBudget)
+
+    // Pull until the first real sample so the arm-to-buffer time does not wait for ICE.
+    // Short attempts release the pipeline gate; a locked screen that never produces a buffer does not block the encoder.
+    internal void WatchFirstBuffer(Action onReal)
+    {
+        _ = Task.Run(async () =>
+        {
+            var deadline = Stopwatch.StartNew();
+            while (!disposed && deadline.Elapsed < TimeSpan.FromSeconds(20))
+            {
+                try
+                {
+                    var frame = await CaptureAsync(CancellationToken.None, TimeSpan.FromMilliseconds(200)).ConfigureAwait(false);
+                    Array.Clear(frame.Pixels);
+                    onReal();
+                    return;
+                }
+                catch (TimeoutException) { }
+                catch (Exception e) when (e is ObjectDisposedException or OperationCanceledException or IOException or FormatException) { return; }
+            }
+        });
+    }
+    public async Task<CapturedScreen> CaptureAsync(CancellationToken ct, TimeSpan firstFrameBudget)
     {
         await gate.WaitAsync(ct);
         try

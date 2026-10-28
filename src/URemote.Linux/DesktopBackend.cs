@@ -37,6 +37,9 @@ public static class DesktopBackend
     private static int captureRefreshActive;
     private static int portalGeneration;
     private static int portalWantsInput;
+    private static Func<IReadOnlyList<uint>, CancellationToken, Task>? openHook;
+    private static Func<CancellationToken, Task<int>>? closeHook;
+    private static CaptureScheduler capture = new(OpenArmedAsync, CloseArmedAsync, CaptureScheduler.DefaultGrace);
     internal static PortalDesktopSession? CurrentPortal => Volatile.Read(ref portal);
     internal static int PortalGeneration => Volatile.Read(ref portalGeneration);
     internal static bool CaptureRefreshActive => Volatile.Read(ref captureRefreshActive) != 0;
@@ -183,6 +186,7 @@ public static class DesktopBackend
         if (!OperatingSystem.IsLinux()) return;
         await lifecycle.WaitAsync(ct).ConfigureAwait(false);
         Interlocked.Exchange(ref captureRefreshActive, 1);
+        var swapped = false;
         try
         {
             var previous = Volatile.Read(ref portal);
@@ -204,12 +208,16 @@ public static class DesktopBackend
             // look like a failed refresh and tear the viewer down.
             try { await previous.DisposeAsync().ConfigureAwait(false); }
             catch (Exception e) when (e is IOException or ObjectDisposedException or DesktopSessionClosedException or InvalidOperationException or TimeoutException) { }
+            swapped = published;
         }
         finally
         {
             Interlocked.Exchange(ref captureRefreshActive, 0);
             lifecycle.Release();
         }
+        // After the lifecycle lock so pipe open cannot deadlock against this refresh.
+        // Idle refresh stops at authorization and geometry. An active viewer gets new pipelines.
+        if (swapped) await capture.NoteSessionSwappedAsync(ct).ConfigureAwait(false);
     }
     public static Task WatchPortalSessionAsync(Action<string> onTransition, Action<string> report, CancellationToken ct)
         => PortalSessionActivity.WatchAsync(onTransition, report, ct);
@@ -265,12 +273,28 @@ public static class DesktopBackend
         if (OperatingSystem.IsWindows()) return await WindowsDesktop.CaptureAsync(output, includeCursor, ct);
         if (OperatingSystem.IsMacOS()) return await MacDesktop.CaptureAsync(output, includeCursor, ct);
         if (LinuxSessionKind.UseX11())
-            return Volatile.Read(ref x11) is { } x11Session
-                ? await x11Session.CaptureAsync(output, includeCursor, ct)
-                : await X11DesktopSession.CaptureOneShotAsync(output, includeCursor, ct);
+        {
+            if (Volatile.Read(ref x11) is not { } x11Session)
+                return await X11DesktopSession.CaptureOneShotAsync(output, includeCursor, ct);
+            if (!capture.StreamsOpen)
+            {
+                var size = x11Session.SizeOf(output);
+                var width = size.Width >= 2 ? size.Width : 1280;
+                var height = size.Height >= 2 ? size.Height : 720;
+                return CapturePlaceholder.Create(output, width, height);
+            }
+            var x11Frame = await x11Session.CaptureAsync(output, includeCursor, ct);
+            if (!x11Frame.Pending) NoteCaptureBuffer(output);
+            return x11Frame;
+        }
         if (Volatile.Read(ref captureRefreshActive) != 0) await WaitCaptureReadyAsync(ct);
         var active = Volatile.Read(ref portal);
-        if (active is not null) return await active.CaptureAsync(ResolveOutput(output), ct);
+        if (active is not null)
+        {
+            var frame = await active.CaptureAsync(ResolveOutput(output), ct);
+            if (!frame.Pending) NoteCaptureBuffer(output);
+            return frame;
+        }
         return await WaylandScreenCapture.CaptureAsync(output, includeCursor, ct);
     }
     // One screen with no buffer, or a dead pipeline, becomes a black frame of that monitor's size.
@@ -301,11 +325,92 @@ public static class DesktopBackend
     internal static async Task<bool> RebuildCaptureAsync(uint output, CancellationToken ct)
     {
         if (!OperatingSystem.IsLinux() || SessionLock.IsLocked == true) return false;
+        if (capture.ViewerCount == 0) return false;
         if (Volatile.Read(ref captureRefreshActive) != 0) await WaitCaptureReadyAsync(ct);
-        if (SessionLock.IsLocked == true) return false;
+        if (SessionLock.IsLocked == true || capture.ViewerCount == 0) return false;
+        if (!capture.StreamsOpen)
+        {
+            await capture.EnsureOpenAsync(ct).ConfigureAwait(false);
+            return false;
+        }
         if (Volatile.Read(ref portal) is not { } active) return false;
         await active.RebuildStreamAsync(ResolveOutput(output), ct);
         return SessionLock.IsLocked != true;
+    }
+
+    internal static TimeSpan CaptureGrace => capture.Grace;
+    internal static bool CaptureStreamsOpenForTests => capture.StreamsOpen;
+    internal static int CaptureViewersForTests => capture.ViewerCount;
+    internal static bool X11DamageSubscribedForTests => Volatile.Read(ref x11)?.DamageSubscribed == true;
+    internal static bool X11DamageSupportedForTests => Volatile.Read(ref x11)?.DamageSupported == true;
+    internal static int X11ShmBuffersForTests => Volatile.Read(ref x11)?.ShmBuffers ?? 0;
+
+    // Host calls this when be-controlled is accepted, before ICE and SDP. File and terminal sessions do not arm.
+    internal static Task ArmForViewerAsync(IReadOnlyList<uint> outputs, bool dataOnly, Action<string> report, CancellationToken ct)
+    {
+        if (dataOnly || outputs.Count == 0) return Task.CompletedTask;
+        return capture.ArmAsync(outputs, "viewer-requested", report, ct);
+    }
+
+    internal static void ReleaseCapture() => capture.Release();
+    internal static void NoteCaptureBuffer(uint output) => capture.NoteRealFrame(output);
+    internal static void SetCaptureGraceForTests(TimeSpan grace) => capture.SetGrace(grace);
+    internal static Task NoteCaptureSessionSwappedForTests(CancellationToken ct) => capture.NoteSessionSwappedAsync(ct);
+
+    internal static void InstallCaptureHooksForTests(
+        Func<IReadOnlyList<uint>, CancellationToken, Task> open,
+        Func<CancellationToken, Task<int>> close,
+        TimeSpan? grace = null)
+    {
+        capture.Abandon();
+        openHook = open;
+        closeHook = close;
+        capture = new CaptureScheduler(OpenArmedAsync, CloseArmedAsync, grace ?? TimeSpan.FromMilliseconds(40));
+    }
+
+    internal static void ResetCaptureForTests()
+    {
+        capture.Abandon();
+        openHook = null;
+        closeHook = null;
+        capture = new CaptureScheduler(OpenArmedAsync, CloseArmedAsync, CaptureScheduler.DefaultGrace);
+    }
+
+    private static Task OpenArmedAsync(IReadOnlyList<uint> screens, CancellationToken ct)
+        => openHook is { } hook ? hook(screens, ct) : OpenArmedCoreAsync(screens, ct);
+
+    private static Task<int> CloseArmedAsync(CancellationToken ct)
+        => closeHook is { } hook ? hook(ct) : CloseArmedCoreAsync(ct);
+
+    private static async Task OpenArmedCoreAsync(IReadOnlyList<uint> screens, CancellationToken ct)
+    {
+        await lifecycle.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (LinuxSessionKind.UseX11())
+            {
+                (Volatile.Read(ref x11) ?? throw new InvalidOperationException("X11 桌面会话未打开。")).ArmCapture(screens);
+                return;
+            }
+            var active = Volatile.Read(ref portal);
+            if (active is null || active.IsDisposed) throw new InvalidOperationException("桌面授权会话不存在。");
+            await active.OpenPipesAsync(screens, ct).ConfigureAwait(false);
+        }
+        finally { lifecycle.Release(); }
+    }
+
+    private static async Task<int> CloseArmedCoreAsync(CancellationToken ct)
+    {
+        await lifecycle.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (LinuxSessionKind.UseX11())
+                return Volatile.Read(ref x11)?.ReleaseCapture() ?? 0;
+            var active = Volatile.Read(ref portal);
+            if (active is null || active.IsDisposed) return 0;
+            return await active.ClosePipesAsync().ConfigureAwait(false);
+        }
+        finally { lifecycle.Release(); }
     }
     internal static bool HasPortalRestoreToken()
     {
@@ -419,6 +524,7 @@ public static class DesktopBackend
             await lifecycle.WaitAsync();
             try
             {
+                capture.Abandon();
                 var current = Interlocked.Exchange(ref x11, null);
                 if (current is not null) await current.DisposeAsync();
             }
@@ -435,6 +541,7 @@ public static class DesktopBackend
             await lifecycle.WaitAsync();
             try
             {
+                capture.Abandon();
                 var current = Interlocked.Exchange(ref portal, null);
                 ResetOutputAliasesForTests();
                 if (current is not null) await current.DisposeAsync();

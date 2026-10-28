@@ -216,6 +216,7 @@ await X11BackendTests.LiveAsync(Check);
 X11WallpaperTests.Run(Check);
 await X11WallpaperTests.NoCaptureAsync(Check);
 ControlInputTests.Run(Check);
+CommittedTextTests.Run(Check);
 DisplayInfoTests.Run(Check);
 await SignalClientTests.Run(Check);
 await HostApiTests.Run(Check);

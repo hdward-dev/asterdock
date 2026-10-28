@@ -161,9 +161,9 @@ services.udev.extraRules = ''
 
 ### 手机输入法提交文字
 
-支持控制通道的 `text_input` / `content` JSON 消息及 VINPUT 包装。此前只处理物理按键，手机输入法提交的整段文字会被忽略。现在在允许输入时把已提交的 Unicode 文本送到桌面，不修改剪贴板；输入内容不写入日志。
+支持控制通道的 `text_input` / `content` JSON 消息及 VINPUT 包装。此前只处理物理按键，手机输入法提交的整段文字会被忽略。现在在允许输入时把已提交的 Unicode 文本送到桌面；输入内容不写入日志。
 
-Niri/原生 Wayland 使用独立的单层 Unicode 虚拟键盘映射，每 240 个 Unicode 标量分段，支持中文和非 BMP 表情；普通按键和快捷键仍沿用原来的 uinput 后端。Portal 后端使用 `NotifyKeyboardKeysym`，尚待 KDE/GNOME 实机验证。拒绝超限、非法 Unicode 和除换行/制表外的控制字符。
+Niri/原生 Wayland 使用独立的单层 Unicode 虚拟键盘映射，每 240 个 Unicode 标量分段，支持中文和非 BMP 表情；普通按键和快捷键仍沿用原来的 uinput 后端。Portal 在已解锁且合成器提供 `EI_DEVICE_CAP_TEXT` 时走 EIS UTF-8。KDE 经常没有这项能力，而且锁屏会忽略 EIS；这时改用 KWin `org_kde_kwin_fake_input` 版本 6 的 `keyboard_keysym`（XKB Unicode 键符），锁屏键盘过滤仍会把它交给问候界面。没有键符接口时，未锁定会话再尝试虚拟键盘映射。剪贴板加 Ctrl+V 只在以上路径都不可用时使用，并在粘贴后恢复原来的剪贴板。`ConnectToEIS` 之后不能再调用 `NotifyKeyboardKeysym`。拒绝超限、非法 Unicode 和除换行/制表外的控制字符。
 
 2026-10-04 验证：Release 构建通过，188 项协议检查通过。在本机 Niri 的独立 Konsole 接收窗口中，通过生产解析及输入实现注入中文、英文、表情和跨分段长文本，收到的 798 字节与测试文本完全一致。手机端真实会话仍需复测。
 

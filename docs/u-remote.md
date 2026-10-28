@@ -37,7 +37,7 @@ U远程作为 Avalonia `IApplicationModule` 运行在 AsterDock 内，不启动�
   保存的登录令牌存放在私有身份文件（Linux 600 权限），只保存用于显示的脱敏手机号，不记录完整手机号和验证码。
 - “账号与设置”提供“退出登录”：先停止本机被控并关闭本应用的主控、终端和文件连接，再清除本机令牌和账号状态。当前平台的设备注册保留；旧平台身份退出后，下一次登录按当前平台重新初始化设备，并保留稳定的本机硬件标识。退出操作不自动发送短信。账号页以账号卡片显示登录状态和脱敏手机号；旧身份记录没有手机号时显示 UU 账号 ID。未登录时显示独立登录表单，高级设置默认折叠。
 - Linux 按会话选择后端：存在 `WAYLAND_DISPLAY` 或 `XDG_SESSION_TYPE=wayland` 时仍走 Wayland（niri 使用 wlr-screencopy 和虚拟键鼠；KDE Plasma 使用桌面 Portal / PipeWire 采集与 Portal 键鼠控制，锁屏刷新和 uinput 不变）。没有 Wayland 且设置了 `DISPLAY` 时使用 X11（RandR 显示器、MIT-SHM 采集、XDamage 变化检测、XTest 键鼠、CLIPBOARD 文本）。XFCE / xfwm4 这类没有 Portal 和 PipeWire 的会话走 X11。主页底栏显示当前桌面环境及 Wayland / X11 会话类型。
-- 壁纸预览支持 KDE 图片配置、主题默认壁纸和壁纸包的明暗版本（包括 SVG）；本机卡片直接生成预览，开启被控后沿用壁纸上传流程。验证码按钮显示 60 秒重发倒计时并在到期后恢复可用。
+- 壁纸预览按已经识别的桌面环境只查一个来源：KDE 仍读取 Plasma 图片配置、主题默认壁纸和壁纸包的明暗版本（包括 SVG）；XFCE 读取 xfce4-desktop；GNOME、Cinnamon、MATE 和 Unity 读取 gsettings；niri 仍用 DankMaterialShell。没有配置壁纸时卡片保持占位图，不截取桌面。桌面环境变量为空且会话是 X11 时，同一用户的 xfwm4、xfdesktop 或 xfce4-session 会把底栏识别成 XFCE。本机卡片直接生成预览，开启被控后沿用壁纸上传流程。验证码按钮显示 60 秒重发倒计时并在到期后恢复可用。
   Portal 后端在开启被控时由系统弹窗授权共享的显示器和键鼠权限，不保存授权令牌；取消授权不会上线，停止被控会关闭共享会话。最多选择 5 个显示器；重新开启时需重新授权，显示器列表以系统选择器授权结果为准。
   各后端共用持续 FFmpeg/libx264 编码，原始分辨率。Wayland 与 X11 的每屏目标都是 min(显示器刷新率, 控制端请求)：画面变化时按目标发送，且不超过目标。Wayland 静止画面不超过 5 FPS；X11 静止画面可以更低。
   采用 CPU/SHM 管线，非 GPU 零拷贝；没有实现动态码率和即时关键帧反馈，丢包恢复依赖每秒关键帧。

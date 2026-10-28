@@ -66,19 +66,21 @@ public sealed partial class URemoteView
             try
             {
                 var png = await LinuxWallpaper.RenderAsync(appliedEncoder, lifetime.Token);
-                if (png is not null && !disposed && !loggingOut && generation == accountGeneration)
+                if (disposed || loggingOut || generation != accountGeneration) return;
+                var bytes = png;
+                await OnUiAsync(() =>
                 {
-                    var bytes = png;
-                    await OnUiAsync(() =>
+                    if (disposed || loggingOut || generation != accountGeneration) return;
+                    if (bytes is null)
                     {
-                        if (disposed || loggingOut || generation != accountGeneration) return;
-                        using var stream = new MemoryStream(bytes);
-                        var bitmap = Bitmap.DecodeToWidth(stream, 800);
-                        if (previewCache.Remove(localWallpaperKey, out var old)) old.Dispose();
-                        previewCache[localWallpaperKey] = bitmap;
-                        RenderDevices();
-                    });
-                }
+                        if (previewCache.Remove(localWallpaperKey, out var stale)) { stale.Dispose(); RenderDevices(); }
+                        return;
+                    }
+                    if (previewCache.Remove(localWallpaperKey, out var old)) old.Dispose();
+                    using var stream = new MemoryStream(bytes);
+                    previewCache[localWallpaperKey] = Bitmap.DecodeToWidth(stream, 800);
+                    RenderDevices();
+                });
             }
             catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { return; }
             catch { /* Wallpaper availability must not affect the device list. */ }

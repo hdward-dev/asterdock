@@ -14,10 +14,10 @@ internal static class HostWallpaper
         var cachePath=identityPath+".wallpaper.json";
         Cache? cache=null;
         try {if(File.Exists(cachePath))cache=JsonSerializer.Deserialize<Cache>(await File.ReadAllTextAsync(cachePath,ct));}catch(Exception e) when(e is IOException or UnauthorizedAccessException or JsonException){}
-        var missingReported=false;var failed=false;
+        var missingReported=false;var failed=false;string? loggedSource=null;
         while(!ct.IsCancellationRequested) {
             try {
-                var png=await LinuxWallpaper.RenderAsync(ffmpeg,ct);
+                var png=await LinuxWallpaper.RenderAsync(ffmpeg,ct,home:null,shell:null,onSource:kind=>{if(loggedSource==kind)return;loggedSource=kind;report("wallpaper-source="+kind);},desktop:null);
                 if(png is null) {if(!missingReported)report("wallpaper-source-unavailable");missingReported=true;}
                 else {
                     missingReported=false;

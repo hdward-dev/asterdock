@@ -113,6 +113,7 @@ static WeakReference VerifyModule(string entry, string entryType, string tempora
         Require(first.Parent == null, "页面切换未释放视觉父级");
         window.Close();
         Console.WriteLine("通过：新建页面、共享设置、Downloads 默认目录、Track/Knob padding");
+        VerifyAddressChoice(assembly);
 
         var manager = assembly.GetType("FileShareApp.Module.FileShareApplicationModule")!
             .GetField("_server", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(module)!;
@@ -167,10 +168,27 @@ static async Task<int> VerifyServiceAsync(object manager, object settings, strin
     }
     using (var upload = await client.PutAsync("/file?name=blocked.txt&ak=check-access-key", new StringContent("blocked")))
         Require(upload.StatusCode == HttpStatusCode.Forbidden, "默认只读共享允许了上传");
+    Require(!File.Exists(Path.Combine(root, "blocked.txt")), "被拒绝的上传仍写入了文件");
+    await Stop();
+    VerifyPortReleased(port);
+    Set("AllowUpload", true);
+    Require(!(bool)settings.GetType().GetProperty("ReadOnly")!.GetValue(settings)!, "允许上传时仍保持只读");
+    await Start();
+    using (var page = await client.GetAsync("/?ak=check-access-key"))
+    {
+        Require(page.StatusCode == HttpStatusCode.OK, "开启上传后目录页不是 200");
+        Require((await page.Content.ReadAsStringAsync()).Contains("id=\"pick\""), "开启上传后网页没有上传按钮");
+    }
+    using (var upload = await client.PutAsync("/?name=uploaded.txt&ak=check-access-key", new StringContent("hello-upload")))
+    {
+        Require(upload.StatusCode == HttpStatusCode.OK, "开启上传后 PUT 不是 200");
+        Require(await upload.Content.ReadAsStringAsync() == "OK 12", "上传响应不正确");
+    }
+    Require(await File.ReadAllTextAsync(Path.Combine(root, "uploaded.txt")) == "hello-upload", "上传内容不正确");
     await Stop();
     VerifyPortReleased(port);
     await Start();
-    Console.WriteLine("通过：独立 ALC + ADR 启动、HTTP 200、鉴权 401、ak 200、Range 206、只读 403、停止并重启");
+    Console.WriteLine("通过：独立 ALC + ADR 启动、HTTP 200、鉴权 401、ak 200、Range 206、只读 403、允许上传、停止并重启");
     return port;
 
     void Set(string name, object value) => settings.GetType().GetProperty(name)!.SetValue(settings, value);
@@ -190,6 +208,35 @@ static void VerifyPortReleased(int port)
     using var listener = new TcpListener(IPAddress.Any, port);
     listener.Server.ExclusiveAddressUse = true;
     listener.Start();
+}
+
+static void VerifyAddressChoice(Assembly assembly)
+{
+    var choiceType = assembly.GetType("FileShareApp.Module.Services.LanAddressChoice", throwOnError: true)!;
+    var managerType = assembly.GetType("FileShareApp.Module.Services.ShareServerManager", throwOnError: true)!;
+    var listType = typeof(List<>).MakeGenericType(choiceType);
+    var choices = Activator.CreateInstance(listType)!;
+    var add = listType.GetMethod("Add")!;
+    add.Invoke(choices, [Choice("198.18.0.1", "FlClash", false)]);
+    add.Invoke(choices, [Choice("192.168.50.13", "WLAN", true)]);
+    var chosen = managerType.GetMethod("ChooseDefault")!.Invoke(null, [choices, null]);
+    Require(AddressOf(chosen) == "192.168.50.13", "默认地址应优先局域网地址而不是虚拟网卡");
+    var saved = managerType.GetMethod("ChooseDefault")!.Invoke(null, [choices, "198.18.0.1"]);
+    Require(AddressOf(saved) == "198.18.0.1", "已保存的地址应被保留");
+    var missing = managerType.GetMethod("ChooseDefault")!.Invoke(null, [choices, "10.0.0.8"]);
+    Require(AddressOf(missing) == "192.168.50.13", "失效的已保存地址应回退到局域网地址");
+    Console.WriteLine("通过：多网卡默认选择局域网地址，并保留用户选择");
+
+    object Choice(string address, string adapter, bool gateway)
+    {
+        var choice = Activator.CreateInstance(choiceType)!;
+        choiceType.GetProperty("Address")!.SetValue(choice, address);
+        choiceType.GetProperty("Adapter")!.SetValue(choice, adapter);
+        choiceType.GetProperty("HasGateway")!.SetValue(choice, gateway);
+        return choice;
+    }
+
+    string? AddressOf(object? choice) => (string?)choiceType.GetProperty("Address")!.GetValue(choice);
 }
 
 static void Require(bool condition, string message)

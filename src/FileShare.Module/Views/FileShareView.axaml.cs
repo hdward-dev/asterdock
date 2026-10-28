@@ -39,16 +39,39 @@ public partial class FileShareView : UserControl, INotifyPropertyChanged
         _server.StateChanged += ServerStateChanged;
         InitializeComponent();
         DataContext = this;
+        ReloadLanAddresses();
     }
 
     public ShareSettings Settings => _settings;
     public string StatusTitle => _running ? "共享已开启" : "共享已关闭";
     public string StatusDescription => _running ? "局域网内的设备可以访问共享网页" : "开启后，同一网络的设备即可访问";
     public string ProtectionText => _settings.PasswordEnabled ? "口令保护" : "无需口令";
+    public string UploadToggleText => _settings.AllowUpload ? "已开启" : "已关闭";
+    public string UploadStatusText => _settings.AllowUpload ? "允许上传" : "只读下载";
     public string PasswordToggleText => _settings.PasswordEnabled ? "已开启" : "已关闭";
     public string DirectoryName => string.IsNullOrWhiteSpace(_settings.Root) ? "未选择" : new DirectoryInfo(_settings.Root).Name;
     public string PortText { get => _portText; set { _portText = value; OnPropertyChanged(); } }
-    public string LanAddress => ShareServerManager.GetLanAddresses().FirstOrDefault() ?? "未检测到局域网";
+    public IReadOnlyList<LanAddressChoice> LanAddresses => _lanAddresses;
+    private IReadOnlyList<LanAddressChoice> _lanAddresses = [];
+    private LanAddressChoice? _selectedLanAddress;
+    public LanAddressChoice? SelectedLanAddress
+    {
+        get => _selectedLanAddress;
+        set
+        {
+            if (Equals(_selectedLanAddress, value)) return;
+            _selectedLanAddress = value;
+            if (value is not null && !string.Equals(_settings.ShareAddress, value.Address, StringComparison.OrdinalIgnoreCase))
+            {
+                _settings.ShareAddress = value.Address;
+                Persist();
+            }
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ShareUrl));
+            OnPropertyChanged(nameof(LanAddress));
+        }
+    }
+    public string LanAddress => _selectedLanAddress?.Address ?? "未检测到局域网";
     public string PortSummary => $"端口 {_settings.Port} · 浏览器访问";
     public string ShareUrl => BuildUrl(_settings.PasswordEnabled);
     public string CopyHint => _settings.PasswordEnabled ? "已包含口令，对方打开即可访问" : "当前为普通链接，无需口令";
@@ -69,6 +92,8 @@ public partial class FileShareView : UserControl, INotifyPropertyChanged
         Refresh();
         OnPropertyChanged(nameof(DirectoryName));
         OnPropertyChanged(nameof(PasswordToggleText));
+        OnPropertyChanged(nameof(UploadToggleText));
+        OnPropertyChanged(nameof(UploadStatusText));
     }
 
     private void ServerStateChanged()
@@ -166,9 +191,21 @@ public partial class FileShareView : UserControl, INotifyPropertyChanged
 
     private void Persist() => _server.Save(_settings);
 
+    private void RefreshLanAddresses(object? sender, EventArgs e) => ReloadLanAddresses();
+
+    private void ReloadLanAddresses()
+    {
+        _lanAddresses = ShareServerManager.GetLanAddressChoices();
+        _selectedLanAddress = ShareServerManager.ChooseDefault(_lanAddresses, _settings.ShareAddress);
+        OnPropertyChanged(nameof(LanAddresses));
+        OnPropertyChanged(nameof(SelectedLanAddress));
+        OnPropertyChanged(nameof(ShareUrl));
+        OnPropertyChanged(nameof(LanAddress));
+    }
+
     private string BuildUrl(bool includePassword)
     {
-        var address = ShareServerManager.GetLanAddresses().FirstOrDefault() ?? "localhost";
+        var address = _selectedLanAddress?.Address ?? "localhost";
         var url = $"http://{address}:{_settings.Port}/";
         return includePassword && !string.IsNullOrWhiteSpace(_settings.Password)
             ? $"{url}?ak={Uri.EscapeDataString(_settings.Password)}"
@@ -177,7 +214,7 @@ public partial class FileShareView : UserControl, INotifyPropertyChanged
 
     private void Refresh()
     {
-        foreach (var name in new[] { nameof(StatusTitle), nameof(StatusDescription), nameof(IsRunning), nameof(SwitchHint), nameof(ShareUrl), nameof(PortSummary), nameof(LanAddress), nameof(ProtectionText), nameof(CopyHint) })
+        foreach (var name in new[] { nameof(StatusTitle), nameof(StatusDescription), nameof(IsRunning), nameof(SwitchHint), nameof(ShareUrl), nameof(PortSummary), nameof(LanAddress), nameof(ProtectionText), nameof(UploadStatusText), nameof(UploadToggleText), nameof(CopyHint) })
             OnPropertyChanged(name);
     }
 

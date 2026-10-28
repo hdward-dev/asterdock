@@ -51,9 +51,30 @@ public sealed class ShareSettings : INotifyPropertyChanged
         set { _password = value; OnPropertyChanged(); }
     }
     public bool ReadOnly { get; set; } = true;
-    public bool AllowUpload { get; set; }
+
+    private bool _allowUpload;
+
+    public bool AllowUpload
+    {
+        get => _allowUpload;
+        set
+        {
+            if (_allowUpload == value && ReadOnly == !value) return;
+            _allowUpload = value;
+            ReadOnly = !value;
+            OnPropertyChanged();
+        }
+    }
     public bool AllowZip { get; set; } = true;
     public string ServerName { get; set; } = "我的下载目录";
+
+    private string _shareAddress = "";
+
+    public string ShareAddress
+    {
+        get => _shareAddress;
+        set { _shareAddress = value ?? ""; OnPropertyChanged(); }
+    }
 
     [JsonIgnore]
     public string ActiveToken => PasswordEnabled ? Password.Trim() : "";
@@ -84,7 +105,9 @@ public sealed class ShareSettings : INotifyPropertyChanged
     {
         if (Port is < 1 or > 65535) Port = 8080;
         Password = Password.Trim();
+        ShareAddress = ShareAddress.Trim();
         Root = string.IsNullOrWhiteSpace(Root) ? DefaultRoot : Root.Trim();
+        ReadOnly = !AllowUpload;
     }
 
     public static string GeneratePassword()

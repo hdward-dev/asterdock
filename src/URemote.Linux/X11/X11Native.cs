@@ -153,6 +153,7 @@ internal static class X11Native
     [DllImport("libXrandr.so.2")] internal static extern void XRRFreeScreenResources(IntPtr resources);
     [DllImport("libXrandr.so.2")] internal static extern IntPtr XRRGetOutputInfo(IntPtr display, IntPtr resources, nuint output);
     [DllImport("libXrandr.so.2")] internal static extern void XRRFreeOutputInfo(IntPtr info);
+    [DllImport("libXrandr.so.2")] internal static extern nuint XRRGetOutputPrimary(IntPtr display, nuint window);
     [DllImport("libXrandr.so.2")] internal static extern IntPtr XRRGetCrtcInfo(IntPtr display, IntPtr resources, nuint crtc);
     [DllImport("libXrandr.so.2")] internal static extern void XRRFreeCrtcInfo(IntPtr info);
 

@@ -22,6 +22,10 @@
     <Project Path="src/URemote.Host/URemote.Host.csproj" />
     <Project Path="src/URemote.Module/URemote.Module.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/NetworkAccelerator.Checks/NetworkAccelerator.Checks.csproj" />
+    <Project Path="tests/NetworkAccelerator.Screenshots/NetworkAccelerator.Screenshots.csproj" />
+  </Folder>
   <Folder Name="/tests/FileShare/">
     <Project Path="tests/FileShare.Checks/FileShare.Checks.csproj" />
   </Folder>

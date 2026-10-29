@@ -12,24 +12,33 @@ using System.Text.RegularExpressions;
 
 namespace NetworkAccelerator.Module.ViewModels;
 
-public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDisposable
+public sealed partial class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly SettingsStore _settingsStore;
     private readonly SubscriptionService _subscriptionService;
     private readonly SingBoxConfigurationService _configurationService;
     private readonly SingBoxEngineService _engine;
     private readonly SingBoxInstallerService _installer;
+    public const string CoreExitedMessage = "加速核心已退出";
+    public const string ServiceTestNeedsConnectionMessage = "请先开始加速后再测服务延迟";
+    public const string ServiceProbeFailedMessage = "服务延迟测试失败";
+
     private readonly IUserFeedbackService? _feedback;
+    private int _suppressCoreExitNotice;
     private NetworkAcceleratorSettings _settings = new();
     private SubscriptionProfile? _profile;
     private PeriodicTimer? _durationTimer;
     private DateTimeOffset _connectedAt;
     private bool _disposed;
     private bool _isBusy;
+    private bool _isUpdatingSubscription;
+    private int _connectionFaultSignal;
     private bool _isRefreshingLatencies;
     private string _nodeSearchText = string.Empty;
     private bool _isConnected;
     private bool _tunEnabled;
+    private bool _systemProxyEnabled = true;
+    private (bool SystemProxyEnabled, bool TunEnabled)? _pendingTunRevert;
     private ProxyMode _mode;
     private string _connectionStatusText = "未连接";
     private string _statusMessage = "请配置订阅后开始使用";
@@ -48,7 +57,11 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
     private string? _coreVersion;
     private SubscriptionConfiguration? _activeConfiguration;
 
-    public NetworkAcceleratorViewModel(string dataDirectory, string moduleDirectory, IUserFeedbackService? feedback = null)
+    public NetworkAcceleratorViewModel(
+        string dataDirectory,
+        string moduleDirectory,
+        ILoadingService? loading = null,
+        IUserFeedbackService? feedback = null)
     {
         _feedback = feedback;
         _settingsStore = new SettingsStore(dataDirectory);
@@ -58,6 +71,8 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
         _installer = new SingBoxInstallerService(dataDirectory);
         _engine.LogReceived += Engine_LogReceived;
         _engine.StateChanged += Engine_StateChanged;
+        if (loading is not null)
+            _engine.BeginAuthorization = () => loading.Begin("正在授予 TUN 权限…");
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -71,7 +86,26 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
         LogEntries.Clear();
         OnPropertyChanged(nameof(HasNoLogs));
     }
-    public bool IsBusy { get => _isBusy; private set => SetField(ref _isBusy, value); }
+    public bool IsBusy
+    {
+        get => _isBusy;
+        private set
+        {
+            if (SetField(ref _isBusy, value)) OnPropertyChanged(nameof(ShowOverviewAlert));
+        }
+    }
+
+    public bool IsUpdatingSubscription
+    {
+        get => _isUpdatingSubscription;
+        private set => SetField(ref _isUpdatingSubscription, value);
+    }
+
+    public int ConnectionFaultSignal
+    {
+        get => _connectionFaultSignal;
+        private set => SetField(ref _connectionFaultSignal, value);
+    }
     public bool IsRefreshingLatencies
     {
         get => _isRefreshingLatencies;
@@ -99,16 +133,47 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
             if (SetField(ref _nodeSearchText, value)) ApplyNodeFilter();
         }
     }
-    public bool IsConnected { get => _isConnected; private set { if (SetField(ref _isConnected, value)) OnPropertyChanged(nameof(ConnectionButtonText)); } }
+    public bool IsConnected
+    {
+        get => _isConnected;
+        private set
+        {
+            if (!SetField(ref _isConnected, value)) return;
+            OnPropertyChanged(nameof(ConnectionButtonText));
+            OnPropertyChanged(nameof(OverviewRunText));
+            OnPropertyChanged(nameof(OverviewDurationText));
+        }
+    }
     public bool TunEnabled
     {
         get => _tunEnabled;
         set
         {
-            if (SetField(ref _tunEnabled, value)) OnPropertyChanged(nameof(ConnectionMethodText));
+            if (!SetField(ref _tunEnabled, value)) return;
+            OnPropertyChanged(nameof(ConnectionMethodText));
+            OnPropertyChanged(nameof(IsSystemProxy));
+            OnPropertyChanged(nameof(SystemProxyDetailText));
+            OnPropertyChanged(nameof(TunDetailText));
         }
     }
-    public string ConnectionMethodText => TunEnabled ? "TUN 虚拟网卡" : "系统代理";
+
+    public bool SystemProxyEnabled
+    {
+        get => _systemProxyEnabled;
+        private set
+        {
+            if (!SetField(ref _systemProxyEnabled, value)) return;
+            OnPropertyChanged(nameof(IsSystemProxy));
+            OnPropertyChanged(nameof(SystemProxyDetailText));
+            OnPropertyChanged(nameof(ConnectionMethodText));
+        }
+    }
+
+    public string ConnectionMethodText => TunEnabled
+        ? "TUN 虚拟网卡"
+        : IsSystemProxy
+            ? "系统代理"
+            : "未接管系统流量";
     public ProxyMode Mode
     {
         get => _mode;
@@ -117,6 +182,11 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
             if (!SetField(ref _mode, value)) return;
             OnPropertyChanged(nameof(ModeDescription));
             OnPropertyChanged(nameof(RulesText));
+            OnPropertyChanged(nameof(IsRuleMode));
+            OnPropertyChanged(nameof(IsGlobalMode));
+            OnPropertyChanged(nameof(IsDirectMode));
+            OnPropertyChanged(nameof(ModeIndex));
+            OnPropertyChanged(nameof(RouteRuleCountText));
         }
     }
     public string ModeDescription => Mode switch
@@ -126,10 +196,24 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
         _ => "根据规则分流，局域网直连，其余流量通过代理。"
     };
     public string ConnectionStatusText { get => _connectionStatusText; private set => SetField(ref _connectionStatusText, value); }
-    public string StatusMessage { get => _statusMessage; private set => SetField(ref _statusMessage, value); }
+    public string StatusMessage
+    {
+        get => _statusMessage;
+        private set
+        {
+            if (SetField(ref _statusMessage, value)) OnPropertyChanged(nameof(ShowOverviewAlert));
+        }
+    }
     public string CurrentNodeText { get => _currentNodeText; private set => SetField(ref _currentNodeText, value); }
     public string CurrentLatencyText { get => _currentLatencyText; private set => SetField(ref _currentLatencyText, value); }
-    public string ConnectionDurationText { get => _connectionDurationText; private set => SetField(ref _connectionDurationText, value); }
+    public string ConnectionDurationText
+    {
+        get => _connectionDurationText;
+        private set
+        {
+            if (SetField(ref _connectionDurationText, value)) OnPropertyChanged(nameof(OverviewDurationText));
+        }
+    }
     public string SubscriptionName { get => _subscriptionName; private set => SetField(ref _subscriptionName, value); }
     public string SubscriptionUpdatedText { get => _subscriptionUpdatedText; private set => SetField(ref _subscriptionUpdatedText, value); }
     public string RemainingTrafficText { get => _remainingTrafficText; private set => SetField(ref _remainingTrafficText, value); }
@@ -161,7 +245,11 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
     public int ProxyPort => SingBoxConfigurationService.MixedProxyPort;
     public string RulesText => Mode == ProxyMode.Rule ? "规则集 2 个" : Mode == ProxyMode.Global ? "全局代理" : "全部直连";
 
-    public void ShowStatusMessage(string message) => StatusMessage = message;
+    public void ShowStatusMessage(string message, FeedbackKind? toast = null)
+    {
+        StatusMessage = message;
+        if (toast is { } kind) _feedback.Notify(kind, message);
+    }
 
     private int _initializeStarted;
 
@@ -186,10 +274,15 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
             {
                 RefreshConfigurations();
                 Mode = _settings.Mode;
+                SystemProxyEnabled = _settings.SystemProxyEnabled;
                 TunEnabled = _settings.TunEnabled;
                 RefreshCoreStatus(coreVersion);
+                AllowLan = _settings.AllowLan;
+                ReduceMotion = _settings.ReduceMotion;
                 ApplyProfile();
+                RefreshLanAddress();
             });
+            _ = RefreshExitIpAsync(throughProxy: false, force: false);
         }
         catch (Exception exception)
         {
@@ -200,42 +293,26 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
     public async Task ToggleConnectionAsync()
     {
         if (IsBusy) return;
+        var stopping = _engine.IsRunning;
         IsBusy = true;
         try
         {
-            if (_engine.IsRunning)
+            if (stopping)
             {
-                await _engine.StopAsync().ConfigureAwait(false);
+                await StopEngineAsync().ConfigureAwait(false);
                 await Dispatcher.UIThread.InvokeAsync(ApplyDisconnectedState);
                 return;
             }
-            if (_profile is null || _profile.Nodes.Count == 0) throw new InvalidOperationException("请先配置并更新订阅");
-            _settings.Mode = Mode;
-            _settings.TunEnabled = TunEnabled;
-            var configPath = await _configurationService.WriteAsync(_profile, _settings).ConfigureAwait(false);
-            await _settingsStore.SaveAsync(_settings).ConfigureAwait(false);
-            await Dispatcher.UIThread.InvokeAsync(() => StatusMessage =
-                TunEnabled && _engine.RequiresAdministratorForTun
-                    ? "请在系统提示中允许管理员权限…"
-                    : "正在启动网络加速…");
-            await _engine.StartAsync(configPath, requireAdministrator: TunEnabled).ConfigureAwait(false);
-            await Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                _connectedAt = DateTimeOffset.Now;
-                IsConnected = true;
-                ConnectionStatusText = "已连接";
-                StatusMessage = TunEnabled ? "TUN 已接管系统网络流量" : "系统代理已启用";
-                StartDurationTimer();
-            });
-            _ = RefreshLatenciesAsync();
+            await StartCoreAsync().ConfigureAwait(false);
+        }
+        catch (TunAuthorizationException exception)
+        {
+            await RevertAfterTunAuthorizationAsync(exception, restoreConnection: false).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
             await Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                ApplyDisconnectedState();
-                Fail("连接失败", exception);
-            });
+                Fail(stopping ? "停止失败" : "连接失败", exception, fault: !stopping));
         }
         finally
         {
@@ -272,6 +349,7 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
     {
         if (IsBusy) return;
         IsBusy = true;
+        IsUpdatingSubscription = true;
         StatusMessage = "正在更新订阅…";
         try
         {
@@ -295,7 +373,11 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
         }
         finally
         {
-            await Dispatcher.UIThread.InvokeAsync(() => IsBusy = false);
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                IsUpdatingSubscription = false;
+                IsBusy = false;
+            });
         }
     }
 
@@ -305,18 +387,186 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
         Mode = mode;
         _settings.Mode = mode;
         OnPropertyChanged(nameof(RulesText));
-        await _settingsStore.SaveAsync(_settings).ConfigureAwait(false);
+        try
+        {
+            await _settingsStore.SaveAsync(_settings).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => Fail("保存设置失败", exception));
+            return;
+        }
+
         if (IsConnected) await RestartAsync().ConfigureAwait(false);
     }
 
-    public async Task SetTunEnabledAsync(bool enabled)
+    public Task SetSystemProxyEnabledAsync(bool enabled)
     {
-        TunEnabled = enabled;
-        _settings.TunEnabled = enabled;
-        if (enabled && _engine.RequiresAdministratorForTun)
-            StatusMessage = "TUN 将在开始加速时请求管理员权限";
+        var next = TakeoverMode.ApplySystemProxy(_settings.SystemProxyEnabled, _settings.TunEnabled, enabled);
+        return CommitTakeoverAsync(next.SystemProxyEnabled, next.TunEnabled);
+    }
+
+    public Task SetTunEnabledAsync(bool enabled)
+    {
+        var next = TakeoverMode.ApplyTun(_settings.SystemProxyEnabled, _settings.TunEnabled, enabled);
+        return CommitTakeoverAsync(next.SystemProxyEnabled, next.TunEnabled);
+    }
+
+    private async Task CommitTakeoverAsync(bool systemProxyEnabled, bool tunEnabled)
+    {
+        if (systemProxyEnabled == _settings.SystemProxyEnabled && tunEnabled == _settings.TunEnabled)
+        {
+            await ApplyTakeoverFlagsAsync(systemProxyEnabled, tunEnabled).ConfigureAwait(false);
+            return;
+        }
+
+        var previous = (_settings.SystemProxyEnabled, _settings.TunEnabled);
+        _pendingTunRevert = tunEnabled && !previous.Item2 ? previous : null;
+        await ApplyTakeoverFlagsAsync(systemProxyEnabled, tunEnabled).ConfigureAwait(false);
+        if (tunEnabled && _engine.RequiresAdministratorForTun)
+            await Dispatcher.UIThread.InvokeAsync(() => StatusMessage = "TUN 将在开始加速时请求管理员权限");
+
+        var wasConnected = IsConnected || _engine.IsRunning;
+        if (!wasConnected)
+        {
+            try
+            {
+                await _settingsStore.SaveAsync(_settings).ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                await Dispatcher.UIThread.InvokeAsync(() => Fail("保存设置失败", exception));
+            }
+
+            return;
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(() => IsBusy = true);
+        try
+        {
+            await StopEngineAsync().ConfigureAwait(false);
+            await Dispatcher.UIThread.InvokeAsync(ApplyDisconnectedState);
+            await StartCoreAsync().ConfigureAwait(false);
+        }
+        catch (TunAuthorizationException exception)
+        {
+            await RevertAfterTunAuthorizationAsync(exception, restoreConnection: true).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                ApplyDisconnectedState();
+                Fail("连接失败", exception, fault: true);
+            });
+        }
+        finally
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => IsBusy = false);
+        }
+    }
+
+    private async Task StartCoreAsync()
+    {
+        if (_profile is null || _profile.Nodes.Count == 0) throw new InvalidOperationException("请先配置并更新订阅");
+        _settings.Mode = Mode;
+        _settings.TunEnabled = TunEnabled;
+        _settings.SystemProxyEnabled = SystemProxyEnabled;
+        var configPath = await _configurationService.WriteAsync(_profile, _settings).ConfigureAwait(false);
         await _settingsStore.SaveAsync(_settings).ConfigureAwait(false);
-        if (IsConnected) await RestartAsync().ConfigureAwait(false);
+        await Dispatcher.UIThread.InvokeAsync(() => StatusMessage =
+            TunEnabled && _engine.RequiresAdministratorForTun
+                ? "请在系统提示中允许管理员权限…"
+                : "正在启动网络加速…");
+        await _engine.StartAsync(configPath, requireAdministrator: TunEnabled).ConfigureAwait(false);
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            _pendingTunRevert = null;
+            _connectedAt = DateTimeOffset.Now;
+            IsConnected = true;
+            ConnectionStatusText = "已连接";
+            StatusMessage = TunEnabled
+                ? "TUN 已接管系统网络流量"
+                : IsSystemProxy
+                    ? "系统代理已启用"
+                    : "加速已启动，未接管系统流量";
+            StartDurationTimer();
+            StartRealtime();
+        });
+        _ = RefreshLatenciesAsync();
+        _ = RefreshExitIpAsync(throughProxy: true, force: true);
+        _ = RefreshServiceStatusAsync();
+    }
+
+    private async Task RevertAfterTunAuthorizationAsync(TunAuthorizationException exception, bool restoreConnection)
+    {
+        if (_pendingTunRevert is { } previous)
+        {
+            await ApplyTakeoverFlagsAsync(previous.SystemProxyEnabled, previous.TunEnabled).ConfigureAwait(false);
+            _pendingTunRevert = null;
+        }
+        else if (TunEnabled || _settings.TunEnabled)
+        {
+            await ApplyTakeoverFlagsAsync(_settings.SystemProxyEnabled, false).ConfigureAwait(false);
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(() => PresentAuthorization(_feedback, exception));
+        await Dispatcher.UIThread.InvokeAsync(ApplyDisconnectedState);
+        if (restoreConnection && !TunEnabled && _profile is { Nodes.Count: > 0 })
+        {
+            try
+            {
+                await StartCoreAsync().ConfigureAwait(false);
+            }
+            catch (Exception restoreFailure)
+            {
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    ApplyDisconnectedState();
+                    Fail("连接失败", restoreFailure, fault: true);
+                });
+                return;
+            }
+        }
+        else
+        {
+            await _settingsStore.SaveAsync(_settings).ConfigureAwait(false);
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            StatusMessage = exception.Message;
+            ConnectionFaultSignal++;
+        });
+    }
+
+    public static void PresentAuthorization(IUserFeedbackService? feedback, TunAuthorizationException exception)
+    {
+        if (feedback is null) return;
+        if (exception.Cancelled)
+        {
+            feedback.Notify(FeedbackKind.Warning, TunAuthorizationException.CancelledMessage);
+            return;
+        }
+
+        if (exception.SetuidWrapperMissing)
+        {
+            _ = feedback.ShowErrorAsync("无法授予 TUN 权限", TunAuthorizationException.SetuidWrapperMessage, exception);
+            return;
+        }
+
+        feedback.Report("授予 TUN 权限失败", exception);
+    }
+
+    private async Task ApplyTakeoverFlagsAsync(bool systemProxyEnabled, bool tunEnabled)
+    {
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            _settings.SystemProxyEnabled = systemProxyEnabled;
+            _settings.TunEnabled = tunEnabled;
+            SystemProxyEnabled = systemProxyEnabled;
+            TunEnabled = tunEnabled;
+        });
     }
 
     public async Task SelectNodeAsync(NodeItemViewModel item)
@@ -333,6 +583,11 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
             if (ActiveConfiguration is not null) ActiveConfiguration.SelectedNode = item.Tag;
             await _settingsStore.SaveAsync(_settings).ConfigureAwait(false);
             await Dispatcher.UIThread.InvokeAsync(() => SelectNode(item.Tag));
+            if (IsConnected)
+            {
+                _ = RefreshExitIpAsync(throughProxy: true, force: true);
+                _ = RefreshServiceStatusAsync();
+            }
         }
         catch (Exception exception)
         {
@@ -396,6 +651,9 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
                 foreach (var item in items) item.IsMeasuringLatency = false;
                 IsRefreshingLatencies = false;
                 UpdateCurrentLatency();
+                var measurable = items.Where(item => !item.IsAutomatic).ToArray();
+                if (measurable.Length > 0 && measurable.All(item => item.Latency is null))
+                    _feedback.Notify(FeedbackKind.Warning, "节点延迟测试失败");
             });
         }
     }
@@ -437,6 +695,8 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
     {
         if (_disposed) return;
         _disposed = true;
+        StopRealtime();
+        _dash.ReleaseMotion();
         _durationTimer?.Dispose();
         _durationTimer = null;
         _engine.LogReceived -= Engine_LogReceived;
@@ -448,7 +708,7 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
 
     private async Task RestartAsync()
     {
-        await _engine.StopAsync().ConfigureAwait(false);
+        await StopEngineAsync().ConfigureAwait(false);
         await Dispatcher.UIThread.InvokeAsync(ApplyDisconnectedState);
         await ToggleConnectionAsync().ConfigureAwait(false);
     }
@@ -461,7 +721,7 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
         {
             if (reconnect)
             {
-                await _engine.StopAsync().ConfigureAwait(false);
+                await StopEngineAsync().ConfigureAwait(false);
                 await Dispatcher.UIThread.InvokeAsync(ApplyDisconnectedState);
             }
 
@@ -517,6 +777,7 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
             RefreshNodePresentation();
             OnPropertyChanged(nameof(HasTrafficInformation));
             StatusMessage = "请配置订阅后开始使用";
+            NotifyConfigCard();
             return;
         }
 
@@ -544,6 +805,7 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
             ? _settings.SelectedNode
             : Nodes.FirstOrDefault()?.Tag ?? string.Empty;
         SelectNode(selected);
+        NotifyConfigCard();
     }
 
     private void NormalizeConfigurations()
@@ -643,10 +905,37 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
         }
     }
 
-    private void Fail(string title, Exception exception)
+    private void Fail(string title, Exception exception, bool fault = false)
     {
         StatusMessage = $"{title}：{exception.GetBaseException().Message}";
+        if (fault) ConnectionFaultSignal++;
         _feedback.Report(title, exception);
+    }
+
+    public void Run(Func<Task> action, string? errorTitle = null)
+    {
+        if (_feedback is not null)
+        {
+            _feedback.Run(action, errorTitle);
+            return;
+        }
+
+        _ = Observe(action, errorTitle);
+    }
+
+    private async Task Observe(Func<Task> action, string? errorTitle)
+    {
+        try
+        {
+            await action().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => Fail(string.IsNullOrWhiteSpace(errorTitle) ? "操作未完成" : errorTitle, exception));
+        }
     }
 
     private void Succeed(string message)
@@ -659,10 +948,13 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
     {
         _durationTimer?.Dispose();
         _durationTimer = null;
+        StopRealtime();
         IsConnected = false;
         ConnectionStatusText = "未连接";
         ConnectionDurationText = "00:00:00";
+        _dash.ResetLive();
         if (!StatusMessage.StartsWith("连接失败", StringComparison.Ordinal)) StatusMessage = "网络加速已停止";
+        _ = RefreshExitIpAsync(throughProxy: false, force: false);
     }
 
     private void RefreshCoreStatus(string? version = null)
@@ -684,9 +976,45 @@ public sealed class NetworkAcceleratorViewModel : INotifyPropertyChanged, IDispo
             OnPropertyChanged(nameof(HasNoLogs));
         });
 
+    private async Task StopEngineAsync()
+    {
+        Interlocked.Increment(ref _suppressCoreExitNotice);
+        try
+        {
+            await _engine.StopAsync().ConfigureAwait(false);
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (!_disposed && IsConnected) ApplyDisconnectedState();
+            });
+        }
+        finally
+        {
+            // The process exit is posted at normal priority. Clearing afterwards,
+            // and only after the connected flag is already false, keeps that exit
+            // from looking like the core quit on its own.
+            Dispatcher.UIThread.Post(
+                () => Interlocked.Decrement(ref _suppressCoreExitNotice),
+                DispatcherPriority.Background);
+        }
+    }
+
+    public Task PreviewIntentionalStopAsync() => StopEngineAsync();
+
+    public void PreviewEngineExit() => Engine_StateChanged(_engine, EventArgs.Empty);
+
     private void Engine_StateChanged(object? sender, EventArgs e)
     {
-        if (!_engine.IsRunning) Dispatcher.UIThread.Post(ApplyDisconnectedState);
+        if (_engine.IsRunning) return;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_disposed) return;
+            var unexpected = IsConnected && Volatile.Read(ref _suppressCoreExitNotice) == 0;
+            ApplyDisconnectedState();
+            if (!unexpected) return;
+            StatusMessage = CoreExitedMessage;
+            ConnectionFaultSignal++;
+            _feedback.Notify(FeedbackKind.Error, CoreExitedMessage);
+        });
     }
 
     private static string SanitizeLog(string message)

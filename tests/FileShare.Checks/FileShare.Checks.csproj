@@ -6,7 +6,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/AsterDock.Contracts/AsterDock.Contracts.csproj" />
     <ProjectReference Include="../../src/AsterDock.UI/AsterDock.UI.csproj" />
-    <PackageReference Include="Avalonia.Headless" Version="12.1.0" />
+    <PackageReference Include="Avalonia.Headless" Version="12.1.2" />
     <Compile Include="../../src/AsterDock.Host/Modules/AppModuleLoadContext.cs" Link="AppModuleLoadContext.cs" />
   </ItemGroup>
   <!-- 不引用模块，确保检查宿主只使用 Microsoft.NETCore.App。 -->

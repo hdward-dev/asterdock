@@ -11,14 +11,27 @@ public sealed class SingBoxEngineService : IDisposable
     private readonly object _sync = new();
     private readonly string _moduleDirectory;
     private readonly string _dataDirectory;
+    private readonly LinuxTunPrivilege _linuxTun;
     private Process? _process;
     private bool _elevatedSession;
     private bool _disposed;
+    private int _pkexecOutputSeen;
 
     public SingBoxEngineService(string moduleDirectory, string dataDirectory)
     {
         _moduleDirectory = moduleDirectory;
         _dataDirectory = dataDirectory;
+        _linuxTun = new LinuxTunPrivilege(
+            dataDirectory,
+            new SystemProcessRunner(),
+            new LinuxCommandResolver(),
+            new LinuxCapabilityXattrReader());
+    }
+
+    public Func<IDisposable?>? BeginAuthorization
+    {
+        get => _linuxTun.BeginAuthorization;
+        set => _linuxTun.BeginAuthorization = value;
     }
 
     public event EventHandler<string>? LogReceived;
@@ -81,19 +94,51 @@ public sealed class SingBoxEngineService : IDisposable
 
         if (requireAdministrator && RequiresAdministratorForTun)
             await StartElevatedAsync(executable, configPath, cancellationToken).ConfigureAwait(false);
+        else if (requireAdministrator && OperatingSystem.IsLinux())
+        {
+            var launch = await _linuxTun.PrepareAsync(executable, cancellationToken).ConfigureAwait(false);
+            if (launch.ViaPkexec)
+                await StartLinuxPkexecAsync(launch.PkexecPath!, launch.Executable, configPath, cancellationToken).ConfigureAwait(false);
+            else
+                StartTracked(launch.Executable, ["run", "-c", configPath], null);
+        }
         else
-            StartStandard(executable, configPath);
+            StartTracked(executable, ["run", "-c", configPath], null);
 
         if (requireAdministrator)
             await FlushSystemDnsCacheAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private void StartStandard(string executable, string configPath)
+    private void StartTracked(string executable, IReadOnlyList<string> arguments, StringBuilder? errorCapture)
     {
-        var info = CreateStartInfo(executable, ["run", "-c", configPath]);
+        StartTracked(executable, arguments, errorCapture, null);
+    }
+
+    private Process StartTracked(
+        string executable,
+        IReadOnlyList<string> arguments,
+        StringBuilder? errorCapture,
+        string? workingDirectory)
+    {
+        var info = CreateStartInfo(executable, arguments, workingDirectory);
         var process = new Process { StartInfo = info, EnableRaisingEvents = true };
-        process.OutputDataReceived += (_, e) => PublishLog(e.Data);
-        process.ErrorDataReceived += (_, e) => PublishLog(e.Data);
+        process.OutputDataReceived += (_, e) =>
+        {
+            if (!string.IsNullOrWhiteSpace(e.Data)) Interlocked.Exchange(ref _pkexecOutputSeen, 1);
+            PublishLog(e.Data);
+        };
+        process.ErrorDataReceived += (_, e) =>
+        {
+            if (!string.IsNullOrWhiteSpace(e.Data))
+            {
+                if (errorCapture is not null)
+                {
+                    lock (errorCapture) errorCapture.AppendLine(e.Data);
+                }
+                Interlocked.Exchange(ref _pkexecOutputSeen, 1);
+            }
+            PublishLog(e.Data);
+        };
         process.Exited += (_, _) =>
         {
             PublishLog($"sing-box 已退出，代码 {process.ExitCode}");
@@ -108,6 +153,96 @@ public sealed class SingBoxEngineService : IDisposable
             _elevatedSession = false;
         }
         StateChanged?.Invoke(this, EventArgs.Empty);
+        return process;
+    }
+
+    private async Task StartLinuxPkexecAsync(
+        string pkexecPath,
+        string executable,
+        string configPath,
+        CancellationToken cancellationToken)
+    {
+        var error = new StringBuilder();
+        Interlocked.Exchange(ref _pkexecOutputSeen, 0);
+        Process process;
+        using (BeginAuthorization?.Invoke())
+        {
+            process = StartTracked(pkexecPath, [executable, "run", "-c", configPath], error, _dataDirectory);
+            try
+            {
+                await WaitForPkexecHandoffAsync(process, error, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                await StopAsync().ConfigureAwait(false);
+                throw;
+            }
+        }
+    }
+
+    private async Task WaitForPkexecHandoffAsync(Process process, StringBuilder error, CancellationToken cancellationToken)
+    {
+        var started = Stopwatch.StartNew();
+        while (started.Elapsed < TimeSpan.FromMinutes(2))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (process.HasExited)
+            {
+                await Task.Delay(50, cancellationToken).ConfigureAwait(false);
+                throw CreatePkexecException(process, error);
+            }
+
+            if (TryReadComm(process.Id, out var command))
+            {
+                if (command.Equals("sing-box", StringComparison.Ordinal)) return;
+            }
+            else if (Interlocked.CompareExchange(ref _pkexecOutputSeen, 0, 0) == 1 && !LooksLikePkexec(error))
+            {
+                return;
+            }
+
+            await Task.Delay(100, cancellationToken).ConfigureAwait(false);
+        }
+
+        throw new TunAuthorizationException(TunAuthorizationException.Failed("等待授权超时"), cancelled: false);
+    }
+
+    private static TunAuthorizationException CreatePkexecException(Process process, StringBuilder error)
+    {
+        string text;
+        lock (error) text = error.ToString();
+        var outcome = LinuxTunAuthorization.ClassifyPkexec(SafeExitCode(process), text, started: true);
+        if (outcome == LinuxPkexecOutcome.Cancelled)
+            return new TunAuthorizationException(TunAuthorizationException.CancelledMessage, cancelled: true);
+        return new TunAuthorizationException(TunAuthorizationException.Failed(text), cancelled: false);
+    }
+
+    private static bool TryReadComm(int pid, out string command)
+    {
+        command = string.Empty;
+        if (!OperatingSystem.IsLinux()) return false;
+        try
+        {
+            command = File.ReadAllText($"/proc/{pid}/comm").Trim();
+            return command.Length > 0;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static bool LooksLikePkexec(StringBuilder error)
+    {
+        string text;
+        lock (error) text = error.ToString();
+        return text.Contains("pkexec", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("authorized", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("polkit", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task StartElevatedAsync(string executable, string configPath, CancellationToken cancellationToken)
@@ -259,7 +394,10 @@ public sealed class SingBoxEngineService : IDisposable
         if (process.ExitCode != 0) throw new InvalidDataException(string.IsNullOrWhiteSpace(message) ? "sing-box 配置检查失败" : message);
     }
 
-    private static ProcessStartInfo CreateStartInfo(string executable, IReadOnlyList<string> arguments)
+    private static ProcessStartInfo CreateStartInfo(
+        string executable,
+        IReadOnlyList<string> arguments,
+        string? workingDirectory = null)
     {
         var info = new ProcessStartInfo(executable)
         {
@@ -269,7 +407,7 @@ public sealed class SingBoxEngineService : IDisposable
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
             CreateNoWindow = true,
-            WorkingDirectory = Path.GetDirectoryName(executable)!
+            WorkingDirectory = workingDirectory ?? Path.GetDirectoryName(executable)!
         };
         foreach (var argument in arguments) info.ArgumentList.Add(argument);
         return info;

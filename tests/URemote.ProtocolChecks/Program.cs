@@ -111,6 +111,12 @@ frameRateRequest[10] = 0;
 Check(HostCaptureProtocol.Decode(frameRateRequest)?.Fps == 120, "explicit FPS remains usable when no standard tier is selected");
 var controllerCapture = HostCaptureProtocol.Decode(ControllerProtocol.Capture(2, 1));
 Check(controllerCapture is { Screen: 1, Quality: 3, Fps: 60 }, "native controller screen selection routes to requested display");
+var routedMouse = ControllerProtocol.RouteInput("{\"action\":\"mouse_move_absolute\",\"abs_x\":0.5,\"abs_y\":0.25}", 1);
+var routedInput = HostControlInput.Decode("CONTROL_DATA_CHANNEL", false, Encoding.UTF8.GetBytes(routedMouse), 2);
+Check(routedInput is { DisplayId: 1, Mouse.X: 0.5, Mouse.Y: 0.25 }, "controller mouse follows the selected display");
+var routedKey = ControllerProtocol.RouteInput("{\"action\":\"kbd_press\",\"key\":0,\"interrept\":true}", 1);
+Check(routedKey == "{\"action\":\"kbd_press\",\"key\":0,\"interrept\":true}", "keyboard input is not bound to a display");
+Check(ControllerProtocol.RouteInput(routedMouse, 0) == routedMouse, "an existing screen id is not rewritten");
 foreach (var level in new[] { 1, 2, 3, 4, 5 })
 {
     var update = HostCaptureProtocol.Decode(ControllerProtocol.Quality(9, level));

@@ -25,8 +25,11 @@ public sealed partial class RemoteDesktopWindow : Window
     private readonly DispatcherTimer paintTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
     private WriteableBitmap? bitmap;
     private ControllerFrame? painted;
-    private int[] displayIds = [];
+    private RemoteScreen[] screens = [];
     private int activeDisplay;
+    private int activeTrack;
+    private bool updatingDisplays;
+    private bool awaitingSwitch;
     private bool closed;
     private int inputSent;
     private bool inputFailed;
@@ -50,11 +53,17 @@ public sealed partial class RemoteDesktopWindow : Window
         ApplyQuality();
         fullScreen.Click += (_, _) => { WindowState = WindowState == WindowState.FullScreen ? WindowState.Normal : WindowState.FullScreen; video.Focus(); };
         display.SelectionChanged += (_, _) => {
-            ReleaseInputs(); if (display.SelectedIndex >= 0 && display.SelectedIndex < displayIds.Length) {
-                activeDisplay = displayIds[display.SelectedIndex]; controller.SelectDisplay(activeDisplay);
-                video.Source = null; painted = null; status.Text = "正在切换显示屏…";
-                connectingOverlay.Text = "正在切换显示屏…"; connectingOverlay.IsLoading = true;
-            }
+            if (updatingDisplays || display.SelectedIndex < 0 || display.SelectedIndex >= screens.Length) return;
+            var selected = screens[display.SelectedIndex];
+            var trackChanged = selected.VideoTrack != activeTrack;
+            ReleaseInputs();
+            activeDisplay = selected.Id; activeTrack = selected.VideoTrack; awaitingSwitch = true;
+            controller.SelectDisplay(activeDisplay);
+            status.Text = "正在切换显示屏…";
+            if (!trackChanged) return;
+            painted = null;
+            if (HasFrame(activeTrack)) return;
+            video.Source = null; connectingOverlay.Text = "正在切换显示屏…"; connectingOverlay.IsLoading = true;
         };
         controller.Status += value => Console.WriteLine("controller-" + value);
         controller.Status += value => Dispatcher.UIThread.Post(() => { if (!closed) ApplyConnectionStatus(value switch {
@@ -62,10 +71,7 @@ public sealed partial class RemoteDesktopWindow : Window
             "ice-checking" => "正在尝试直连或中转…", "ice-failed" or "peer-failed" => FailChannel(),
             "control-ready" or "peer-connected" => Connected(), "peer-disconnected" => "连接中断…", "closed" => "连接已结束", _ => status.Text },
             value is "ice-failed" or "peer-failed" or "closed"); });
-        controller.Displays += ids => Dispatcher.UIThread.Post(() => {
-            if (closed) return; displayIds = ids; display.ItemsSource = ids.Select(x => "显示屏 " + (x + 1)).ToArray();
-            display.IsEnabled = ids.Length > 1; display.SelectedIndex = Math.Max(0, Array.IndexOf(ids, activeDisplay));
-        });
+        controller.Displays += list => Dispatcher.UIThread.Post(() => ApplyDisplays(list));
         controller.Frame += (index, frame) => { lock (frameGate) latest[index] = frame; };
         paintTimer.Tick += (_, _) => Paint();
         video.PointerPressed += (_, e) => {
@@ -124,9 +130,33 @@ public sealed partial class RemoteDesktopWindow : Window
         var y = Math.Clamp((p.Y - (video.Bounds.Height - frame.Height * scale) / 2) / scale, 0, frame.Height - 1);
         Send(new { action = "mouse_move_absolute", abs_x = x / frame.Width, abs_y = y / frame.Height });
     }
+    private void ApplyDisplays(IReadOnlyList<RemoteScreen> list)
+    {
+        if (closed || list.Count is < 1 or > 5) return;
+        updatingDisplays = true;
+        try
+        {
+            screens = list.ToArray();
+            display.ItemsSource = screens.Select(screen => "显示屏 " + (screen.Id + 1)).ToArray();
+            display.IsEnabled = screens.Length > 1;
+            var index = Array.FindIndex(screens, screen => screen.Id == activeDisplay);
+            if (index < 0) index = 0;
+            var selected = screens[index];
+            var changed = selected.Id != activeDisplay || selected.VideoTrack != activeTrack;
+            activeDisplay = selected.Id; activeTrack = selected.VideoTrack;
+            display.SelectedIndex = index;
+            if (!changed) return;
+            painted = null; awaitingSwitch = true; controller.SelectDisplay(activeDisplay);
+            if (HasFrame(activeTrack)) return;
+            video.Source = null; status.Text = "正在切换显示屏…";
+            connectingOverlay.Text = "正在切换显示屏…"; connectingOverlay.IsLoading = true;
+        }
+        finally { updatingDisplays = false; }
+    }
+    private bool HasFrame(int track) { lock (frameGate) return latest.ContainsKey(track); }
     private void Paint()
     {
-        ControllerFrame? frame; lock (frameGate) latest.TryGetValue(activeDisplay, out frame);
+        ControllerFrame? frame; lock (frameGate) latest.TryGetValue(activeTrack, out frame);
         if (closed || frame is null || ReferenceEquals(painted, frame)) return;
         if (bitmap is null || bitmap.PixelSize != new PixelSize(frame.Width, frame.Height)) {
             video.Source = null; bitmap?.Dispose(); bitmap = new WriteableBitmap(new PixelSize(frame.Width, frame.Height), new Vector(96, 96), PixelFormat.Rgba8888, AlphaFormat.Opaque); video.Source = bitmap;
@@ -136,9 +166,9 @@ public sealed partial class RemoteDesktopWindow : Window
             if (fb.RowBytes == frame.Width * 4) Marshal.Copy(frame.Pixels, 0, fb.Address, frame.Pixels.Length);
             else for (int y = 0; y < frame.Height; y++) Marshal.Copy(frame.Pixels, y * frame.Width * 4, fb.Address + y * fb.RowBytes, frame.Width * 4);
         }
-        if (painted is null || painted.Width != frame.Width || painted.Height != frame.Height)
+        if (awaitingSwitch || painted is null || painted.Width != frame.Width || painted.Height != frame.Height)
             status.Text = $"已连接 · {frame.Width} × {frame.Height}";
-        painted = frame; video.InvalidateVisual(); connectingOverlay.IsLoading = false;
+        awaitingSwitch = false; painted = frame; video.InvalidateVisual(); connectingOverlay.IsLoading = false;
     }
     private string FailChannel()
     {

@@ -17,6 +17,8 @@
   </ItemGroup>
   <ItemGroup>
     <None Update="app.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="AndroidLiquidGlass.LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <Target Name="BuildNetworkElevatedHost" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'">
     <MSBuild Projects="$(ElevatedHostProject)" Targets="Restore;Build" Properties="Configuration=$(Configuration)"

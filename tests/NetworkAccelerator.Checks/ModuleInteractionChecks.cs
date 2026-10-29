@@ -6,7 +6,6 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Input;
-using Avalonia.Layout;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -85,6 +84,7 @@ static class ModuleInteractionChecks
             DashboardMotion.ReduceMotion = false;
             MotionClock.Manual = true;
             CheckNavGlassChoice(check);
+            CheckNavHoverColors(check);
             CheckPageSurvivesDetach(check);
             CheckSwitchSurvivesDetach(check);
             CheckCustomHitTargets(check);
@@ -101,262 +101,283 @@ static class ModuleInteractionChecks
 
     private static void CheckNavGlassChoice(Action<bool, string> check)
     {
-        var light = LiquidGlassBar.CreateAcrylicTint(false);
-        var dark = LiquidGlassBar.CreateAcrylicTint(true);
-        check(light == Colors.Transparent && dark == Colors.Transparent && light.A == 0,
-            "acrylic tint is transparent so Fluid does not hue-wash a solid plate");
-        check(LiquidGlassBar.AcrylicRefractionHeight >= 32 && LiquidGlassBar.AcrylicRefractionAmount >= 48,
-            "acrylic refraction is stronger than the library 12/24 edge");
-
-        var previousTheme = Application.Current?.RequestedThemeVariant;
-        Window? window = null;
-        Window? follow = null;
+        var view = new NetworkAcceleratorView { Width = 1100, Height = 820 };
+        var window = new Window
+        {
+            Width = 1100,
+            Height = 820,
+            Content = view,
+            WindowDecorations = WindowDecorations.None
+        };
         try
         {
-            if (Application.Current is not null)
-                Application.Current.RequestedThemeVariant = ThemeVariant.Light;
-            var view = new NetworkAcceleratorView { Width = 1100, Height = 820 };
-            window = new Window
-            {
-                Width = 1100,
-                Height = 820,
-                Content = view,
-                WindowDecorations = WindowDecorations.None
-            };
             window.Show();
             Settle(window);
             var glass = view.FindControl<LiquidGlassBar>("NavGlass")!;
-            var surface = glass.GetVisualDescendants().OfType<AcrylicInteractiveSurface>().Single();
-            check(glass.SnapshotNote.Contains("acrylic", StringComparison.Ordinal)
-                  && !glass.SnapshotNote.Contains("approximate", StringComparison.Ordinal),
-                "nav glass installs Fluid acrylic and does not describe a degraded bar");
-            check(surface.BlurRadius == LiquidGlassBar.AcrylicBlurRadius
-                  && Math.Abs(surface.Vibrancy - LiquidGlassBar.AcrylicVibrancy) < 0.001
-                  && Math.Abs(surface.Brightness - LiquidGlassBar.AcrylicBrightness) < 0.001,
-                "acrylic nav uses the Fluid demo frost");
-            check(surface.RevealBorderEnabled
-                  && surface.DepthEffect
-                  && !surface.ChromaticAberration
-                  && surface.RefractionHeight == LiquidGlassBar.AcrylicRefractionHeight
-                  && surface.RefractionAmount == LiquidGlassBar.AcrylicRefractionAmount,
-                "acrylic nav keeps a reveal rim and a deep refraction edge");
-            check(surface.HighlightEnabled && surface.ShadowEnabled
-                  && Math.Abs(surface.HighlightOpacity - LiquidGlassBar.AcrylicHighlightRest) < 0.001
-                  && Math.Abs(surface.HighlightWidth - 0.5) < 0.001
-                  && surface.TintColor.A == 0
-                  && surface.SurfaceColor.A == 0,
-                "acrylic nav keeps Fluid highlight and shadow with no tint fill");
+            var surfaces = glass.GetVisualDescendants().OfType<AcrylicSurface>().ToList();
+            var frost = surfaces.Single(surface => surface.BlurRadius > 0);
+            var lens = surfaces.Single(surface => surface.BlurRadius == 0);
+            check(frost.BlurRadius == 9 && frost.InnerShadowEnabled,
+                "resting nav retains the rim5 frost and inner shadow");
+            check(frost.TintColor.A is > 0 and < 255 && frost.SurfaceColor.A == 0 && frost.Vibrancy == 1
+                  && frost.InnerShadowOpacity <= 0.06,
+                "menu frost keeps its neutral tint translucent and preserves the backdrop");
             var scroll = view.FindControl<ScrollViewer>("PageScroll")!;
-            var chrome = view.FindControl<Border>("NavChrome")!;
-            var scrollRight = scroll.TranslatePoint(new Point(scroll.Bounds.Width, 0), window)?.X;
-            var barLeft = chrome.TranslatePoint(default, window)?.X;
-            check(scrollRight is double pageRight && barLeft is double navLeft && pageRight > navLeft + 8,
-                "page scroll extends under the floating nav");
-            var body = view.FindControl<StackPanel>("PageBody")!;
-            var bodyRight = body.TranslatePoint(new Point(body.Bounds.Width, 0), window)?.X;
-            check(bodyRight is double contentRight && barLeft is double navEdge && contentRight > navEdge + 24,
-                "page content runs under the nav so acrylic samples it");
-            check(chrome.BoxShadow.Count == 0,
-                "nav chrome does not stack a second shadow over Fluid's");
-            check(surface.CornerRadius == new CornerRadius(LiquidGlassBar.Corner), "acrylic nav keeps the 24 corner");
-            check(AcrylicBackdrop.GetIsExcludedFromCapture(surface)
-                  && AcrylicBackdrop.GetIsExcludedFromCapture(glass)
-                  && AcrylicBackdrop.GetIsExcludedFromCapture(chrome),
-                "acrylic nav is excluded from its own backdrop capture");
+            var content = view.FindControl<StackPanel>("PageContent")!;
+            var contentRight = content.TranslatePoint(new Point(content.Bounds.Width, 0), window)!.Value.X;
+            var glassLeft = glass.TranslatePoint(default, window)!.Value.X;
+            var scrollRight = scroll.TranslatePoint(new Point(scroll.Bounds.Width, 0), window)!.Value.X;
+            check(scrollRight <= glassLeft && contentRight <= glassLeft - 24,
+                "page content and its scrollbar reserve space for the full floating lens");
+            check(!AcrylicBackdrop.GetIsExcludedFromCapture(frost),
+                "main frost is available to the hover material");
+            check(AcrylicBackdrop.GetIsExcludedFromCapture(
+                    glass.GetVisualDescendants().OfType<PassThroughBorder>().Single()),
+                "frost excludes the menu icons instead of blurring a second copy behind them");
+            check(lens.IsVisible && lens.Bounds.X >= frost.Bounds.X + 3
+                  && lens.Bounds.Right <= frost.Bounds.Right - 3
+                  && lens.Bounds.Y >= frost.Bounds.Y
+                  && lens.Bounds.Bottom <= frost.Bounds.Bottom,
+                "resting selected lens is fully inside the main frost");
+            var sideInset = lens.Bounds.X - frost.Bounds.X;
+            check(Math.Abs(lens.Bounds.Y - frost.Bounds.Y - sideInset) < 0.6
+                  && Math.Abs(frost.Bounds.Right - lens.Bounds.Right - sideInset) < 0.6,
+                "top selection has equal top, left and right insets");
             var overview = NamedButton(view, "概览");
-            foreach (var button in view.FindControl<StackPanel>("SectionNavigation")!.Children.OfType<Button>())
-            {
-                var name = AutomationProperties.GetName(button);
-                check(!string.IsNullOrEmpty(name) && ToolTip.GetTip(button) is null,
-                    name + " keeps its accessible name and has no hover tip");
-            }
-
-            check(overview.Focusable && overview.GetVisualAncestors().OfType<AcrylicSurface>().Any(),
-                "section buttons stay focusable inside the acrylic surface");
-            check(Hits(window, overview, Center(overview)), "section button still hit-tests through acrylic");
+            check(Hits(window, overview, Center(overview)), "section buttons hit-test through glass siblings");
             overview.Focus();
             Settle(window);
-            check(overview.IsFocused, "section button takes keyboard focus through acrylic");
-            DashboardMotion.ReduceMotion = true;
-            var hoverAt = chrome.TranslatePoint(new Point(chrome.Bounds.Width / 2, 36), window);
-            if (hoverAt is { } hoverPoint)
-                window.MouseMove(hoverPoint);
-            Settle(window);
-            var hoverScale = chrome.RenderTransform?.Value.M11 ?? 1;
-            check(hoverScale > 1.06, "acrylic hover scales the capsule enough to see");
-            check(surface.HighlightOpacity > 0.9, "acrylic hover strengthens the Fluid highlight");
-            check(surface.ShadowColor.A > LiquidGlassBar.AcrylicShadowRestAlpha && chrome.BoxShadow.Count == 0,
-                "acrylic hover deepens Fluid's own shadow without a second drop");
-            check(surface.IsInteractive, "hovering a section button arms Fluid's press deformation");
-            check(Hits(window, overview, Center(overview)), "section button still hit-tests while the capsule is hovered");
-            window.MouseMove(new Point(4, 4));
-            Settle(window);
-            check(!surface.IsInteractive, "leaving the nav lets clicks pass through the capsule");
+            check(overview.IsFocused, "section buttons retain keyboard focus");
 
-            if (Application.Current is not null)
-                Application.Current.RequestedThemeVariant = ThemeVariant.Dark;
+            var origin = overview.TranslatePoint(default, glass)!.Value;
+            var x = origin.X + overview.Bounds.Width / 2;
+            var y = origin.Y + overview.Bounds.Height / 2;
+            var restSize = lens.Bounds.Size;
+            var restRadius = lens.CornerRadius.TopLeft;
+            foreach (var offset in new[] { 0.0, 9.0, 19.0, 37.0 })
+            {
+                var point = glass.TranslatePoint(new Point(x, y + offset), window)!.Value;
+                window.MouseMove(point);
+                MotionClock.Advance(TimeSpan.FromSeconds(1));
+                Settle(window);
+                check(lens.IsVisible && lens.Bounds.Width > frost.Bounds.Width
+                      && lens.Bounds.Height > restSize.Height,
+                    "hover lens enlarges both dimensions outside the frost");
+                CheckUniformScale(restSize, restRadius, "hover preserves the selected frame proportions");
+                check(Math.Abs(lens.Bounds.Center.Y - y - offset) < 1,
+                    $"lens follows intermediate pointer Y positions without section snapping: actual={lens.Bounds.Center.Y}, expected={y + offset}");
+                check(lens.Bounds.X >= 0 && lens.Bounds.Y >= 0
+                      && lens.Bounds.Right <= glass.Bounds.Width + 0.5
+                      && lens.Bounds.Bottom <= glass.Bounds.Height + 0.5,
+                    "lens overhang stays in the padded positive coordinate system");
+            }
+            check(lens.BackdropZoom == 1 && !lens.ChromaticAberration
+                  && !lens.DepthEffect && lens.BlurRadius == 0 && lens.Vibrancy == 1,
+                "lens keeps the center at 1:1 and avoids dispersion and a second frost pass");
+            check(Hits(window, overview, Center(overview)), "hover lens does not intercept navigation clicks");
+            glass.PreviewHoverMotion(new Point(x, y + 100), 1000);
+            glass.PreviewHoverMotion(new Point(x, y + 102), 1020);
             Settle(window);
-            check(surface.TintColor == Colors.Transparent && surface.SurfaceColor.A == 0,
-                "acrylic nav stays untinted in the dark theme");
-            check(glass.GetVisualDescendants().OfType<AcrylicSurface>().Any(),
-                "a slow frame does not retire the nav to a solid bar");
+            var slowHeight = lens.Bounds.Height;
+            glass.PreviewHoverMotion(new Point(x, y + 122), 1040);
+            Settle(window);
+            check(lens.Bounds.Height > slowHeight + 2
+                  && lens.Bounds.Width <= glass.Bounds.Width
+                  && lens.Bounds.X >= 0 && lens.Bounds.Bottom <= glass.Bounds.Height,
+                "accelerated movement enlarges the lens while keeping its layout inside the pads");
+            CheckUniformScale(restSize, restRadius, "elastic motion preserves the selected frame proportions");
+            MotionClock.Advance(TimeSpan.FromSeconds(1));
+            Settle(window);
+            check(Math.Abs(lens.Bounds.Height / restSize.Height - LiquidGlassBar.LensScale) < 0.02,
+                "elastic motion relaxes to the uniform hover scale when pointer samples stop");
+            glass.PreviewHoverBulge(null);
+            window.MouseMove(new Point(0, 0));
+            Settle(window);
+            MotionClock.Advance(TimeSpan.FromSeconds(1));
+            Settle(window);
+            check(lens.IsVisible && Math.Abs(lens.Bounds.Center.Y - y) < 1
+                  && lens.Bounds.X >= frost.Bounds.X + 3
+                  && lens.Bounds.Right <= frost.Bounds.Right - 3,
+                "the same glass shrinks inside the frost and returns to selection after pointer exit");
+            view.PreviewNavigate("Settings");
+            MotionClock.Advance(TimeSpan.FromSeconds(1));
+            Settle(window);
+            sideInset = lens.Bounds.X - frost.Bounds.X;
+            check(Math.Abs(frost.Bounds.Bottom - lens.Bounds.Bottom - sideInset) < 0.6
+                  && Math.Abs(frost.Bounds.Right - lens.Bounds.Right - sideInset) < 0.6,
+                "bottom selection has equal bottom, left and right insets");
+            view.PreviewNavigate("Proxies");
+            MotionClock.Advance(TimeSpan.FromSeconds(1));
+            Settle(window);
+            var proxy = NamedButton(view, "代理");
+            var selectedCenter = proxy.TranslatePoint(Center(proxy), glass)!.Value;
+            check(Math.Abs(lens.Bounds.Center.Y - selectedCenter.Y) < 1,
+                "selection moves the existing glass rather than adding another pill");
 
-            var section = NamedButton(view, "代理");
+            foreach (var (section, index) in new[]
+                     {
+                         ("Overview", 0), ("Proxies", 1), ("Configuration", 2), ("Connections", 3),
+                         ("Rules", 4), ("Logs", 5), ("Settings", 6)
+                     })
+            {
+                view.PreviewNavigate(section);
+                MotionClock.Advance(TimeSpan.FromSeconds(1));
+                Settle(window);
+                var selectedSize = lens.Bounds.Size;
+                var selectedRadius = lens.CornerRadius.TopLeft;
+                check(Math.Abs(selectedSize.Width - restSize.Width) < 0.6
+                      && Math.Abs(selectedSize.Height - restSize.Height) < 0.6,
+                    $"{section}: selected frame has the same size as the end selections");
+                glass.PreviewHoverBulgeAt(index);
+                MotionClock.Advance(TimeSpan.FromMilliseconds(25));
+                Settle(window);
+                CheckUniformScale(selectedSize, selectedRadius, $"{section}: expansion preserves proportions");
+                MotionClock.Advance(TimeSpan.FromSeconds(1));
+                Settle(window);
+                CheckUniformScale(selectedSize, selectedRadius, $"{section}: full lens preserves proportions");
+                check(Math.Abs(lens.Bounds.Width / selectedSize.Width - LiquidGlassBar.LensScale) < 0.02,
+                    $"{section}: hover uses the same enlargement for end and middle selections");
+                check(Math.Abs(lens.Bounds.Height / restSize.Height - LiquidGlassBar.LensScale) < 0.02,
+                    $"{section}: expanded lens has the same height for every selection");
+                glass.PreviewHoverBulge(null);
+                MotionClock.Advance(TimeSpan.FromMilliseconds(25));
+                Settle(window);
+                CheckUniformScale(selectedSize, selectedRadius, $"{section}: collapse preserves proportions");
+                MotionClock.Advance(TimeSpan.FromSeconds(1));
+                Settle(window);
+            }
+
             window.Content = null;
             Settle(window);
             window.Content = view;
             Settle(window);
-            AvaloniaHeadlessPlatform.ForceRenderTimerTick(1);
-            check(view.FindControl<LiquidGlassBar>("NavGlass")!.GetVisualDescendants().OfType<AcrylicSurface>().Any()
-                  && Hits(window, section, Center(section)),
-                "acrylic nav keeps section buttons after detach and reattach");
-            window.Close();
-            window = null;
+            var reattached = overview.TranslatePoint(Center(overview), window)!.Value;
+            window.MouseMove(reattached);
+            Settle(window);
+            check(lens.IsVisible && Hits(window, overview, Center(overview)),
+                "glass follows the pointer and keeps buttons after detach and reattach");
 
-            var again = new NetworkAcceleratorView { Width = 1100, Height = 820 };
-            follow = new Window
+            void CheckUniformScale(Size original, double originalRadius, string message)
+            {
+                var widthScale = lens.Bounds.Width / original.Width;
+                var heightScale = lens.Bounds.Height / original.Height;
+                var cornerScale = lens.CornerRadius.TopLeft / originalRadius;
+                check(Math.Abs(widthScale - heightScale) < 0.02 && Math.Abs(widthScale - cornerScale) < 0.02,
+                    $"{message}: width={widthScale:0.000}, height={heightScale:0.000}, corner={cornerScale:0.000}");
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    private static void CheckNavHoverColors(Action<bool, string> check)
+    {
+        foreach (var theme in new[] { ThemeVariant.Light, ThemeVariant.Dark })
+        {
+            var reduceMotion = DashboardMotion.ReduceMotion;
+            DashboardMotion.ReduceMotion = true;
+            var view = new NetworkAcceleratorView { Width = 1100, Height = 820 };
+            var window = new Window
             {
                 Width = 1100,
                 Height = 820,
-                Content = again,
-                WindowDecorations = WindowDecorations.None
+                Content = view,
+                RequestedThemeVariant = theme
             };
-            follow.Show();
-            Settle(follow);
-            var followGlass = again.FindControl<LiquidGlassBar>("NavGlass")!;
-            check(followGlass.GetVisualDescendants().OfType<AcrylicInteractiveSurface>().Any()
-                  && followGlass.SnapshotNote.Contains("acrylic", StringComparison.Ordinal),
-                "a later nav still uses Fluid acrylic");
-            CheckAcrylicSamplesContrast(check, follow);
-            follow.Close();
-            follow = null;
-        }
-        finally
-        {
-            window?.Close();
-            follow?.Close();
-            if (Application.Current is not null)
-                Application.Current.RequestedThemeVariant = previousTheme;
-        }
-    }
-
-    private static void CheckAcrylicSamplesContrast(Action<bool, string> check, Window window)
-    {
-        var chrome = window.GetVisualDescendants().OfType<Border>().First(item => item.Classes.Contains("nav-float"));
-        var grid = chrome.Parent as Panel ?? throw new InvalidOperationException("nav chrome has no parent");
-        var band = new Border
-        {
-            HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Stretch,
-            Width = 280,
-            IsHitTestVisible = false,
-            Background = new LinearGradientBrush
+            try
             {
-                StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
-                EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
-                GradientStops =
+                window.Show();
+                foreach (var button in view.GetVisualDescendants().OfType<Button>()
+                             .Where(button => button.Classes.Contains("section-nav")))
+                    button.Transitions = null;
+                window.MouseMove(default);
+                Settle(window);
+                var overview = NamedButton(view, "概览");
+                var proxy = NamedButton(view, "代理");
+                check(view.TryFindResource("AppAccentBrush", theme, out var accentResource)
+                      && accentResource is ISolidColorBrush, $"{theme}: navigation accent resource is available");
+                var accent = ((ISolidColorBrush)accentResource!).Color;
+                var muted = ((ISolidColorBrush)proxy.Foreground!).Color;
+                CheckInk(overview, accent, $"{theme}: current page is highlighted while the lens rests");
+
+                foreach (var name in new[] { "概览", "代理", "配置", "连接", "规则", "日志", "设置" })
                 {
-                    new GradientStop(Color.Parse("#E11D48"), 0),
-                    new GradientStop(Color.Parse("#F59E0B"), 0.35),
-                    new GradientStop(Color.Parse("#0EA5E9"), 0.7),
-                    new GradientStop(Color.Parse("#6D28D9"), 1)
+                    var button = NamedButton(view, name);
+                    window.MouseMove(button.TranslatePoint(Center(button), window)!.Value);
+                    Settle(window);
+                    CheckInk(button, accent, $"{theme}: hovering {name} colors its icon and label");
+                    CheckInk(overview, button == overview ? accent : muted,
+                        $"{theme}: hovering {name} leaves no second highlight on the current page");
+                    check(overview.Classes.Contains("selected")
+                          && (button == overview || !button.Classes.Contains("selected")),
+                        $"{theme}: hovering {name} does not navigate");
+                    window.MouseMove(default);
+                    Settle(window);
+                    CheckInk(button, button == overview ? accent : muted,
+                        $"{theme}: leaving {name} clears the floating highlight");
+                    CheckInk(overview, accent, $"{theme}: leaving {name} restores the current page highlight");
                 }
+
+                var glass = view.FindControl<LiquidGlassBar>("NavGlass")!;
+                window.MouseMove(overview.TranslatePoint(
+                    new Point(overview.Bounds.Width / 2, overview.Bounds.Height + 6), window)!.Value);
+                Settle(window);
+                check(!overview.IsPointerOver && !proxy.IsPointerOver,
+                    $"{theme}: gap pointer is outside both menu buttons");
+                CheckInk(proxy, accent, $"{theme}: lens highlights the nearest menu while crossing a gap");
+                CheckInk(overview, muted, $"{theme}: gap lens replaces the resting highlight");
+
+                window.MouseMove(glass.TranslatePoint(new Point(LiquidGlassBar.LensPadLeft + 1,
+                    proxy.TranslatePoint(Center(proxy), glass)!.Value.Y), window)!.Value);
+                Settle(window);
+                check(!proxy.IsPointerOver, $"{theme}: side padding pointer is outside the menu button");
+                CheckInk(proxy, accent, $"{theme}: side padding follows the lens rather than button hover");
+
+                glass.PreviewHoverBulgeAt(4);
+                Settle(window);
+                CheckInk(NamedButton(view, "规则"), accent, $"{theme}: preview lens shares the menu highlight");
+                CheckInk(proxy, muted, $"{theme}: preview lens clears the previous floating highlight");
+                glass.PreviewHoverBulge(null);
+                window.MouseMove(default);
+                Settle(window);
+                CheckInk(overview, accent, $"{theme}: clearing preview restores the selected page highlight");
+
+                view.PreviewNavigate("Proxies");
+                Settle(window);
+                CheckInk(proxy, accent, $"{theme}: selecting a page moves the resting highlight");
+                CheckInk(overview, muted, $"{theme}: previous selection returns to its idle color");
+
+                var settings = NamedButton(view, "设置");
+                var rules = NamedButton(view, "规则");
+                window.MouseMove(settings.TranslatePoint(Center(settings), window)!.Value);
+                view.PreviewNavigate("Rules");
+                Settle(window);
+                CheckInk(settings, accent, $"{theme}: navigation during hover keeps the highlight on the lens");
+                CheckInk(rules, muted, $"{theme}: new selection waits for the floating lens to leave");
+                window.MouseMove(default);
+                Settle(window);
+                CheckInk(rules, accent, $"{theme}: pointer exit restores the latest selection");
+                CheckInk(settings, muted, $"{theme}: pointer exit clears the floating highlight");
             }
-        };
-        grid.Children.Insert(grid.Children.IndexOf(chrome), band);
-        var glass = window.GetVisualDescendants().OfType<LiquidGlassBar>().First();
-        var surface = glass.GetVisualDescendants().OfType<AcrylicInteractiveSurface>().Single();
-        Settle(window);
-        for (var tick = 0; tick < 4; tick++)
-            AvaloniaHeadlessPlatform.ForceRenderTimerTick(1);
-        var frosted = CaptureNavSample(window, chrome);
-        chrome.Opacity = 0;
-        Settle(window);
-        AvaloniaHeadlessPlatform.ForceRenderTimerTick(2);
-        var raw = CaptureNavSample(window, chrome);
-        chrome.Opacity = 1;
-        surface.RefractionHeight = 0;
-        surface.RefractionAmount = 0;
-        Settle(window);
-        AvaloniaHeadlessPlatform.ForceRenderTimerTick(2);
-        var flat = CaptureNavSample(window, chrome);
-        surface.RefractionHeight = LiquidGlassBar.AcrylicRefractionHeight;
-        surface.RefractionAmount = LiquidGlassBar.AcrylicRefractionAmount;
-
-        var frostTop = frosted.Edge[0];
-        var frostBottom = frosted.Edge[^1];
-        var rawTop = raw.Edge[0];
-        var rawBottom = raw.Edge[^1];
-        check(ChannelDistance(frostTop, rawTop) + 8 < ChannelDistance(frostTop, rawBottom)
-              && ChannelDistance(frostBottom, rawBottom) + 8 < ChannelDistance(frostBottom, rawTop),
-            "acrylic gutter shows the contrast behind it instead of a flat plate");
-        check(Saturation(frostTop) > 18 && Saturation(frostBottom) > 18
-              && ChannelDistance(frostTop, new Rgb(245, 247, 250)) > 80
-              && ChannelDistance(frostBottom, new Rgb(245, 247, 250)) > 80,
-            "acrylic gutter is not a solid white wash");
-        var edgeShift = 0;
-        for (var i = 0; i < frosted.Edge.Length; i++)
-            edgeShift += ChannelDistance(frosted.Edge[i], flat.Edge[i]);
-        var centerShift = ChannelDistance(frosted.Center, flat.Center);
-        check(edgeShift > 24 && edgeShift > centerShift,
-            "refraction warps the capsule edge more than its center (edge " + edgeShift + ", center " + centerShift + ")");
-    }
-
-    private readonly record struct Rgb(byte R, byte G, byte B);
-
-    private readonly record struct NavSample(Rgb[] Edge, Rgb Center);
-
-    private static NavSample CaptureNavSample(Window window, Border chrome)
-    {
-        var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("nav frame missing");
-        var scale = frame.PixelSize.Width / window.Bounds.Width;
-        var origin = chrome.TranslatePoint(default, window) ?? throw new InvalidOperationException("nav has no origin");
-        var pixels = CopyFrame(frame);
-        var height = chrome.Bounds.Height;
-        double[] ys = [24, 110, 200, 290, 380, Math.Max(24, height - 24)];
-        var edge = new Rgb[ys.Length];
-        for (var i = 0; i < ys.Length; i++)
-            edge[i] = Read(pixels, frame.PixelSize.Width, frame.PixelSize.Height, origin.X + 4, origin.Y + ys[i], scale);
-        var center = Read(pixels, frame.PixelSize.Width, frame.PixelSize.Height, origin.X + chrome.Bounds.Width / 2, origin.Y + 82, scale);
-        return new NavSample(edge, center);
-    }
-
-    private static byte[] CopyFrame(Avalonia.Media.Imaging.Bitmap frame)
-    {
-        var size = frame.PixelSize;
-        var dips = frame.Size;
-        var dpi = new Vector(96d * size.Width / dips.Width, 96d * size.Height / dips.Height);
-        using var copy = new RenderTargetBitmap(size, dpi);
-        using (var context = copy.CreateDrawingContext())
-            context.DrawImage(frame, new Rect(dips), new Rect(dips));
-        var stride = size.Width * 4;
-        var pixels = new byte[stride * size.Height];
-        var pin = GCHandle.Alloc(pixels, GCHandleType.Pinned);
-        try
-        {
-            copy.CopyPixels(new PixelRect(0, 0, size.Width, size.Height), pin.AddrOfPinnedObject(), pixels.Length, stride);
-        }
-        finally
-        {
-            pin.Free();
+            finally
+            {
+                window.Close();
+                DashboardMotion.ReduceMotion = reduceMotion;
+            }
         }
 
-        return pixels;
+        void CheckInk(Button button, Color expected, string message)
+        {
+            var icon = button.GetVisualDescendants().OfType<Avalonia.Controls.Shapes.Path>().Single();
+            var label = button.GetVisualDescendants().OfType<TextBlock>().Single();
+            check(button.Foreground is ISolidColorBrush foreground && foreground.Color == expected
+                  && icon.Fill is ISolidColorBrush fill && fill.Color == expected
+                  && label.Foreground is ISolidColorBrush text && text.Color == expected,
+                $"{message}: expected={expected}, button={button.Foreground}, icon={icon.Fill}, label={label.Foreground}");
+        }
     }
-
-    private static Rgb Read(byte[] pixels, int width, int height, double dipX, double dipY, double scale)
-    {
-        var x = Math.Clamp((int)Math.Round(dipX * scale), 0, width - 1);
-        var y = Math.Clamp((int)Math.Round(dipY * scale), 0, height - 1);
-        var index = ((y * width) + x) * 4;
-        return new Rgb(pixels[index + 2], pixels[index + 1], pixels[index]);
-    }
-
-    private static int ChannelDistance(Rgb left, Rgb right) =>
-        Math.Abs(left.R - right.R) + Math.Abs(left.G - right.G) + Math.Abs(left.B - right.B);
-
-    private static int Saturation(Rgb color) =>
-        Math.Max(color.R, Math.Max(color.G, color.B)) - Math.Min(color.R, Math.Min(color.G, color.B));
 
     private static void CheckPageSurvivesDetach(Action<bool, string> check)
     {
@@ -595,77 +616,41 @@ static class ModuleInteractionChecks
 
     private static void CheckNavChromeShadow(Action<bool, string> check)
     {
-        var reduceMotion = DashboardMotion.ReduceMotion;
-        DashboardMotion.ReduceMotion = true;
-        var previousTheme = Application.Current?.RequestedThemeVariant;
-        Window? window = null;
+        var view = new NetworkAcceleratorView { Width = 1100, Height = 820 };
+        var window = new Window { Width = 1100, Height = 820, Content = view };
         try
         {
-            if (Application.Current is not null)
-                Application.Current.RequestedThemeVariant = ThemeVariant.Light;
-            var view = new NetworkAcceleratorView { Width = 1100, Height = 820 };
-            window = new Window
-            {
-                Width = 1100,
-                Height = 820,
-                Content = view,
-                WindowDecorations = WindowDecorations.None
-            };
             window.Show();
             Settle(window);
             var chrome = view.FindControl<Border>("NavChrome")!;
             var glass = view.FindControl<LiquidGlassBar>("NavGlass")!;
-            var surface = glass.GetVisualDescendants().OfType<AcrylicInteractiveSurface>().Single();
-            check(chrome.ClipToBounds == false && chrome.Margin.Right >= 8 && chrome.Margin.Bottom >= 8,
-                "nav chrome keeps shadow room outside the capsule");
-            check(chrome.BoxShadow.Count == 0
-                  && surface.ShadowEnabled
-                  && surface.ShadowRadius == 24
-                  && surface.ShadowOffset == new Vector(0, 4)
-                  && surface.ShadowColor.A == LiquidGlassBar.AcrylicShadowRestAlpha,
-                "nav rest shadow is Fluid's drop, not a second chrome shadow");
-
-            var point = chrome.TranslatePoint(new Point(chrome.Bounds.Width / 2, 36), window);
-            check(point is not null, "nav chrome has a window point");
-            if (point is { } hoverPoint)
-            {
-                window.MouseMove(hoverPoint);
-                Settle(window);
-            }
-
-            var hoverScale = chrome.RenderTransform?.Value.M11 ?? 1;
-            check(surface.ShadowColor.A == LiquidGlassBar.AcrylicShadowHoverAlpha && chrome.BoxShadow.Count == 0,
-                "nav hover raises Fluid shadow alpha without a chrome drop");
-            check(hoverScale > 1.06, "nav hover scales the capsule");
-
-            chrome.Classes.Add("down");
+            var shadow = glass.GetVisualDescendants().OfType<Border>().Single(border => border.BoxShadow.Count > 0);
+            var frost = glass.GetVisualDescendants().OfType<AcrylicSurface>().Single(surface => surface.BlurRadius > 0);
+            check(shadow.IsVisible && shadow.Opacity == 1 && shadow.Bounds == frost.Bounds,
+                "the whole menu casts its shadow while idle");
+            var button = NamedButton(view, "代理");
+            window.MouseMove(button.TranslatePoint(Center(button), window)!.Value);
+            MotionClock.Advance(TimeSpan.FromSeconds(1));
             Settle(window);
-            var pressScale = chrome.RenderTransform?.Value.M11 ?? 1;
-            check(surface.ShadowColor.A == LiquidGlassBar.AcrylicShadowPressAlpha
-                  && surface.ShadowRadius == 24
-                  && surface.ShadowOffset.Y == 4,
-                "nav press raises Fluid shadow alpha further");
-            check(pressScale > hoverScale + 0.02, "nav press scales past the hover");
-            chrome.Classes.Remove("down");
-            window.MouseMove(new Point(0, 0));
+            check(chrome.RenderTransform is null || chrome.RenderTransform.Value == Matrix.Identity,
+                "hover never scales the whole navigation bar");
+            check(chrome.BoxShadow.Count == 0 && !chrome.ClipToBounds,
+                "padded chrome does not paint a second frame or clip the glass bulge");
+            check(shadow.IsVisible && shadow.Opacity == 1 && shadow.Bounds == frost.Bounds
+                  && shadow.CornerRadius == frost.CornerRadius && !shadow.ClipToBounds && !frost.ShadowEnabled,
+                "one unclipped shadow follows the whole menu rather than the lens");
+            check(!shadow.IsHitTestVisible && AcrylicBackdrop.GetIsExcludedFromCapture(shadow)
+                  && Hits(window, button, Center(button)),
+                "menu elevation preserves the clear backdrop and navigation hit targets");
+            window.MouseMove(default);
+            MotionClock.Advance(TimeSpan.FromSeconds(1));
             Settle(window);
-
-            if (Application.Current is not null)
-                Application.Current.RequestedThemeVariant = ThemeVariant.Dark;
-            Settle(window);
-            check(chrome.BoxShadow.Count == 0
-                  && surface.ShadowColor.A == LiquidGlassBar.AcrylicShadowRestAlpha
-                  && surface.TintColor.A == 0,
-                "nav dark theme keeps Fluid's rest shadow and no tint plate");
-            check(glass.Bounds.Width > 1 && surface.BlurRadius == LiquidGlassBar.AcrylicBlurRadius,
-                "styled nav glass stays on the Fluid acrylic surface");
+            check(shadow.IsVisible && shadow.Opacity == 1 && shadow.Bounds == frost.Bounds,
+                "the menu remains elevated when the pointer leaves");
         }
         finally
         {
-            window?.Close();
-            DashboardMotion.ReduceMotion = reduceMotion;
-            if (Application.Current is not null)
-                Application.Current.RequestedThemeVariant = previousTheme;
+            window.Close();
         }
     }
 
@@ -732,6 +717,7 @@ static class ModuleInteractionChecks
 
     private static void Settle(Window window)
     {
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick(1);
         window.UpdateLayout();
         Dispatcher.UIThread.RunJobs(DispatcherPriority.Background);
     }

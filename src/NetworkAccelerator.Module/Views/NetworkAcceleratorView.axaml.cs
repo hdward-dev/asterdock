@@ -1,13 +1,10 @@
 using AsterDock.Contracts;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 using Avalonia.Input.Platform;
-using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
-using Avalonia.VisualTree;
 using NetworkAccelerator.Core.Models;
 using NetworkAccelerator.Module.Controls;
 using NetworkAccelerator.Module.Models;
@@ -17,8 +14,6 @@ namespace NetworkAccelerator.Module.Views;
 
 public partial class NetworkAcceleratorView : UserControl
 {
-    private const double NavStride = 76;
-
     private readonly IApplicationContext? _context;
     private readonly NetworkAcceleratorViewModel? _viewModel;
     private readonly Dictionary<string, Control> _pages = new();
@@ -31,10 +26,6 @@ public partial class NetworkAcceleratorView : UserControl
     private Control? _incoming;
     private Control? _outgoing;
     private double _swapMs = double.PositiveInfinity;
-    private double _pillMs = double.PositiveInfinity;
-    private double _pillFrom;
-    private double _pillTo;
-    private readonly TranslateTransform _pillTransform = new();
 
     public NetworkAcceleratorView()
     {
@@ -49,7 +40,6 @@ public partial class NetworkAcceleratorView : UserControl
         _pages["Settings"] = SettingsPage;
         foreach (var page in _pages.Values)
             page.RenderTransform = new TranslateTransform();
-        NavPill.RenderTransform = _pillTransform;
         Classes.Set("still", DashboardMotion.ReduceMotion);
         OverviewPage.ModeRequested += OnOverviewMode;
         OverviewPage.SubscriptionUpdateRequested += OnOverviewSubscription;
@@ -57,7 +47,6 @@ public partial class NetworkAcceleratorView : UserControl
         ModeSliderHost.SizeChanged += OnModeSliderSize;
         SizeChanged += OnViewSize;
         NavChrome.SizeChanged += OnViewSize;
-        PageScroll.LayoutUpdated += OnPageLayout;
         SelectSection("Overview");
     }
 
@@ -125,7 +114,7 @@ public partial class NetworkAcceleratorView : UserControl
         UpdateLayoutForWidth();
         foreach (var button in SectionNavigation.Children.OfType<Button>())
             button.Classes.Set("selected", Equals(button.Tag, section));
-        AnimatePill(section);
+        NavGlass.SelectSection(section);
 
         if (!_pages.TryGetValue(section, out var target)) return;
         Control? from = null;
@@ -176,8 +165,6 @@ public partial class NetworkAcceleratorView : UserControl
 
     private void CompleteTransition()
     {
-        _pillTransform.Y = _pillTo;
-        _pillMs = PillDuration;
         FinishPageSwap();
     }
 
@@ -222,31 +209,9 @@ public partial class NetworkAcceleratorView : UserControl
             transform.Y = y;
     }
 
-    private void AnimatePill(string section)
-    {
-        _pillFrom = _pillTransform.Y;
-        _pillTo = SectionIndex(section) * NavStride;
-        if (DashboardMotion.ReduceMotion || !IsLoaded)
-        {
-            _pillTransform.Y = _pillTo;
-            _pillMs = PillDuration;
-            return;
-        }
-
-        _pillMs = 0;
-        EnsureClock();
-    }
-
     private void OnMotionTick(TimeSpan elapsed)
     {
         var ms = elapsed.TotalMilliseconds;
-        if (_pillMs < PillDuration)
-        {
-            _pillMs += ms;
-            var t = EaseOutCubic(Math.Clamp(_pillMs / PillDuration, 0, 1));
-            _pillTransform.Y = _pillFrom + (_pillTo - _pillFrom) * t;
-        }
-
         if (_outgoing is not null && _incoming is not null)
         {
             _swapMs += ms;
@@ -259,7 +224,7 @@ public partial class NetworkAcceleratorView : UserControl
                 FinishPageSwap();
         }
 
-        if (_pillMs >= PillDuration && _outgoing is null)
+        if (_outgoing is null)
             ReleaseClock();
     }
 
@@ -295,8 +260,6 @@ public partial class NetworkAcceleratorView : UserControl
         MotionClock.Unsubscribe(OnMotionTick);
     }
 
-    private static double PillDuration => DashboardMotion.NavSlide.TotalMilliseconds;
-
     private static double SwapDuration => DashboardMotion.PageSwap.TotalMilliseconds;
 
     private static double EaseOutCubic(double t)
@@ -305,34 +268,14 @@ public partial class NetworkAcceleratorView : UserControl
         return 1 - inverse * inverse * inverse;
     }
 
-    private static int SectionIndex(string section) => section switch
-    {
-        "Proxies" => 1,
-        "Configuration" => 2,
-        "Connections" => 3,
-        "Rules" => 4,
-        "Logs" => 5,
-        "Settings" => 6,
-        _ => 0
-    };
-
     private void ClearLogs_Click(object? sender, RoutedEventArgs e) => _viewModel?.ClearLogs();
 
     private void UpdateLayoutForWidth()
     {
-        // Cards run about 32px under the capsule so acrylic samples them. The rest of
-        // the bar stays clear of right-aligned switches, whose centres must remain clickable.
-        var bar = NavChrome.Bounds.Width;
-        const double overlap = 32;
-        var marginRight = bar > 1 ? Math.Max(24, NavChrome.Margin.Right + bar - overlap) : 24;
-        var contentMargin = new Thickness(24, 24, marginRight, 24);
-        if (PageBody.Margin != contentMargin)
-            PageBody.Margin = contentMargin;
-        KeepScrollbarClearOfNav();
-        var viewport = PageScroll.Bounds.Width > 1
-            ? PageScroll.Bounds.Width
-            : Bounds.Width;
-        var contentWidth = Math.Max(0, viewport - contentMargin.Left - contentMargin.Right);
+        // Reserve the whole lens host, including its overhang, beside the page.
+        var reserved = NavChrome.Bounds.Width + NavChrome.Margin.Left + NavChrome.Margin.Right;
+        var viewport = PageScroll.Bounds.Width > 1 ? PageScroll.Bounds.Width : Math.Max(0, Bounds.Width - reserved);
+        var contentWidth = Math.Max(0, viewport - 48);
         var stackedProxies = _selectedSection == "Proxies" && contentWidth < 900;
         var splitProxies = _selectedSection == "Proxies" && !stackedProxies;
         ProxiesPage.ColumnDefinitions = new ColumnDefinitions(splitProxies ? "*,20,300" : "*");
@@ -351,41 +294,6 @@ public partial class NetworkAcceleratorView : UserControl
         Grid.SetRow(DurationMetric, compact ? 1 : 0);
         Grid.SetRow(PortMetric, compact ? 1 : 0);
         DurationMetric.Margin = PortMetric.Margin = new Avalonia.Thickness(0, compact ? 16 : 0, 0, 0);
-    }
-
-    private void KeepScrollbarClearOfNav()
-    {
-        if (NavChrome.Bounds.Width < 1) return;
-        var limit = NavChrome.TranslatePoint(default, this)?.X - NavChrome.Margin.Left;
-        if (limit is not double navLeft) return;
-        foreach (var bar in PageScroll.GetVisualDescendants().OfType<ScrollBar>())
-        {
-            if (bar.Orientation != Orientation.Vertical || bar.Bounds.Width < 2 || !bar.IsEffectivelyVisible)
-            {
-                if (bar.RenderTransform is not null)
-                    bar.RenderTransform = null;
-                continue;
-            }
-
-            var current = bar.RenderTransform is TranslateTransform shift ? shift.X : 0;
-            var visualRight = bar.TranslatePoint(new Point(bar.Bounds.Width, 0), this)?.X;
-            if (visualRight is not double right) continue;
-            var layoutRight = right - current;
-            var needed = layoutRight - navLeft;
-            var next = needed > 0.5 ? new TranslateTransform(-needed, 0) : null;
-            if (next is null)
-            {
-                if (bar.RenderTransform is not null)
-                    bar.RenderTransform = null;
-                continue;
-            }
-
-            if (bar.RenderTransform is TranslateTransform existing
-                && Math.Abs(existing.X - next.X) < 0.5
-                && Math.Abs(existing.Y - next.Y) < 0.5)
-                continue;
-            bar.RenderTransform = next;
-        }
     }
 
     private void ClearSearch_Click(object? sender, RoutedEventArgs e)
@@ -438,7 +346,6 @@ public partial class NetworkAcceleratorView : UserControl
         ModeSliderHost.SizeChanged -= OnModeSliderSize;
         SizeChanged -= OnViewSize;
         NavChrome.SizeChanged -= OnViewSize;
-        PageScroll.LayoutUpdated -= OnPageLayout;
         DataContext = null;
         if (_ownsModel) _viewModel?.Dispose();
     }
@@ -451,8 +358,6 @@ public partial class NetworkAcceleratorView : UserControl
     private void OnModeSliderSize(object? sender, SizeChangedEventArgs e) => UpdateModeSlider();
 
     private void OnViewSize(object? sender, SizeChangedEventArgs e) => UpdateLayoutForWidth();
-
-    private void OnPageLayout(object? sender, EventArgs e) => KeepScrollbarClearOfNav();
 
     private async Task InitializeAsync()
     {

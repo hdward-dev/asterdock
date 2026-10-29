@@ -1,12 +1,10 @@
 using System.Globalization;
-using System.Runtime.InteropServices;
 using AsterDock.UI.Controls;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
-using Avalonia.Layout;
 using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -505,13 +503,16 @@ static void CaptureGlass(string output)
             Console.WriteLine(
                 $"glass {themeName} {size.Name} {glass.Bounds.Width:0}x{glass.Bounds.Height:0} " +
                 $"{glass.SnapshotNote}");
-            if (!glass.SnapshotNote.Contains("acrylic", StringComparison.Ordinal))
-                throw new InvalidOperationException(glass.SnapshotNote);
             var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("glass frame missing");
             var path = Path.Combine(output, $"glass-{size.Name}-{themeName}.png");
             frame.Save(path, new PngBitmapEncoderOptions());
             SaveGlassCrop(window, frame, Path.Combine(output, $"glass-{size.Name}-{themeName}-bar.png"));
             Console.WriteLine(path);
+            glass.PreviewHoverBulgeAt(1);
+            Settle(window);
+            var hover = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("hover glass frame missing");
+            SaveGlassCrop(window, hover, Path.Combine(output, $"glass-{size.Name}-{themeName}-hover.png"));
+            glass.PreviewHoverBulge(null);
         }
         finally
         {
@@ -521,155 +522,31 @@ static void CaptureGlass(string output)
         }
     }
 
-    CaptureContrastProof(output);
     CaptureGlassSwitch(output);
 }
 
-static void CaptureContrastProof(string output)
-{
-    DashboardMotion.ReduceMotion = true;
-    Application.Current!.RequestedThemeVariant = ThemeVariant.Light;
-    var directory = Path.Combine(Path.GetTempPath(), "na-glass-contrast-" + Guid.NewGuid().ToString("N"));
-    Directory.CreateDirectory(directory);
-    var viewModel = new NetworkAcceleratorViewModel(directory, directory);
-    Window? window = null;
-    try
-    {
-        viewModel.ShowDashboardPreview(Populated(allowLan: false));
-        var view = new NetworkAcceleratorView
-        {
-            DataContext = viewModel,
-            Width = 1360,
-            Height = 980,
-            FontFamily = new FontFamily("WenQuanYi Micro Hei, Droid Sans Fallback, Inter")
-        };
-        window = new Window
-        {
-            Width = 1360,
-            Height = 980,
-            Content = view,
-            Background = Brushes.Transparent,
-            WindowDecorations = WindowDecorations.None,
-            FontFamily = view.FontFamily
-        };
-        window.Show();
-        Settle(window);
-        var chrome = window.GetVisualDescendants().OfType<Border>().First(item => item.Classes.Contains("nav-float"));
-        var grid = (Panel)chrome.Parent!;
-        grid.Children.Insert(grid.Children.IndexOf(chrome), new Border
-        {
-            HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Stretch,
-            Width = 280,
-            IsHitTestVisible = false,
-            Background = new LinearGradientBrush
-            {
-                StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
-                EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
-                GradientStops =
-                {
-                    new GradientStop(Color.Parse("#E11D48"), 0),
-                    new GradientStop(Color.Parse("#F59E0B"), 0.35),
-                    new GradientStop(Color.Parse("#0EA5E9"), 0.7),
-                    new GradientStop(Color.Parse("#6D28D9"), 1)
-                }
-            }
-        });
-        Settle(window);
-        for (var tick = 0; tick < 4; tick++)
-            AvaloniaHeadlessPlatform.ForceRenderTimerTick(1);
-        var frame = window.CaptureRenderedFrame() ?? throw new InvalidOperationException("contrast frame missing");
-        var glass = window.GetVisualDescendants().OfType<LiquidGlassBar>().First();
-        if (!glass.SnapshotNote.Contains("acrylic", StringComparison.Ordinal))
-            throw new InvalidOperationException(glass.SnapshotNote);
-        var scale = frame.PixelSize.Width / window.Bounds.Width;
-        var origin = chrome.TranslatePoint(default, window) ?? throw new InvalidOperationException("nav origin missing");
-        var pixels = CopyProofPixels(frame);
-        var top = ProofRgb(pixels, frame.PixelSize, origin.X + 4, origin.Y + 28, scale);
-        var bottom = ProofRgb(pixels, frame.PixelSize, origin.X + 4, origin.Y + chrome.Bounds.Height - 28, scale);
-        Console.WriteLine($"contrast gutter top={top} bottom={bottom} {glass.SnapshotNote}");
-        if (ProofDistance(top, bottom) < 30)
-            throw new InvalidOperationException($"contrast gutter is flat {top} vs {bottom}");
-        if (ProofSaturation(top) < 18 || ProofSaturation(bottom) < 18)
-            throw new InvalidOperationException($"contrast gutter is washed out {top} / {bottom}");
-        if (ProofDistance(top, (245, 247, 250)) < 80 || ProofDistance(bottom, (245, 247, 250)) < 80)
-            throw new InvalidOperationException($"contrast gutter still reads as a white plate {top} / {bottom}");
-        var path = Path.Combine(output, "nav-acrylic-contrast.png");
-        frame.Save(path, new PngBitmapEncoderOptions());
-        SaveGlassCrop(window, frame, Path.Combine(output, "nav-acrylic-contrast-bar.png"));
-        Console.WriteLine(path);
-    }
-    finally
-    {
-        window?.Close();
-        viewModel.Dispose();
-        Directory.Delete(directory, recursive: true);
-    }
-}
-
-static byte[] CopyProofPixels(Bitmap frame)
-{
-    var size = frame.PixelSize;
-    var dips = frame.Size;
-    var dpi = new Vector(96d * size.Width / dips.Width, 96d * size.Height / dips.Height);
-    using var copy = new RenderTargetBitmap(size, dpi);
-    using (var context = copy.CreateDrawingContext())
-        context.DrawImage(frame, new Rect(dips), new Rect(dips));
-    var stride = size.Width * 4;
-    var pixels = new byte[stride * size.Height];
-    var pin = GCHandle.Alloc(pixels, GCHandleType.Pinned);
-    try
-    {
-        copy.CopyPixels(new PixelRect(0, 0, size.Width, size.Height), pin.AddrOfPinnedObject(), pixels.Length, stride);
-    }
-    finally
-    {
-        pin.Free();
-    }
-
-    return pixels;
-}
-
-static (byte R, byte G, byte B) ProofRgb(byte[] pixels, PixelSize size, double dipX, double dipY, double scale)
-{
-    var x = Math.Clamp((int)Math.Round(dipX * scale), 0, size.Width - 1);
-    var y = Math.Clamp((int)Math.Round(dipY * scale), 0, size.Height - 1);
-    var index = ((y * size.Width) + x) * 4;
-    return (pixels[index + 2], pixels[index + 1], pixels[index]);
-}
-
-static int ProofDistance((byte R, byte G, byte B) left, (byte R, byte G, byte B) right) =>
-    Math.Abs(left.R - right.R) + Math.Abs(left.G - right.G) + Math.Abs(left.B - right.B);
-
-static int ProofSaturation((byte R, byte G, byte B) color) =>
-    Math.Max(color.R, Math.Max(color.G, color.B)) - Math.Min(color.R, Math.Min(color.G, color.B));
-
 static void RequireClearOfBar(Window window, string label)
 {
-    var chrome = window.GetVisualDescendants().OfType<Border>().First(item => item.Classes.Contains("nav-float"));
-    var barLeft = chrome.TranslatePoint(default, window)?.X
+    var glass = window.GetVisualDescendants().OfType<LiquidGlassBar>().Single();
+    var barLeft = glass.TranslatePoint(default, window)?.X
         ?? throw new InvalidOperationException(label + " bar has no position");
+    var barBounds = new Rect(glass.TranslatePoint(default, window)!.Value, glass.Bounds.Size);
     var scroll = window.GetVisualDescendants().OfType<ScrollViewer>().First(item => item.Name == "PageScroll");
-    var scrollRight = scroll.TranslatePoint(new Point(scroll.Bounds.Width, 0), window)?.X
+    var content = window.GetVisualDescendants().OfType<StackPanel>().Single(item => item.Name == "PageContent");
+    var contentRight = content.TranslatePoint(new Point(content.Bounds.Width, 0), window)?.X
         ?? throw new InvalidOperationException(label + " page has no position");
-    var body = window.GetVisualDescendants().OfType<StackPanel>().First(item => item.Name == "PageBody");
-    var contentRight = body.TranslatePoint(new Point(body.Bounds.Width, 0), window)?.X
-        ?? throw new InvalidOperationException(label + " page body has no position");
+    var scrollRight = scroll.TranslatePoint(new Point(scroll.Bounds.Width, 0), window)!.Value.X;
     var gap = barLeft - contentRight;
-    Console.WriteLine($"{label} scrollRight={scrollRight:0.0} contentRight={contentRight:0.0} barLeft={barLeft:0.0} bar={chrome.Bounds.Width:0} gap={gap:0.0}");
-    if (scrollRight < barLeft + 8)
-        throw new InvalidOperationException($"{label} page does not extend under the bar");
-    if (contentRight < barLeft + 20)
-        throw new InvalidOperationException($"{label} content does not run under the bar (gap {gap:0.0})");
+    Console.WriteLine($"{label} contentRight={contentRight:0.0} barLeft={barLeft:0.0} gap={gap:0.0}");
+    if (scrollRight > barLeft || gap < 24)
+        throw new InvalidOperationException($"{label} page and scrollbar must avoid the full lens, gap={gap:0.0}");
     foreach (var scroller in scroll.GetVisualDescendants().OfType<ScrollBar>())
     {
-        if (scroller.Orientation != Avalonia.Layout.Orientation.Vertical
-            || !scroller.IsEffectivelyVisible
-            || scroller.Bounds.Width < 2)
-            continue;
-        var right = scroller.TranslatePoint(new Point(scroller.Bounds.Width, 0), window)?.X ?? 0;
-        if (right > barLeft + 0.5)
-            throw new InvalidOperationException($"{label} scrollbar ends at {right:0} under the bar");
+        if (!scroller.IsEffectivelyVisible || scroller.Bounds.Width < 2) continue;
+        var bounds = new Rect(scroller.TranslatePoint(default, window)!.Value, scroller.Bounds.Size);
+        var viewport = new Rect(scroll.TranslatePoint(default, window)!.Value, scroll.Bounds.Size);
+        if (bounds.Intersect(viewport).Intersects(barBounds))
+            throw new InvalidOperationException($"{label} scrollbar {bounds} intersects the glass {barBounds}");
     }
 
     foreach (var card in window.GetVisualDescendants().OfType<Border>())
@@ -678,8 +555,8 @@ static void RequireClearOfBar(Window window, string label)
         var marked = card.Classes.Contains("dash-card") || card.Classes.Contains("ad-pill-card") || card.Classes.Contains("card");
         if (!marked) continue;
         var right = card.TranslatePoint(new Point(card.Bounds.Width, 0), window)?.X;
-        if (right is null || right.Value <= barLeft + 8) continue;
-        Console.WriteLine($"{label} card ends at {right.Value:0.0} under the bar at {barLeft:0.0}");
+        if (right is null || right.Value <= contentRight + 2) continue;
+        throw new InvalidOperationException($"{label} card exceeds the reserved page width at {right.Value:0.0}");
     }
 }
 

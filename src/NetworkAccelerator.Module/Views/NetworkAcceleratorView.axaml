@@ -5,7 +5,7 @@
              xmlns:controls="using:NetworkAccelerator.Module.Controls"
              xmlns:ui="using:AsterDock.UI.Controls"
              x:Class="NetworkAccelerator.Module.Views.NetworkAcceleratorView"
-             x:CompileBindings="False" Background="{DynamicResource AppPageBrush}" ClipToBounds="False">
+             x:CompileBindings="False" Background="{DynamicResource NetworkPageBackground}" ClipToBounds="False">
   <UserControl.Resources>
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
@@ -13,12 +13,18 @@
       </ResourceDictionary.MergedDictionaries>
       <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Light">
-          <SolidColorBrush x:Key="NavPillBrush" Color="#C8E4EEFD"/>
-          <SolidColorBrush x:Key="NavPillRimBrush" Color="#99FFFFFF"/>
+          <SolidColorBrush x:Key="NetworkPageBackground" Color="#EDECF1"/>
+          <LinearGradientBrush x:Key="NetworkPageSheen" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Color="#04000000" Offset="0"/>
+            <GradientStop Color="#00000000" Offset="0.45"/>
+          </LinearGradientBrush>
         </ResourceDictionary>
         <ResourceDictionary x:Key="Dark">
-          <SolidColorBrush x:Key="NavPillBrush" Color="#C4334E78"/>
-          <SolidColorBrush x:Key="NavPillRimBrush" Color="#55FFFFFF"/>
+          <SolidColorBrush x:Key="NetworkPageBackground" Color="#1C1D22"/>
+          <LinearGradientBrush x:Key="NetworkPageSheen" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Color="#04FFFFFF" Offset="0"/>
+            <GradientStop Color="#00FFFFFF" Offset="0.45"/>
+          </LinearGradientBrush>
         </ResourceDictionary>
       </ResourceDictionary.ThemeDictionaries>
     </ResourceDictionary>
@@ -117,7 +123,7 @@
     </Style>
     <Style Selector="Button.section-nav">
       <Setter Property="Height" Value="68"/>
-      <Setter Property="MinWidth" Value="64"/>
+      <Setter Property="MinWidth" Value="56"/>
       <Setter Property="HorizontalAlignment" Value="Stretch"/>
       <Setter Property="Padding" Value="8"/>
       <Setter Property="CornerRadius" Value="12"/>
@@ -133,9 +139,11 @@
         </Transitions>
       </Setter>
     </Style>
-    <Style Selector="Button.section-nav.selected">
+    <Style Selector="Button.section-nav.lens-active">
       <Setter Property="Foreground" Value="{DynamicResource AppAccentBrush}"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="Button.section-nav TextBlock">
+      <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
     </Style>
     <Style Selector="Button.section-nav:pressed, Button.section-nav.down">
       <Setter Property="RenderTransform" Value="scale(0.96)"/>
@@ -150,28 +158,7 @@
     </Style>
     <Style Selector="Border.nav-float">
       <Setter Property="ClipToBounds" Value="False"/>
-      <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
-      <Setter Property="RenderTransform" Value="scale(1)"/>
-      <Setter Property="Transitions">
-        <Transitions>
-          <BoxShadowsTransition Property="BoxShadow" Duration="0:0:0.16"/>
-          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.16"/>
-        </Transitions>
-      </Setter>
-    </Style>
-    <Style Selector="Border.nav-float:pointerover">
-      <Setter Property="RenderTransform" Value="scale(1.015)"/>
-    </Style>
-    <Style Selector="Border.nav-float.down">
-      <Setter Property="RenderTransform" Value="scale(1.02)"/>
-    </Style>
-    <Style Selector="Border.nav-float:pointerover.down">
-      <Setter Property="RenderTransform" Value="scale(1.02)"/>
-    </Style>
-    <Style Selector="UserControl.still Border.nav-float">
-      <Setter Property="Transitions">
-        <Transitions/>
-      </Setter>
+      <Setter Property="Background" Value="Transparent"/>
     </Style>
     <Style Selector="Button:disabled ui|AdLoadingIndicator.accent-mark">
       <Setter Property="ShapeBrush" Value="{DynamicResource AppMutedBrush}"/>
@@ -187,11 +174,11 @@
     </Style>
   </UserControl.Styles>
 
-  <Grid ClipToBounds="False">
-    <ScrollViewer x:Name="PageScroll" Background="{DynamicResource AppPageBrush}"
-                  HorizontalScrollBarVisibility="Disabled"
+  <Grid ColumnDefinitions="*,Auto" ClipToBounds="False">
+    <Border Grid.ColumnSpan="2" Background="{DynamicResource NetworkPageSheen}" IsHitTestVisible="False"/>
+    <ScrollViewer x:Name="PageScroll" Grid.Column="0" HorizontalScrollBarVisibility="Disabled"
                   VerticalScrollBarVisibility="Auto" AllowAutoHide="False" HorizontalContentAlignment="Stretch">
-      <StackPanel x:Name="PageBody" Margin="24" Spacing="20">
+      <StackPanel x:Name="PageContent" Margin="24" Spacing="20">
         <StackPanel Spacing="5">
           <TextBlock x:Name="SectionTitle" Classes="page-title" Text="概览"/>
           <TextBlock x:Name="SectionDescription" Classes="description" Text="连接状态与常用功能，一目了然"/>
@@ -515,21 +502,12 @@
         </Grid>
       </StackPanel>
     </ScrollViewer>
-    <controls:PassThroughBorder x:Name="NavChrome" Classes="nav-float"
+    <controls:PassThroughBorder x:Name="NavChrome" Grid.Column="1" Classes="nav-float"
             HorizontalAlignment="Right" VerticalAlignment="Center"
-            Margin="12" CornerRadius="24" ClipToBounds="False">
-      <controls:LiquidGlassBar x:Name="NavGlass">
-        <controls:PassThroughBorder CornerRadius="24" ClipToBounds="True">
-        <Grid Margin="8,10">
-          <Border x:Name="NavPill" Height="68" CornerRadius="16"
-                  Background="{DynamicResource NavPillBrush}"
-                  BorderBrush="{DynamicResource NavPillRimBrush}"
-                  BorderThickness="1"
-                  HorizontalAlignment="Stretch" VerticalAlignment="Top" IsHitTestVisible="False">
-            <Border.RenderTransform>
-              <TranslateTransform/>
-            </Border.RenderTransform>
-          </Border>
+            Margin="12" CornerRadius="24" Background="Transparent" ClipToBounds="False">
+      <controls:LiquidGlassBar x:Name="NavGlass" ClipToBounds="False">
+        <controls:PassThroughBorder CornerRadius="24" ClipToBounds="False" Background="Transparent">
+        <Grid Margin="8,10" Background="Transparent">
           <StackPanel x:Name="SectionNavigation" Spacing="8">
           <Button Classes="section-nav" Tag="Overview" Click="Navigate_Click" AutomationProperties.Name="概览">
             <StackPanel Spacing="7"><Path Data="{StaticResource RiDashboard3Line}" Width="22" Height="22" Stretch="Uniform" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center"/><TextBlock Text="概览" FontSize="12" HorizontalAlignment="Center"/></StackPanel>

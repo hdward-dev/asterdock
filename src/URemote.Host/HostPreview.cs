@@ -30,7 +30,9 @@ public static class HostPreview
             Array.Clear(probed[index].Pixels);
         }
         var frameRateLimits = await ReadFrameRateLimitsAsync(outputs, report, ct);
+        ApplyBoundModes(outputs, dimensions);
         var profiles = new HostVideoSettings(dimensions, frameRateLimits: frameRateLimits);
+        BindCeilings(outputs, profiles);
         var sessions = new HostSignalSessions();
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var token = stop.Token;
@@ -101,8 +103,14 @@ public static class HostPreview
                             {
                                 waiting[index] = false;
                                 since[index] = 0;
-                                dimensions[index] = ((int)frame.Width, (int)frame.Height);
-                                profiles.AdoptSourceSize(index, (int)frame.Width, (int)frame.Height);
+                                var width = (int)frame.Width;
+                                var height = (int)frame.Height;
+                                if (!profiles.RejectsSourceSize(index, width, height))
+                                {
+                                    profiles.AdoptSourceSize(index, width, height);
+                                    var adopted = profiles.Get(index);
+                                    dimensions[index] = (adopted.Width, adopted.Height);
+                                }
                                 continue;
                             }
                             if (SessionLock.IsLocked == true)
@@ -290,7 +298,9 @@ public static class HostPreview
                         // the primary video track, just like iOS. Route screen selection onto it.
                         var mobileSingleStream = !dataOnly && (update.Peer.Options.ClientType == 1 || platformCode is 2 or 3);
                         frameRateLimits = await ReadFrameRateLimitsAsync(outputs, report, token);
+                        ApplyBoundModes(outputs, dimensions);
                         profiles = new HostVideoSettings(((int Width, int Height)[])dimensions.Clone(), mobileSingleStream, frameRateLimits);
+                        BindCeilings(outputs, profiles);
                         report("video-routing=" + (mobileSingleStream ? "selected-screen-on-primary-track" : "independent-screen-tracks"));
                         Volatile.Write(ref answered, false);
                         active = id;
@@ -533,6 +543,7 @@ public static class HostPreview
         Action<string> report, CancellationToken ct, HostVideoSettings profiles, Func<string, bool>? recyclePortal, FirstFrameTracker tracker, int? videoTrack = null)
     {
         var rebuilds = 0;
+        var foreign = 0;
         var gaveUp = false;
         while (!ct.IsCancellationRequested)
         {
@@ -555,6 +566,26 @@ public static class HostPreview
             }
         }
         tracker.Observe(index, first.Pending, DesktopBackend.PortalGeneration, report);
+        if (!first.Pending && profiles.RejectsSourceSize(index, (int)first.Width, (int)first.Height))
+        {
+            var foreignWidth = (int)first.Width;
+            var foreignHeight = (int)first.Height;
+            Array.Clear(first.Pixels);
+            if (++foreign <= 2)
+            {
+                report($"capture-stream-rebuilt;screen={index + 1};reason=foreign-size;frame={foreignWidth}x{foreignHeight}");
+                try { await DesktopBackend.RebuildCaptureAsync(output, ct); }
+                catch (Exception refresh) when (refresh is IOException or InvalidOperationException or TimeoutException
+                    or DesktopSessionClosedException or UnauthorizedAccessException or FormatException
+                    or NotSupportedException or ObjectDisposedException)
+                { }
+                continue;
+            }
+            report($"capture-size-clamped;screen={index + 1};frame={foreignWidth}x{foreignHeight};display={profiles.Get(index).Width}x{profiles.Get(index).Height}");
+            first = await ProbeOutputAsync(output, ct);
+            tracker.Observe(index, first.Pending, DesktopBackend.PortalGeneration, report);
+        }
+        else foreign = 0;
         if (!first.Pending) profiles.AdoptSourceSize(index, (int)first.Width, (int)first.Height);
         profile = profiles.Get(index);
         await using var encoder = new StreamingH264Encoder(ffmpeg, (int)first.Width, (int)first.Height, first.YInverted, first.ShmFormat, profile.Fps, profile.Width, profile.Height, profile.Bitrate, profile.Crf);
@@ -582,6 +613,8 @@ public static class HostPreview
                         // actual geometry restarts this encoder without failing the session.
                         if (geometryChanged && first.Pending && !frame.Pending)
                         {
+                            if (profiles.RejectsSourceSize(index, (int)frame.Width, (int)frame.Height))
+                                throw new IOException("Capture size does not match this display.");
                             profiles.AdoptSourceSize(index, (int)frame.Width, (int)frame.Height);
                             break;
                         }
@@ -826,9 +859,34 @@ public static class HostPreview
             if (milliHz <= 0) milliHz = rates.GetValueOrDefault(DesktopBackend.ResolveOutput(output));
             if (milliHz <= 0) milliHz = DesktopBackend.StoredRefreshMilliHz(output);
             var limit = HostDisplayInfo.FrameRateLimit(milliHz);
+            var mode = DesktopBackend.BoundMode(output);
             report($"display-frame-rate;screen={index + 1};refresh-millihz={milliHz};max-fps={limit}");
+            if (mode.Width >= 2 && mode.Height >= 2)
+                report($"display-mode;screen={index + 1};mode={mode.Width}x{mode.Height};refresh-millihz={milliHz}");
             return limit;
         }).ToArray();
+    }
+
+    // Replace a poisoned or logical-size placeholder with the matched hardware mode before
+    // the display list is sent. The controller echoes that list back as the encode size.
+    private static void ApplyBoundModes(IReadOnlyList<uint> outputs, (int Width, int Height)[] dimensions)
+    {
+        for (var index = 0; index < outputs.Count && index < dimensions.Length; index++)
+        {
+            var mode = DesktopBackend.BoundMode(outputs[index]);
+            if (mode.Width >= 2 && mode.Height >= 2)
+                dimensions[index] = (mode.Width & ~1, mode.Height & ~1);
+        }
+    }
+
+    private static void BindCeilings(IReadOnlyList<uint> outputs, HostVideoSettings profiles)
+    {
+        for (var index = 0; index < outputs.Count; index++)
+        {
+            var mode = DesktopBackend.BoundMode(outputs[index]);
+            if (mode.Width >= 2 && mode.Height >= 2)
+                profiles.BindCeiling(index, mode.Width, mode.Height);
+        }
     }
 
     private static JsonObject Capability(HostPeerId id, IReadOnlyList<(int Width, int Height)> dimensions, IReadOnlyList<int> frameRateLimits) => new()

@@ -4,6 +4,7 @@ internal sealed class HostVideoSettings
 {
     public const int IdleFps = 5;
     private readonly (int Width, int Height)[] native;
+    private readonly (int Width, int Height)[] ceiling;
     private readonly VideoProfile[] profiles;
     private readonly int[] frameRateLimits;
     private readonly int[] requestedFps;
@@ -79,6 +80,7 @@ internal sealed class HostVideoSettings
         // No 30 FPS startup cap. Until the controller asks, the target is this screen's refresh rate.
         requestedFps = (int[])this.frameRateLimits.Clone();
         sizeLocked = new bool[dimensions.Length];
+        ceiling = new (int Width, int Height)[dimensions.Length];
         profiles = dimensions.Select((d, i) => new VideoProfile(d.Width, d.Height,
             this.frameRateLimits[i], Math.Min(8000000, networkCeiling), 23)).ToArray();
     }
@@ -92,18 +94,47 @@ internal sealed class HostVideoSettings
         return contentChanging ? target : Math.Min(target, IdleFps);
     }
     public VideoProfile Get(int index) => Volatile.Read(ref profiles[index]);
+    // The matched wl_output mode. A controller request or a buffer from the other panel
+    // cannot raise this screen past it. Unbound screens still grow from the first real frame.
+    public void BindCeiling(int index, int width, int height)
+    {
+        if ((uint)index >= profiles.Length) return;
+        width &= ~1;
+        height &= ~1;
+        if (width is < 2 or > 16384 || height is < 2 or > 16384) return;
+        ceiling[index] = (width, height);
+        native[index] = (width, height);
+        var current = Get(index);
+        if (sizeLocked[index] && current.Width <= width && current.Height <= height) return;
+        if (current.Width == width && current.Height == height) return;
+        Volatile.Write(ref profiles[index], current with { Width = width, Height = height, Recovery = current.Recovery + 1 });
+    }
+    public bool RejectsSourceSize(int index, int width, int height)
+    {
+        if ((uint)index >= profiles.Length) return false;
+        width &= ~1;
+        height &= ~1;
+        var cap = ceiling[index];
+        return cap.Width > 0 && cap.Height > 0 && (width > cap.Width || height > cap.Height);
+    }
     // A real first buffer can be larger than the placeholder used to publish the host.
-    // An explicit controller size is left alone; the native ceiling still grows.
+    // An explicit controller size is left alone; an unbound native ceiling still grows.
     public void AdoptSourceSize(int index, int width, int height)
     {
         if ((uint)index >= profiles.Length) return;
         width &= ~1;
         height &= ~1;
         if (width is < 2 or > 16384 || height is < 2 or > 16384) return;
-        if (width > native[index].Width || height > native[index].Height)
+        if (RejectsSourceSize(index, width, height)) return;
+        if (ceiling[index].Width <= 0 && (width > native[index].Width || height > native[index].Height))
             native[index] = (Math.Max(width, native[index].Width), Math.Max(height, native[index].Height));
         if (sizeLocked[index]) return;
+        var cap = ceiling[index];
         var current = Get(index);
+        // Keep the hardware mode when a smaller logical-size buffer arrives. The controller
+        // can still request a smaller encode; that path sets sizeLocked.
+        if (cap.Width > 0 && cap.Height > 0 && current.Width == cap.Width && current.Height == cap.Height
+            && (width != cap.Width || height != cap.Height)) return;
         if (current.Width == width && current.Height == height) return;
         Volatile.Write(ref profiles[index], current with { Width = width, Height = height, Recovery = current.Recovery + 1 });
     }

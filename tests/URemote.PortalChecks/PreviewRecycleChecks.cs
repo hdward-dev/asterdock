@@ -69,6 +69,19 @@ static class PreviewRecycleChecks
             "a real mode change still changes topology");
         var map = PortalStreamMap.Match(locked, refreshed);
         check(map[4] == 11 && map[8] == 15, "refresh maps each monitor by its position and size");
+        var logical = new[]
+        {
+            new PortalStreamBox(4, 0, 0, 1970, 1108),
+            new PortalStreamBox(8, 1970, 0, 2259, 1271)
+        };
+        var restored = new[]
+        {
+            new PortalStreamBox(15, 1970, 0, 2260, 1270),
+            new PortalStreamBox(11, 0, 0, 1971, 1109)
+        };
+        var rebound = PortalStreamMap.Match(logical, restored);
+        check(rebound[4] == 11 && rebound[8] == 15,
+            "a restore with a new logical size still follows position when the portal order flips");
     }
 
     private static void Aliases(Action<bool, string> check)

@@ -51,7 +51,7 @@ public sealed class LoadedApplication : IDisposable
     }
 
     /// <summary>
-    /// A second page for an independent window. This is never the control already shown in the host.
+    /// Another page for callers that want a second view. Pop-out moves the page already open in the host instead.
     /// </summary>
     public Control CreateDetachedView(Window owner, ISystemMetricsService systemMetrics)
     {

@@ -5,6 +5,7 @@ using AsterDock.UI.Controls;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.Media;
 using Avalonia.Threading;
 
 namespace AsterDock.Host.Views;
@@ -32,15 +33,13 @@ public partial class MainWindow
             return;
         }
 
+        // Pop-out moves the page the user is already looking at. A second page would
+        // leave the same app on screen twice.
         var page = application.GetOrCreateView(this, _systemMetrics);
-        var detachedView = application.CreateDetachedView(this, _systemMetrics);
-        // A module that can build a second, not-yet-measured page keeps the original in the host.
-        // A module with one live page (the remote session) is moved instead of opening a blank copy.
-        var transfer = ReferenceEquals(detachedView, page) || FeedbackWindow.HasLayoutManager(detachedView);
-        if (transfer && !FeedbackWindow.Detach(page))
+        if (!FeedbackWindow.Detach(page))
         {
-            Trace.TraceError("独立窗口需要一个尚未布局的新页面，已取消打开");
-            _feedbackService.Toast(FeedbackKind.Warning, "无法打开独立窗口：该应用未能提供新页面");
+            Trace.TraceError("当前页面无法从主窗口移出，已取消打开独立窗口");
+            _feedbackService.Toast(FeedbackKind.Warning, "无法打开独立窗口：当前页面无法移出主窗口");
             return;
         }
 
@@ -53,14 +52,11 @@ public partial class MainWindow
             MinHeight = 480,
             WindowStartupLocation = WindowStartupLocation.CenterScreen
         };
-        var hosted = transfer
-            ? FeedbackWindow.Adopt(window, page, _feedbackService)
-            : AssignFresh(window, detachedView);
-        if (!hosted)
+        if (!FeedbackWindow.Adopt(window, page, _feedbackService))
         {
-            if (transfer && ReferenceEquals(_currentApplication, application)) ApplicationContent.Content = page;
-            Trace.TraceError("独立窗口需要一个尚未布局的新页面，已取消打开");
-            _feedbackService.Toast(FeedbackKind.Warning, "无法打开独立窗口：该应用未能提供新页面");
+            if (ReferenceEquals(_currentApplication, application)) ApplicationContent.Content = page;
+            Trace.TraceError("当前页面无法放进独立窗口，已取消打开");
+            _feedbackService.Toast(FeedbackKind.Warning, "无法打开独立窗口：当前页面无法移出主窗口");
             return;
         }
 
@@ -86,12 +82,12 @@ public partial class MainWindow
             }, DispatcherPriority.Background);
         };
         _detachedApplications.Add(application, window);
-        if (transfer) _transferredPages[application] = page;
+        _transferredPages[application] = page;
         application.SetWindowOwner(window);
         try
         {
             window.Show();
-            if (transfer && ReferenceEquals(_currentApplication, application))
+            if (ReferenceEquals(_currentApplication, application))
                 ApplicationContent.Content = CreateDetachedPlaceholder(application);
             HideAppInfo();
         }
@@ -101,11 +97,8 @@ public partial class MainWindow
             _detachedApplications.Remove(application);
             _transferredPages.Remove(application);
             application.SetWindowOwner(this);
-            if (transfer)
-            {
-                FeedbackWindow.Release(page);
-                if (ReferenceEquals(_currentApplication, application)) ApplicationContent.Content = page;
-            }
+            FeedbackWindow.Release(page);
+            if (ReferenceEquals(_currentApplication, application)) ApplicationContent.Content = page;
             try { window.Close(); }
             catch (Exception close) when (close is not OutOfMemoryException)
             {
@@ -114,32 +107,49 @@ public partial class MainWindow
         }
     }
 
-    private bool AssignFresh(Window window, Control detachedView)
-    {
-        window.Content = FeedbackWindow.CreateHost(detachedView, _feedbackService);
-        return true;
-    }
-
     private Control CreateDetachedPlaceholder(LoadedApplication application)
     {
-        var activate = new Button { Content = "显示独立窗口", HorizontalAlignment = HorizontalAlignment.Center };
-        activate.Classes.Add("accent");
-        activate.Click += (_, _) => OpenDetachedApplication(application);
-        var restore = new Button { Content = "移回主窗口", HorizontalAlignment = HorizontalAlignment.Center };
+        var show = new Button
+        {
+            Content = "显示独立窗口",
+            MinWidth = 148,
+            MinHeight = 40
+        };
+        show.Classes.Add("accent");
+        show.Click += (_, _) => OpenDetachedApplication(application);
+        var restore = new Button
+        {
+            Content = "移回主窗口",
+            MinWidth = 148,
+            MinHeight = 40
+        };
+        restore.Classes.Add("ad-outline");
         restore.Click += (_, _) =>
         {
             if (_detachedApplications.TryGetValue(application, out var window)) window.Close();
         };
+
         return new StackPanel
         {
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
-            Spacing = 16,
+            Spacing = 18,
             Children =
             {
-                new TextBlock { Text = $"{application.Name}已在独立窗口打开", FontSize = 20 },
-                activate,
-                restore
+                new TextBlock
+                {
+                    Text = $"{application.Name}已在独立窗口打开",
+                    FontSize = 20,
+                    FontWeight = FontWeight.SemiBold,
+                    HorizontalAlignment = HorizontalAlignment.Center
+                },
+                new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 12,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Children = { show, restore }
+                }
             }
         };
     }

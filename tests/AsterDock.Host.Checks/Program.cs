@@ -89,20 +89,22 @@ Call("OpenDetachedApplication", foreground);
 Check(detached.ContainsKey(foreground), "shown window can open a detached window");
 var popped = detached[foreground];
 ExerciseLayouts(host, popped);
-Check(ReferenceEquals(host.FindControl<ContentControl>("ApplicationContent")!.Content, page), "pop-out leaves the measured page in the main window");
 var pageControl = (Control)page!;
-var fixtureAction = popped.GetVisualDescendants().OfType<Button>().Single(button => button.Name == "FixtureAction");
+Check(popped.GetVisualDescendants().Contains(pageControl), "pop-out moves the open page into the new window");
+var mainContent = host.FindControl<ContentControl>("ApplicationContent")!.Content;
+Check(!ReferenceEquals(mainContent, page), "pop-out removes the open page from the main window");
+Check(mainContent is Control placeholder && placeholder.GetVisualDescendants().OfType<TextBlock>().Any(text => text.Text != null && text.Text.Contains("已在独立窗口打开")),
+    "main window says the app is open in its own window");
 var pageButton = pageControl.GetVisualDescendants().OfType<Button>().Single(button => button.Name == "FixtureAction");
-Check(!ReferenceEquals(fixtureAction, pageButton), "detached window uses a new page instance");
 var fixtureClicks = 0;
-fixtureAction.Click += (_, _) => fixtureClicks++;
-fixtureAction.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-Check(fixtureClicks == 1, "detached page button receives clicks");
+pageButton.Click += (_, _) => fixtureClicks++;
+pageButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+Check(fixtureClicks == 1, "moved page button receives clicks");
 popped.Close();
 Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 ExerciseLayouts(host);
 Check(!detached.ContainsKey(foreground) && ReferenceEquals(host.FindControl<ContentControl>("ApplicationContent")!.Content, page),
-    "closing the detached window leaves the main page in place");
+    "closing the detached window returns the page to the main window");
 var pageClicks = 0;
 pageButton.Click += (_, _) => pageClicks++;
 pageButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -150,12 +152,11 @@ Call("OpenDetachedApplication", freshApp);
 Check(detached.ContainsKey(freshApp), "shared-state module opens a detached window");
 var freshWindow = detached[freshApp];
 freshWindow.UpdateLayout();
-var freshDetached = freshWindow.GetVisualDescendants().OfType<Button>().Single(button => button.Name == "FreshAction");
-var freshInPage = freshPage.GetVisualDescendants().OfType<Button>().Single(button => button.Name == "FreshAction");
-Check(!ReferenceEquals(freshDetached, freshInPage), "shared-state module uses a distinct page");
-Check(ReferenceEquals(((Border)freshDetached.Parent!).Tag, freshModule.Shared)
-    && ReferenceEquals(((Border)freshInPage.Parent!).Tag, freshModule.Shared),
-    "both pages bind the same module state");
+Check(freshWindow.GetVisualDescendants().Contains(freshPage), "shared-state module moves the open page");
+Check(!ReferenceEquals(host.FindControl<ContentControl>("ApplicationContent")!.Content, freshPage),
+    "shared-state module leaves the main window without that page");
+var freshMoved = freshWindow.GetVisualDescendants().OfType<Button>().Single(button => button.Name == "FreshAction");
+Check(ReferenceEquals(((Border)freshMoved.Parent!).Tag, freshModule.Shared), "moved page keeps the module state");
 freshWindow.Close();
 Dispatcher.UIThread.RunJobs();
 Call("StopRunningApplication", cachedApp);

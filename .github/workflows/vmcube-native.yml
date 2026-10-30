@@ -32,11 +32,11 @@ on:
   workflow_call:
   workflow_dispatch:
 
-# One group per run so a Release call is never cancelled by a later CI run.
-# Never set cancel-in-progress here: a Release call must always finish.
+# Hardcoded prefix so a Release workflow_call does not share a group with
+# VMCUBE CI or with the macOS bridge call in the same release.
 concurrency:
-  group: vmcube-native-${{ github.run_id }}-${{ github.run_attempt }}
-  cancel-in-progress: false
+  group: vmcube-native-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
 
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"

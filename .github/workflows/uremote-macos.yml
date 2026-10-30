@@ -22,13 +22,12 @@ on:
 permissions:
   contents: read
 
-# One group per run. A shared ref-based group let a new run cancel a queued
-# Release build, and the release then had no macOS bridge to package.
-# Scheduling is cheap here (about 35 s), so parallel runs are acceptable.
-# Never set cancel-in-progress: a Release call must always finish.
+# Hardcoded prefix so a Release workflow_call does not share a group with
+# URemote CI or with the VMCUBE call in the same release (both would otherwise
+# see the caller workflow name).
 concurrency:
-  group: uremote-macos-${{ github.run_id }}-${{ github.run_attempt }}
-  cancel-in-progress: false
+  group: uremote-macos-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
 
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
@@ -37,7 +36,9 @@ env:
 jobs:
   macos:
     name: liburemote-mac.dylib
-    runs-on: macos-14
+    # macos-14 is retiring on 2026-11-02 and is cancelled during brownouts.
+    # macos-latest matches ci.yml and package-release.yml.
+    runs-on: macos-latest
     timeout-minutes: 30
     steps:
       - name: Check out repository

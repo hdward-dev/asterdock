@@ -6,6 +6,25 @@
         x:CompileBindings="False"
         Title="星栈" Width="1440" Height="900" MinWidth="1100" MinHeight="700"
         WindowStartupLocation="CenterScreen" Background="{DynamicResource AppPageBrush}">
+  <Window.Resources>
+    <ControlTheme x:Key="CapsuleActionTheme" TargetType="Button">
+      <Setter Property="MinWidth" Value="0"/>
+      <Setter Property="MinHeight" Value="0"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Panel Background="Transparent">
+            <Border x:Name="HoverHighlight" Height="18" Margin="2,0" CornerRadius="9"
+                    VerticalAlignment="Center" HorizontalAlignment="Stretch" Background="Transparent"/>
+            <ContentPresenter Name="PART_ContentPresenter" Background="Transparent"
+                              Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              HorizontalContentAlignment="Center"
+                              VerticalContentAlignment="Center"/>
+          </Panel>
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+  </Window.Resources>
   <Window.Styles>
     <Style Selector="Button.stop-running">
       <Setter Property="Width" Value="20"/>
@@ -101,27 +120,16 @@
       <Setter Property="Focusable" Value="False"/>
       <Setter Property="HorizontalContentAlignment" Value="Center"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Theme" Value="{StaticResource CapsuleActionTheme}"/>
     </Style>
-    <Style Selector="Button.capsule-action /template/ ContentPresenter">
-      <Setter Property="CornerRadius" Value="8"/>
-      <Setter Property="Margin" Value="3,4"/>
-      <Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
-      <Setter Property="HorizontalContentAlignment" Value="Center"/>
-      <Setter Property="VerticalContentAlignment" Value="Center"/>
-    </Style>
-    <Style Selector="Button.capsule-action:pointerover"><Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/></Style>
-    <Style Selector="Button.capsule-action:pointerover /template/ ContentPresenter">
-      <Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
+    <Style Selector="Button.capsule-action:pointerover /template/ Border#HoverHighlight">
+      <Setter Property="Background" Value="{DynamicResource AppBorderBrush}"/>
     </Style>
     <Style Selector="Button.capsule-action.selected">
-      <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
       <Setter Property="Foreground" Value="{DynamicResource AppAccentBrush}"/>
     </Style>
-    <Style Selector="Button.capsule-action.selected /template/ ContentPresenter">
-      <Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
-    </Style>
-    <Style Selector="Button.capsule-action:pressed /template/ ContentPresenter">
-      <Setter Property="BoxShadow" Value="0 0 0 0 Transparent"/>
+    <Style Selector="Button.capsule-action.selected /template/ Border#HoverHighlight">
+      <Setter Property="Background" Value="{DynamicResource AppSurfaceBrush}"/>
     </Style>
   </Window.Styles>
 
@@ -516,6 +524,8 @@
           </Border>
           <TextBlock Text="没有可用的应用" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"/>
           <TextBlock x:Name="EmptyMessage" Text="请把应用包放入 Apps 目录后重新启动" Foreground="{DynamicResource AppMutedBrush}"/>
+          <Button x:Name="EmptyHomeButton" Classes="accent" Content="返回主页" HorizontalAlignment="Center"
+                  Margin="0,8,0,0" IsVisible="False" Click="CapsuleHome_Click"/>
         </StackPanel>
 
       </Grid>

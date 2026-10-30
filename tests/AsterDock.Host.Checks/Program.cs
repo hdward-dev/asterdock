@@ -39,6 +39,28 @@ Check(host.FindControl<Button>("CapsuleInfoButton")!.IsVisible && host.FindContr
     "home exposes app info control");
 Check(!host.FindControl<Button>("CapsuleHomeButton")!.IsVisible && !host.FindControl<Button>("CapsulePopOutButton")!.IsVisible,
     "home keeps return-home and pop-out controls hidden");
+var failing = (LoadedApplication)Activator.CreateInstance(typeof(LoadedApplication),
+    BindingFlags.Instance | BindingFlags.NonPublic, null,
+    [new AppManifest { Id = "failing", Name = "失败应用", Version = "1", EntryAssembly = "fixture", EntryType = "fixture" },
+        "/tmp", new FailingPageModule(), null], null)!;
+host.Applications.Add(failing);
+Call("OpenApplication", failing);
+Check(host.FindControl<StackPanel>("EmptyState")!.IsVisible && host.FindControl<TextBlock>("EmptyMessage")!.Text!.Contains("失败应用"),
+    "failed open explains which app did not open");
+Check(host.FindControl<Button>("CapsuleHomeButton")!.IsVisible && host.FindControl<Button>("EmptyHomeButton")!.IsVisible,
+    "failed open keeps a way back home");
+Check(!host.FindControl<Button>("CapsulePopOutButton")!.IsVisible && !host.FindControl<Button>("CapsuleInfoButton")!.IsVisible,
+    "failed open hides app controls");
+Call("CapsuleHome_Click", host, new RoutedEventArgs());
+Dispatcher.UIThread.RunJobs();
+Check(ReferenceEquals(typeof(MainWindow).GetField("_currentApplication", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host), home),
+    "return home leaves the failed open");
+Check(!host.FindControl<Button>("EmptyHomeButton")!.IsVisible && !host.FindControl<StackPanel>("EmptyState")!.IsVisible,
+    "home replaces the failed-open page");
+Dispatcher.UIThread.RunJobs();
+var openError = host.GetVisualDescendants().OfType<Button>().SingleOrDefault(button => button.Name == "DialogPrimary");
+openError?.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+Dispatcher.UIThread.RunJobs();
 Call("ShowAppInfo");
 Check(host.FindControl<Grid>("AppInfoOverlay")!.IsVisible, "app info opens from home");
 Call("OpenApplication", background);
@@ -67,6 +89,10 @@ var stopButton = list.GetVisualDescendants().OfType<Button>().FirstOrDefault(b =
 Check(stopButton is not null, "close badge renders");
 typeof(MainWindow).GetField("_applicationsLoaded", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(host, true);
 host.Show();
+Dispatcher.UIThread.RunJobs();
+foreach (var leftover in host.GetVisualDescendants().OfType<Button>().Where(button => button.Name == "DialogPrimary").ToList())
+    leftover.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+Dispatcher.UIThread.RunJobs();
 stopButton!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 var confirmStop = host.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "DialogPrimary");
@@ -522,6 +548,11 @@ public sealed class CheckApplication : Application
         Styles.Add(new Ursa.Themes.Semi.UrsaSemiTheme());
         Styles.Add(new StyleInclude(new Uri("avares://AsterDock.UI/")) { Source=new Uri("avares://AsterDock.UI/Themes/AsterDockTheme.axaml") });
     }
+}
+sealed class FailingPageModule : IApplicationModule
+{
+    public Control CreateView() => throw new InvalidOperationException("boom");
+    public void Dispose() { }
 }
 public sealed class FixtureModule : IApplicationModule, IApplicationContextAware
 {

@@ -43,6 +43,7 @@ public partial class MainWindow : Window, IApplicationShell
     private bool _appSwitcherShortcutTriggered;
     private bool _allowClose;
     private bool _applicationsLoaded;
+    private bool _showReturnHome;
     private int _capsuleAnimationVersion;
     private int _appInfoAnimationVersion;
     private LoadedApplication? _currentApplication;
@@ -169,6 +170,7 @@ public partial class MainWindow : Window, IApplicationShell
 
     private void OpenApplication(LoadedApplication application)
     {
+        _showReturnHome = false;
         using (_loadingService.Begin($"正在打开 {application.Name}"))
         {
             HideAppSwitcher();
@@ -194,7 +196,13 @@ public partial class MainWindow : Window, IApplicationShell
                 EmptyState.IsVisible = true;
                 DetachApplicationNavigation();
                 _currentApplication = null;
+                try { application.Stop(); }
+                catch (Exception stopFailure) { Trace.TraceError("打开失败后停止轻应用失败: " + stopFailure); }
+                _showReturnHome = Applications.Any(item =>
+                    string.Equals(item.Manifest.Id, "home", StringComparison.OrdinalIgnoreCase));
                 UpdateCapsuleState();
+                WindowTitleText.Text = $"星栈  ·  {application.Name}";
+                Title = $"星栈 · {application.Name}";
                 EmptyMessage.Text = $"{application.Name} 未能打开";
                 _ = _feedbackService.ShowErrorAsync("打开失败", $"{application.Name} 加载失败：{exception.GetBaseException().Message}", exception);
             }
@@ -302,18 +310,24 @@ public partial class MainWindow : Window, IApplicationShell
     {
         if (SettingsPanel.IsVisible)
         {
-            if (_currentApplication is not null) PostAfterInput(() => OpenApplication(_currentApplication));
+            PostAfterInput(() =>
+            {
+                if (_currentApplication is not null) OpenApplication(_currentApplication);
+                else OpenHome();
+            });
             return;
         }
 
         _currentApplication?.Navigation?.GoBack();
     }
 
-    private void CapsuleHome_Click(object? sender, RoutedEventArgs e)
+    private void CapsuleHome_Click(object? sender, RoutedEventArgs e) => PostAfterInput(OpenHome);
+
+    private void OpenHome()
     {
         var home = Applications.FirstOrDefault(application =>
             string.Equals(application.Manifest.Id, "home", StringComparison.OrdinalIgnoreCase));
-        if (home is not null) PostAfterInput(() => OpenApplication(home));
+        if (home is not null) OpenApplication(home);
     }
 
     private async void ShowAppInfo()
@@ -450,23 +464,28 @@ public partial class MainWindow : Window, IApplicationShell
     private void UpdateCapsuleState()
     {
         var hostCanGoBack = SettingsPanel.IsVisible;
-        var isHome = _currentApplication is null ||
-                     string.Equals(_currentApplication.Manifest.Id, "home", StringComparison.OrdinalIgnoreCase);
+        var hasApplication = _currentApplication is not null;
+        var isHome = hasApplication &&
+                     string.Equals(_currentApplication!.Manifest.Id, "home", StringComparison.OrdinalIgnoreCase);
         var applicationCanGoBack = !hostCanGoBack && _currentApplication?.Navigation?.CanGoBack == true;
+        var returnHome = _showReturnHome && !hasApplication && !hostCanGoBack;
+        var showAppChrome = hasApplication && !isHome && !hostCanGoBack;
 
         CapsuleBackButton.IsVisible = hostCanGoBack || applicationCanGoBack;
         CapsuleBackSeparator.IsVisible = applicationCanGoBack;
-        CapsuleInfoButton.IsVisible = !hostCanGoBack && _currentApplication is not null;
-        CapsuleInfoHomeSeparator.IsVisible = !hostCanGoBack && !isHome;
-        CapsuleHomeButton.IsVisible = !hostCanGoBack && !isHome;
-        CapsulePopOutButton.IsVisible = !hostCanGoBack && !isHome;
-        CapsulePopOutSeparator.IsVisible = !hostCanGoBack && !isHome;
+        CapsuleInfoButton.IsVisible = !hostCanGoBack && hasApplication;
+        CapsuleInfoHomeSeparator.IsVisible = showAppChrome;
+        CapsulePopOutButton.IsVisible = showAppChrome;
+        CapsulePopOutSeparator.IsVisible = showAppChrome;
+        CapsuleHomeButton.IsVisible = showAppChrome || returnHome;
+        EmptyHomeButton.IsVisible = returnHome;
 
-        var visible = hostCanGoBack || _currentApplication is not null;
+        var visible = hostCanGoBack || hasApplication || returnHome;
         var width = hostCanGoBack
             ? HostBackCapsuleWidth
-            : isHome ? HomeInfoCapsuleWidth
-            : applicationCanGoBack ? ExpandedBackCapsuleWidth : ExpandedCapsuleWidth;
+            : showAppChrome
+                ? applicationCanGoBack ? ExpandedBackCapsuleWidth : ExpandedCapsuleWidth
+                : HomeInfoCapsuleWidth;
         SetMiniAppCapsuleVisible(visible, width);
     }
 
@@ -500,6 +519,7 @@ public partial class MainWindow : Window, IApplicationShell
         HideAppInfo();
         ApplicationContent.Content = null;
         EmptyState.IsVisible = false;
+        _showReturnHome = false;
         SettingsPanel.IsVisible = true;
         UpdateCapsuleState();
         ShowSettingsSection(SettingsSection.Applications);

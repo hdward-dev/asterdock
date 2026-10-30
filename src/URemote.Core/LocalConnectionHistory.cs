@@ -7,7 +7,7 @@ public sealed record LocalConnectionRecord(LocalDesktopProtocol Protocol, string
 {
     public LocalDesktopOptions Options(string password = "") => new(Protocol, Host, Port, Username, password, Domain);
     public static LocalConnectionRecord From(LocalDesktopOptions options) => new(options.Protocol, options.Host, options.Port,
-        options.Protocol == LocalDesktopProtocol.Rdp ? options.Domain : "", options.Protocol == LocalDesktopProtocol.Rdp ? options.Username : "");
+        options.Protocol == LocalDesktopProtocol.Rdp ? options.Domain : "", options.Username);
     public bool Matches(LocalConnectionRecord other) => Protocol == other.Protocol && Port == other.Port &&
         string.Equals(Host, other.Host, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(Domain, other.Domain, StringComparison.OrdinalIgnoreCase) &&

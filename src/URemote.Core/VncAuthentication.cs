@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -64,6 +65,84 @@ public static class VncAuthentication
         }
         CryptographicOperations.ZeroMemory(key); Array.Clear(keys);
         return response;
+    }
+
+    // Apple Remote Desktop (security type 30), used by macOS Screen Sharing.
+    // The shared secret and both public values are unsigned big-endian integers left-padded to the prime length.
+    public static (byte[] Ciphertext, byte[] ClientPublic) AppleRemoteDesktop(
+        string username, string password, ushort generator, ReadOnlySpan<byte> primeBytes, ReadOnlySpan<byte> serverPublicBytes)
+    {
+        if (generator < 2 || primeBytes.Length is < 16 or > 512 || serverPublicBytes.Length != primeBytes.Length)
+            throw new InvalidDataException("macOS 屏幕共享的密钥参数无效。");
+        var prime = new BigInteger(primeBytes, isUnsigned: true, isBigEndian: true);
+        var serverPublic = new BigInteger(serverPublicBytes, isUnsigned: true, isBigEndian: true);
+        if (prime.IsEven || prime <= generator || serverPublic.Sign <= 0 || serverPublic >= prime)
+            throw new InvalidDataException("macOS 屏幕共享的密钥参数无效。");
+
+        var userBytes = Array.Empty<byte>();
+        var passwordBytes = Array.Empty<byte>();
+        var secretBytes = new byte[primeBytes.Length];
+        var sharedBytes = Array.Empty<byte>();
+        var aesKey = Array.Empty<byte>();
+        var credentials = new byte[128];
+        byte[]? clientPublic = null;
+        try
+        {
+            userBytes = Encoding.UTF8.GetBytes(username);
+            passwordBytes = Encoding.UTF8.GetBytes(password);
+            if (userBytes.Length > 63 || passwordBytes.Length > 63)
+                throw new InvalidOperationException("macOS 屏幕共享的用户名或密码过长。");
+            RandomNumberGenerator.Fill(secretBytes);
+            var secret = new BigInteger(secretBytes, isUnsigned: true, isBigEndian: true) % (prime - 1);
+            if (secret.IsZero) secret = BigInteger.One;
+            clientPublic = ToUnsignedFixed(BigInteger.ModPow(generator, secret, prime), primeBytes.Length);
+            sharedBytes = ToUnsignedFixed(BigInteger.ModPow(serverPublic, secret, prime), primeBytes.Length);
+            aesKey = MD5.HashData(sharedBytes);
+            RandomNumberGenerator.Fill(credentials);
+            userBytes.CopyTo(credentials, 0);
+            credentials[userBytes.Length] = 0;
+            passwordBytes.CopyTo(credentials, 64);
+            credentials[64 + passwordBytes.Length] = 0;
+            using var aes = Aes.Create();
+            aes.Mode = CipherMode.ECB;
+            aes.Padding = PaddingMode.None;
+            aes.Key = aesKey;
+            using var encryptor = aes.CreateEncryptor();
+            var ciphertext = encryptor.TransformFinalBlock(credentials, 0, credentials.Length);
+            var sentPublic = clientPublic ?? throw new InvalidOperationException("VNC 密钥计算失败。");
+            clientPublic = null;
+            return (ciphertext, sentPublic);
+        }
+        finally
+        {
+            if (clientPublic is not null) CryptographicOperations.ZeroMemory(clientPublic);
+            CryptographicOperations.ZeroMemory(secretBytes);
+            CryptographicOperations.ZeroMemory(sharedBytes);
+            CryptographicOperations.ZeroMemory(aesKey);
+            CryptographicOperations.ZeroMemory(credentials);
+            CryptographicOperations.ZeroMemory(userBytes);
+            CryptographicOperations.ZeroMemory(passwordBytes);
+        }
+    }
+
+    private static byte[] ToUnsignedFixed(BigInteger value, int length)
+    {
+        if (value.Sign < 0) throw new InvalidOperationException("VNC 密钥计算失败。");
+        var raw = value.ToByteArray(isUnsigned: true, isBigEndian: true);
+        if (raw.Length == length) return raw;
+        try
+        {
+            if (raw.Length > length)
+            {
+                if (raw.AsSpan(0, raw.Length - length).ContainsAnyExcept((byte)0))
+                    throw new InvalidOperationException("VNC 密钥计算失败。");
+                return raw[^length..];
+            }
+            var padded = new byte[length];
+            raw.CopyTo(padded.AsSpan(length - raw.Length));
+            return padded;
+        }
+        finally { CryptographicOperations.ZeroMemory(raw); }
     }
 
     private static ulong Permute(ulong value, int bits, int[] table)

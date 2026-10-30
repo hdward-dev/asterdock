@@ -25,6 +25,7 @@ public sealed class HomeApplicationItem
         {
             "android-screen" => "phone",
             "u-remote" => "remote",
+            "file-share" => "share",
             _ => application.Icon
         };
         IconGeometry = Geometry.Parse(icon switch
@@ -35,6 +36,7 @@ public sealed class HomeApplicationItem
             "printer" => "M6,3 H18 V8 H20 A2,2 0 0 1 22,10 V17 H18 V22 H6 V17 H2 V10 A2,2 0 0 1 4,8 H6 Z M8,15 V20 H16 V15 Z M8,5 V8 H16 V5 Z",
             "monitor" => "M3,4 H21 V17 H13 V20 H17 V22 H7 V20 H11 V17 H3 Z M5,6 V15 H19 V6 Z",
             "home" => "M3,11 L12,3 L21,11 V21 H14 V15 H10 V21 H3 Z",
+            "share" => "M3,6 H10 L12,8 H21 V19 H3 Z",
             "network" => "M14,1 L3,14 H10 L8,23 L21,9 H13 Z",
             _ => "M4,4 H10 V10 H4 Z M14,4 H20 V10 H14 Z M4,14 H10 V20 H4 Z M14,14 H20 V20 H14 Z"
         });
@@ -43,6 +45,7 @@ public sealed class HomeApplicationItem
             "phone" => "#F0E7FC",
             "serial" => "#FFF1D1",
             "monitor" => "#E7F8FB",
+            "share" => "#E7F0FF",
             "network" => "#E9F7EF",
             _ => "#E8F0FE"
         }));
@@ -51,6 +54,7 @@ public sealed class HomeApplicationItem
             "phone" => "#9556E9",
             "serial" => "#E89B00",
             "monitor" => "#00A3BF",
+            "share" => "#1D6FEA",
             "network" => "#16A05D",
             _ => "#1267E8"
         }));

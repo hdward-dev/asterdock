@@ -22,12 +22,13 @@ on:
 permissions:
   contents: read
 
-# Hardcoded prefix so a Release workflow_call does not share a group with
-# URemote CI or with the VMCUBE call in the same release (both would otherwise
-# see the caller workflow name).
+# One group per run. A shared ref-based group let a new run cancel a queued
+# Release build, and the release then had no macOS bridge to package.
+# Scheduling is cheap here (about 35 s), so parallel runs are acceptable.
+# Never set cancel-in-progress: a Release call must always finish.
 concurrency:
-  group: uremote-macos-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
+  group: uremote-macos-${{ github.run_id }}-${{ github.run_attempt }}
+  cancel-in-progress: false
 
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"

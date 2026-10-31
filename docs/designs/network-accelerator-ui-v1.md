@@ -47,7 +47,7 @@
 ## 核心安装
 
 - 首次使用可直接在“订阅信息”卡片点击“安装核心”。
-- 当前固定使用稳定版 `1.13.12`，按 `windows-amd64`、`darwin-amd64` 或 `darwin-arm64` 自动选择官方包。
+- 当前固定使用稳定版 `1.13.12`，按 `windows-amd64`、`darwin-amd64`、`darwin-arm64`、`linux-amd64` 或 `linux-arm64` 自动选择官方包。Linux 动态包在本机没有其动态链接器时（常见于未启用 nix-ld 的 NixOS）改用同版本官方 musl 静态包。
 - 下载地址只允许 SagerNet 官方 GitHub Release，并校验 Release API 对应资产提供的 SHA-256 digest。
 - 核心安装到应用数据目录的 `core` 子目录；也兼容应用包内 `core` 目录或系统 `PATH` 中已有的 sing-box。
 - Windows/macOS 开启 TUN 仍可能需要系统管理员权限；权限失败时页面保持“未连接”并显示核心错误。

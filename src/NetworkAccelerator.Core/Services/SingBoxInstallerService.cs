@@ -1,6 +1,5 @@
+using System.ComponentModel;
 using System.Diagnostics;
-using System.Formats.Tar;
-using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
@@ -26,13 +25,27 @@ public sealed class SingBoxInstallerService : IDisposable
     public async Task<string> InstallAsync(CancellationToken cancellationToken = default)
     {
         var package = GetPackageName();
+        try
+        {
+            return await InstallPackageAsync(package, cancellationToken).ConfigureAwait(false);
+        }
+        catch (LinuxDynamicLoaderException) when (MuslFallbackPackage(package) is { } musl)
+        {
+            // The plain linux asset is dynamically linked. NixOS without nix-ld cannot start it.
+            // The matching official musl asset is a static ELF and does not need a system package.
+            return await InstallPackageAsync(musl, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task<string> InstallPackageAsync(string package, CancellationToken cancellationToken)
+    {
         var (archiveUrl, expectedHash) = await GetReleaseAssetAsync(package, cancellationToken).ConfigureAwait(false);
 
         Directory.CreateDirectory(_coreDirectory);
         var archivePath = Path.Combine(_coreDirectory, package + ".download");
         var executableName = OperatingSystem.IsWindows() ? "sing-box.exe" : "sing-box";
         var executablePath = Path.Combine(_coreDirectory, executableName);
-        var temporaryExecutable = executablePath + ".new";
+        var staging = Path.Combine(_coreDirectory, ".staging-" + Guid.NewGuid().ToString("N"));
 
         try
         {
@@ -41,26 +54,41 @@ public sealed class SingBoxInstallerService : IDisposable
             if (!actualHash.Equals(expectedHash, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("sing-box 下载包校验失败，文件可能不完整");
 
-            if (File.Exists(temporaryExecutable)) File.Delete(temporaryExecutable);
-            if (package.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-                await ExtractFromZipAsync(archivePath, temporaryExecutable, executableName, cancellationToken).ConfigureAwait(false);
-            else
-                await ExtractFromTarGzipAsync(archivePath, temporaryExecutable, executableName, cancellationToken).ConfigureAwait(false);
-
+            Directory.CreateDirectory(staging);
+            await SingBoxCoreLayout.ExtractAsync(archivePath, staging, executableName, cancellationToken).ConfigureAwait(false);
+            var stagedExecutable = Path.Combine(staging, executableName);
             if (!OperatingSystem.IsWindows())
-                File.SetUnixFileMode(temporaryExecutable,
-                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
-                    UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
-                    UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+                File.SetUnixFileMode(stagedExecutable, ExecutableMode);
 
-            await VerifyAsync(temporaryExecutable, cancellationToken).ConfigureAwait(false);
-            File.Move(temporaryExecutable, executablePath, overwrite: true);
+            await VerifyAsync(stagedExecutable, cancellationToken).ConfigureAwait(false);
+            File.Move(stagedExecutable, executablePath, overwrite: true);
+            InstallCompanions(staging);
             return executablePath;
         }
         finally
         {
             TryDelete(archivePath);
-            TryDelete(temporaryExecutable);
+            TryDeleteDirectory(staging);
+        }
+    }
+
+    private void InstallCompanions(string staging)
+    {
+        foreach (var name in SingBoxCoreLayout.CompanionFileNames)
+        {
+            var from = Path.Combine(staging, name);
+            var to = Path.Combine(_coreDirectory, name);
+            if (!File.Exists(from))
+            {
+                TryDelete(to);
+                continue;
+            }
+
+            File.Move(from, to, overwrite: true);
+            if (!OperatingSystem.IsWindows())
+                File.SetUnixFileMode(to,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite |
+                    UnixFileMode.GroupRead | UnixFileMode.OtherRead);
         }
     }
 
@@ -114,34 +142,11 @@ public sealed class SingBoxInstallerService : IDisposable
         return Convert.ToHexString(hash);
     }
 
-    private static async Task ExtractFromZipAsync(string archivePath, string destination, string executableName, CancellationToken cancellationToken)
-    {
-        using var archive = ZipFile.OpenRead(archivePath);
-        var entry = archive.Entries.FirstOrDefault(candidate =>
-            Path.GetFileName(candidate.FullName).Equals(executableName, StringComparison.OrdinalIgnoreCase))
-            ?? throw new InvalidDataException("sing-box 下载包中未找到核心文件");
-        await using var input = entry.Open();
-        await using var output = File.Create(destination);
-        await input.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
-    }
-
-    private static async Task ExtractFromTarGzipAsync(string archivePath, string destination, string executableName, CancellationToken cancellationToken)
-    {
-        await using var archiveStream = File.OpenRead(archivePath);
-        await using var gzip = new GZipStream(archiveStream, CompressionMode.Decompress);
-        using var reader = new TarReader(gzip, leaveOpen: false);
-        while (reader.GetNextEntry(copyData: false) is { } entry)
-        {
-            if (!Path.GetFileName(entry.Name).Equals(executableName, StringComparison.Ordinal) || entry.DataStream is null) continue;
-            await using var output = File.Create(destination);
-            await entry.DataStream.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-        throw new InvalidDataException("sing-box 下载包中未找到核心文件");
-    }
-
     private static async Task VerifyAsync(string executable, CancellationToken cancellationToken)
     {
+        if (LinuxExecutableFormat.MissingInterpreter(executable) is { } missing)
+            throw new LinuxDynamicLoaderException(missing);
+
         var info = new ProcessStartInfo(executable)
         {
             UseShellExecute = false,
@@ -150,28 +155,125 @@ public sealed class SingBoxInstallerService : IDisposable
             CreateNoWindow = true
         };
         info.ArgumentList.Add("version");
-        using var process = Process.Start(info) ?? throw new InvalidOperationException("无法验证 sing-box 核心");
+        using var process = new Process { StartInfo = info };
+        try
+        {
+            if (!process.Start()) throw new InvalidOperationException("无法验证 sing-box 核心");
+        }
+        catch (Exception exception) when (exception is Win32Exception or IOException)
+        {
+            var interpreter = LinuxExecutableFormat.MissingInterpreter(executable) ?? exception.GetBaseException().Message;
+            throw new LinuxDynamicLoaderException(interpreter, exception);
+        }
+
+        var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
         await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-        if (process.ExitCode != 0) throw new InvalidDataException("下载的 sing-box 核心无法运行");
+        var stdout = await stdoutTask.ConfigureAwait(false);
+        var stderr = await stderrTask.ConfigureAwait(false);
+        if (process.ExitCode == 0
+            && (stdout.Contains("sing-box", StringComparison.OrdinalIgnoreCase)
+                || stderr.Contains("sing-box", StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        var detail = FirstLine(stderr) ?? FirstLine(stdout);
+        if (LinuxExecutableFormat.LooksLikeMissingLoader(detail)
+            || LinuxExecutableFormat.LooksLikeMissingLoader(stdout)
+            || LinuxExecutableFormat.LooksLikeMissingLoader(stderr))
+            throw new LinuxDynamicLoaderException(string.IsNullOrWhiteSpace(detail) ? "动态链接器" : detail);
+        throw new InvalidDataException("下载的 sing-box 核心无法运行");
     }
 
-    private static string GetPackageName()
+    public static string GetPackageName() =>
+        GetPackageName(CurrentOperatingSystem(), RuntimeInformation.ProcessArchitecture);
+
+    public static string GetPackageName(string operatingSystem, Architecture architecture)
     {
-        var os = OperatingSystem.IsWindows() ? "windows" : OperatingSystem.IsMacOS() ? "darwin" :
-            throw new PlatformNotSupportedException("当前只支持在 Windows 或 macOS 安装 sing-box 核心");
-        var architecture = RuntimeInformation.ProcessArchitecture switch
+        var os = operatingSystem switch
+        {
+            "windows" or "darwin" or "linux" => operatingSystem,
+            _ => throw new PlatformNotSupportedException("当前只支持在 Windows、macOS 或 Linux 安装 sing-box 核心")
+        };
+        var arch = architecture switch
         {
             Architecture.X64 => "amd64",
             Architecture.Arm64 => "arm64",
-            _ => throw new PlatformNotSupportedException($"不支持的处理器架构：{RuntimeInformation.ProcessArchitecture}")
+            _ => throw new PlatformNotSupportedException($"不支持的处理器架构：{architecture}")
         };
-        var extension = OperatingSystem.IsWindows() ? "zip" : "tar.gz";
-        return $"sing-box-{StableVersion}-{os}-{architecture}.{extension}";
+        var extension = os == "windows" ? "zip" : "tar.gz";
+        return $"sing-box-{StableVersion}-{os}-{arch}.{extension}";
     }
+
+    public static string? MuslFallbackPackage(string package)
+    {
+        const string suffix = ".tar.gz";
+        if (!package.EndsWith(suffix, StringComparison.Ordinal)
+            || !package.Contains("-linux-", StringComparison.Ordinal)
+            || package.Contains("-musl", StringComparison.Ordinal))
+            return null;
+        return package[..^suffix.Length] + "-musl.tar.gz";
+    }
+
+    public static string MissingDynamicLoaderMessage(string interpreter)
+    {
+        var loader = string.IsNullOrWhiteSpace(interpreter) ? "动态链接器" : interpreter.Trim();
+        var line = loader.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? loader;
+        if (line.Length > 180) line = line[..180];
+        return $"下载的 sing-box 核心无法在当前系统直接运行：缺少动态链接器 {line}。NixOS 请设置 programs.nix-ld.enable = true; 后重新构建系统，或将已能运行的 sing-box 放进应用数据目录的 core 文件夹。";
+    }
+
+    public static bool IsLinuxLoaderFailure(Exception exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is LinuxDynamicLoaderException) return true;
+        }
+
+        return false;
+    }
+
+    private static string CurrentOperatingSystem() =>
+        OperatingSystem.IsWindows() ? "windows"
+        : OperatingSystem.IsMacOS() ? "darwin"
+        : OperatingSystem.IsLinux() ? "linux"
+        : throw new PlatformNotSupportedException("当前只支持在 Windows、macOS 或 Linux 安装 sing-box 核心");
+
+    private static string? FirstLine(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        return text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim();
+    }
+
+    private const UnixFileMode ExecutableMode =
+        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+        UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+        UnixFileMode.OtherRead | UnixFileMode.OtherExecute;
 
     private static void TryDelete(string path)
     {
         try { if (File.Exists(path)) File.Delete(path); }
         catch { }
     }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); }
+        catch { }
+    }
+}
+
+public sealed class LinuxDynamicLoaderException : Exception
+{
+    public LinuxDynamicLoaderException(string interpreter)
+        : this(interpreter, null)
+    {
+    }
+
+    public LinuxDynamicLoaderException(string interpreter, Exception? inner)
+        : base(SingBoxInstallerService.MissingDynamicLoaderMessage(interpreter), inner)
+    {
+        Interpreter = interpreter;
+    }
+
+    public string Interpreter { get; }
 }

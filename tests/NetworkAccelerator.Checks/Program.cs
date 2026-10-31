@@ -1,5 +1,10 @@
 using System.Buffers.Binary;
+using System.Formats.Tar;
+using System.IO.Compression;
 using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using AsterDock.Contracts;
@@ -278,6 +283,11 @@ finally
 }
 
 Check(LinuxTunAuthorization.OutputHasNetAdmin("/opt/sing-box cap_net_admin,cap_net_bind_service=ep"), "getcap output reports net admin");
+Check(LinuxTunAuthorization.PkexecHandedOff("sing-box"), "direct sing-box is a pkexec handoff");
+Check(LinuxTunAuthorization.PkexecHandedOff("sh"), "shell wrapper is a pkexec handoff");
+Check(LinuxTunAuthorization.PkexecHandedOff("ld-linux-x86-64"), "ld-linux comm is a pkexec handoff");
+Check(!LinuxTunAuthorization.PkexecHandedOff("pkexec"), "pkexec dialog is still waiting");
+Check(!LinuxTunAuthorization.PkexecHandedOff(null) && !LinuxTunAuthorization.PkexecHandedOff(""), "missing comm is not a handoff");
 Check(!LinuxTunAuthorization.OutputHasNetAdmin("/opt/sing-box"), "getcap output without caps");
 Check(!LinuxTunAuthorization.OutputHasNetAdmin(null), "missing getcap output");
 var capableXattr = new byte[20];
@@ -307,8 +317,8 @@ Check(LinuxMountOptions.IsNoSuid("/home/user/.local/share/AsterDock/AppData/netw
 Check(!LinuxMountOptions.IsNoSuid("/home/user/.local/share/app",
     ["overlay / overlay rw 0 0", "/dev/nvme0n1p2 /home ext4 rw,nodev 0 0"]), "home honors file capabilities");
 
-static LinuxTunFacts Facts(bool copy, bool copyCap, bool hash, bool sourceCap, bool setcap, bool pkexec, bool honors = true, bool plainPkexec = false) =>
-    new(copy, copyCap, hash, sourceCap, setcap, pkexec, honors, plainPkexec);
+static LinuxTunFacts Facts(bool copy, bool copyCap, bool hash, bool sourceCap, bool setcap, bool pkexec, bool honors = true, bool plainPkexec = false, bool canHold = true) =>
+    new(copy, copyCap, hash, sourceCap, setcap, pkexec, honors, plainPkexec, canHold);
 Check(LinuxTunAuthorization.Decide(Facts(true, true, true, false, true, true)) == LinuxTunDecision.UseCapableCopy, "reuse capable copy");
 Check(LinuxTunAuthorization.Decide(Facts(false, false, false, true, true, true)) == LinuxTunDecision.UseSource, "source already capable");
 Check(LinuxTunAuthorization.Decide(Facts(true, true, false, false, true, true)) == LinuxTunDecision.CopyAndSetcap, "hash change reauthorizes");
@@ -317,13 +327,73 @@ Check(LinuxTunAuthorization.Decide(Facts(false, false, false, false, false, true
 Check(LinuxTunAuthorization.Decide(Facts(false, false, false, false, true, true, honors: false)) == LinuxTunDecision.LaunchWithPkexec, "nosuid filesystem uses pkexec");
 Check(LinuxTunAuthorization.Decide(Facts(false, false, false, false, false, false)) == LinuxTunDecision.PkexecMissing, "no pkexec cannot authorize");
 Check(LinuxTunAuthorization.Decide(Facts(false, false, false, false, true, false, plainPkexec: true)) == LinuxTunDecision.SetuidWrapperMissing, "pkexec without setuid asks for the NixOS wrapper");
+Check(LinuxTunAuthorization.Decide(Facts(true, true, true, true, true, true, canHold: false)) == LinuxTunDecision.LaunchWithPkexec, "wrapper ignores a capable copy and source caps");
+Check(LinuxTunAuthorization.Decide(Facts(false, false, false, false, true, true, canHold: false)) == LinuxTunDecision.LaunchWithPkexec, "wrapper is not copied for setcap");
+Check(LinuxTunAuthorization.Decide(Facts(true, true, true, true, true, false, canHold: false)) == LinuxTunDecision.PkexecMissing, "wrapper without pkexec keeps the missing pkexec error");
+Check(LinuxTunAuthorization.Decide(Facts(true, true, true, true, true, false, plainPkexec: true, canHold: false)) == LinuxTunDecision.SetuidWrapperMissing, "wrapper without setuid pkexec keeps the NixOS wrapper error");
+
+var nixWrapper = Encoding.ASCII.GetBytes("#!/bin/sh\nexec /nix/store/deadbeef-glibc/lib/ld-linux-x86-64.so.2 --library-path /nix/store/deadbeef-glibc/lib \"$DIR/sing-box.bin\" \"$@\"\n");
+Check(!LinuxExecutableFormat.CanHoldFileCapabilities(nixWrapper), "nix ld-linux wrapper cannot hold file caps");
+Check(LinuxTunAuthorization.OutputHasNetAdmin("bin/sing-box cap_net_admin,cap_net_bind_service=ep")
+      && !LinuxExecutableFormat.CanHoldFileCapabilities(nixWrapper), "getcap on a wrapper is not usable");
+Check(!LinuxExecutableFormat.CanHoldFileCapabilities("sing-box-v1"u8), "plain text cannot hold file caps");
+Check(!LinuxExecutableFormat.CanHoldFileCapabilities([(byte)0x7F, (byte)'E', (byte)'L', (byte)'F']), "short ELF header cannot hold file caps");
+var elfExec = new byte[64];
+elfExec[0] = 0x7F; elfExec[1] = (byte)'E'; elfExec[2] = (byte)'L'; elfExec[3] = (byte)'F';
+elfExec[4] = 2; elfExec[5] = 1; elfExec[6] = 1;
+BinaryPrimitives.WriteUInt16LittleEndian(elfExec.AsSpan(16), 2);
+Check(LinuxExecutableFormat.CanHoldFileCapabilities(elfExec), "ELF executable can hold file caps");
+BinaryPrimitives.WriteUInt16LittleEndian(elfExec.AsSpan(16), 3);
+Check(LinuxExecutableFormat.CanHoldFileCapabilities(elfExec), "PIE ELF can hold file caps");
+BinaryPrimitives.WriteUInt16LittleEndian(elfExec.AsSpan(16), 1);
+Check(!LinuxExecutableFormat.CanHoldFileCapabilities(elfExec), "relocatable ELF cannot hold file caps");
+var bigEndianElf = new byte[20];
+bigEndianElf[0] = 0x7F; bigEndianElf[1] = (byte)'E'; bigEndianElf[2] = (byte)'L'; bigEndianElf[3] = (byte)'F';
+bigEndianElf[4] = 2; bigEndianElf[5] = 2; bigEndianElf[6] = 1;
+bigEndianElf[16] = 0; bigEndianElf[17] = 2;
+Check(LinuxExecutableFormat.CanHoldFileCapabilities(bigEndianElf), "big-endian ELF executable can hold file caps");
+
+var packageVersion = SingBoxInstallerService.StableVersion;
+Check(SingBoxInstallerService.GetPackageName("linux", Architecture.X64) == $"sing-box-{packageVersion}-linux-amd64.tar.gz", "linux amd64 package");
+Check(SingBoxInstallerService.GetPackageName("linux", Architecture.Arm64) == $"sing-box-{packageVersion}-linux-arm64.tar.gz", "linux arm64 package");
+Check(SingBoxInstallerService.GetPackageName("windows", Architecture.X64) == $"sing-box-{packageVersion}-windows-amd64.zip", "windows package unchanged");
+Check(SingBoxInstallerService.GetPackageName("windows", Architecture.Arm64) == $"sing-box-{packageVersion}-windows-arm64.zip", "windows arm64 package unchanged");
+Check(SingBoxInstallerService.GetPackageName("darwin", Architecture.X64) == $"sing-box-{packageVersion}-darwin-amd64.tar.gz", "macos amd64 package unchanged");
+Check(SingBoxInstallerService.GetPackageName("darwin", Architecture.Arm64) == $"sing-box-{packageVersion}-darwin-arm64.tar.gz", "macos arm64 package unchanged");
+if (OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.X64)
+    Check(SingBoxInstallerService.GetPackageName() == $"sing-box-{packageVersion}-linux-amd64.tar.gz", "this linux host selects the official amd64 archive");
+var rejectedArch = false;
+try { SingBoxInstallerService.GetPackageName("linux", Architecture.Arm); }
+catch (PlatformNotSupportedException) { rejectedArch = true; }
+Check(rejectedArch, "linux rejects unsupported architectures");
+var rejectedOs = false;
+try { SingBoxInstallerService.GetPackageName("freebsd", Architecture.X64); }
+catch (PlatformNotSupportedException) { rejectedOs = true; }
+Check(rejectedOs, "unknown operating system is rejected");
+var linuxPackage = SingBoxInstallerService.GetPackageName("linux", Architecture.X64);
+var muslPackage = SingBoxInstallerService.MuslFallbackPackage(linuxPackage);
+Check(muslPackage == $"sing-box-{packageVersion}-linux-amd64-musl.tar.gz", "missing loader falls back to the official musl archive");
+Check(SingBoxInstallerService.MuslFallbackPackage(muslPackage!) is null, "musl archive is not wrapped again");
+Check(SingBoxInstallerService.MuslFallbackPackage(SingBoxInstallerService.GetPackageName("darwin", Architecture.Arm64)) is null, "macos archive has no musl fallback");
+Check(SingBoxInstallerService.MuslFallbackPackage(SingBoxInstallerService.GetPackageName("windows", Architecture.X64)) is null, "windows archive has no musl fallback");
+var loaderMessage = SingBoxInstallerService.MissingDynamicLoaderMessage("/lib64/ld-linux-x86-64.so.2");
+Check(loaderMessage.Contains("/lib64/ld-linux-x86-64.so.2", StringComparison.Ordinal)
+      && loaderMessage.Contains("programs.nix-ld.enable = true;", StringComparison.Ordinal)
+      && loaderMessage.Contains("core", StringComparison.Ordinal), "missing loader message names nix-ld and the core folder");
+var loaderFailure = new LinuxDynamicLoaderException("/lib64/ld-linux-x86-64.so.2");
+Check(SingBoxInstallerService.IsLinuxLoaderFailure(loaderFailure), "loader exception is recognized");
+Check(!SingBoxInstallerService.IsLinuxLoaderFailure(new InvalidDataException("sing-box 下载包校验失败，文件可能不完整")), "hash failures do not switch to musl");
+Check(!SingBoxInstallerService.IsLinuxLoaderFailure(new InvalidDataException("下载的 sing-box 核心无法运行")), "generic version failure does not switch to musl");
+Check(LinuxExecutableFormat.LooksLikeMissingLoader("error while loading shared libraries: libc.so.6: cannot open shared object file"), "shared library failure looks like a missing loader");
+Check(!LinuxExecutableFormat.LooksLikeMissingLoader("sing-box 配置检查失败"), "config errors are not loader failures");
 
 var authRoot = Path.Combine(Path.GetTempPath(), "na-tun-auth-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(authRoot);
 try
 {
     var source = Path.Combine(authRoot, "sing-box-source");
-    await File.WriteAllTextAsync(source, "sing-box-v1");
+    WriteElfExecutable(source, "sing-box-v1");
+    await File.WriteAllBytesAsync(Path.Combine(authRoot, "libcronet.so"), "cronet-a"u8.ToArray());
     var capable = new HashSet<string>(StringComparer.Ordinal);
     var commands = new FakeCommands();
     var runner = new FakeRunner(request =>
@@ -344,7 +414,9 @@ try
         return new ProcessResult(false, -1, string.Empty, "unexpected command");
     });
     var scopes = 0;
-    var privilege = new LinuxTunPrivilege(Path.Combine(authRoot, "data"), runner, commands, new FakeXattr(), new HonoringFilesystem())
+    Func<string, CancellationToken, Task<bool>> canRun = (_, _) => Task.FromResult(true);
+    var privilege = new LinuxTunPrivilege(Path.Combine(authRoot, "data"), runner, commands, new FakeXattr(), new HonoringFilesystem(),
+        canRun: (path, token) => canRun(path, token))
     {
         BeginAuthorization = () =>
         {
@@ -354,6 +426,7 @@ try
     };
     var first = await privilege.PrepareAsync(source);
     Check(first.Executable == privilege.CapableCopyPath && !first.ViaPkexec, "first TUN run uses the capable copy");
+    Check(File.ReadAllBytes(Path.Combine(Path.GetDirectoryName(privilege.CapableCopyPath)!, "libcronet.so")).AsSpan().SequenceEqual("cronet-a"u8), "capable copy keeps libcronet.so");
     Check(scopes == 1, "authorization shows one busy scope");
     Check(runner.Calls.Any(call => call.FileName == commands.PkexecPath && call.Arguments[0] == commands.SetcapPath
         && call.Arguments[1] == LinuxTunAuthorization.CapabilityArguments
@@ -365,11 +438,13 @@ try
     Check(runner.Calls.Skip(callsAfterFirst).All(call => call.FileName != commands.PkexecPath), "later run does not prompt");
     Check(scopes == 1, "later run has no authorization scope");
 
-    await File.WriteAllTextAsync(source, "sing-box-v2");
+    WriteElfExecutable(source, "sing-box-v2");
+    await File.WriteAllBytesAsync(Path.Combine(authRoot, "libcronet.so"), "cronet-bb"u8.ToArray());
     var recopied = await privilege.PrepareAsync(source);
     Check(recopied.Executable == privilege.CapableCopyPath, "changed binary is copied again");
     Check(scopes == 2, "changed binary asks for authorization again");
-    Check((await File.ReadAllTextAsync(privilege.CapableCopyPath)) == "sing-box-v2", "copy matches the new binary");
+    Check(File.ReadAllBytes(privilege.CapableCopyPath).AsSpan().SequenceEqual(File.ReadAllBytes(source)), "copy matches the new binary");
+    Check(File.ReadAllBytes(Path.Combine(Path.GetDirectoryName(privilege.CapableCopyPath)!, "libcronet.so")).AsSpan().SequenceEqual("cronet-bb"u8), "updated core refreshes libcronet.so");
 
     commands.SetcapPath = null;
     capable.Clear();
@@ -430,11 +505,176 @@ try
     var fromXattr = new LinuxTunPrivilege(Path.Combine(authRoot, "xattr"), runner, commands, xattrReader, new HonoringFilesystem());
     var direct = await fromXattr.PrepareAsync(source);
     Check(direct.Executable == source && !direct.ViaPkexec, "security.capability xattr authorizes the source binary");
+
+    runner.Handle = request =>
+    {
+        if (request.FileName == commands.GetcapPath)
+        {
+            var target = request.Arguments[0];
+            var text = capable.Contains(target) ? $"{target} cap_net_admin,cap_net_bind_service=ep\n" : target + "\n";
+            return new ProcessResult(true, 0, text, string.Empty);
+        }
+
+        if (request.Arguments.Count > 0 && request.Arguments[0] == commands.SetcapPath)
+        {
+            capable.Add(request.Arguments[^1]);
+            return new ProcessResult(true, 0, string.Empty, string.Empty);
+        }
+
+        return new ProcessResult(false, -1, string.Empty, "unexpected command");
+    };
+    commands.GetcapPath = "/usr/bin/getcap";
+    commands.SetcapPath = "/usr/bin/setcap";
+    commands.PkexecPath = "/usr/bin/pkexec";
+    commands.PlainPkexec = false;
+
+    var wrapped = Path.Combine(authRoot, "wrapped-sing-box");
+    await File.WriteAllTextAsync(wrapped, "#!/bin/sh\nDIR=$(dirname \"$0\")\nexec /nix/store/deadbeef-glibc/lib/ld-linux-x86-64.so.2 --library-path /nix/store/deadbeef-glibc/lib \"$DIR/sing-box.bin\" \"$@\"\n");
+    var wrapData = Path.Combine(authRoot, "wrap-data");
+    var probed = false;
+    var wrapPrivilege = new LinuxTunPrivilege(wrapData, runner, commands, new FakeXattr { Read = _ => capableXattr }, new HonoringFilesystem(),
+        canRun: (_, _) =>
+        {
+            probed = true;
+            return Task.FromResult(true);
+        });
+    Check(!await wrapPrivilege.HasNetAdminAsync(wrapped), "wrapper getcap and xattr caps are ignored");
+    Directory.CreateDirectory(Path.GetDirectoryName(wrapPrivilege.CapableCopyPath)!);
+    await File.WriteAllTextAsync(wrapPrivilege.CapableCopyPath, await File.ReadAllTextAsync(wrapped));
+    await File.WriteAllTextAsync(wrapPrivilege.HashSidecarPath, Sha256File(wrapped));
+    await File.WriteAllBytesAsync(Path.Combine(Path.GetDirectoryName(wrapPrivilege.CapableCopyPath)!, "libcronet.so"), "stale-cronet"u8.ToArray());
+    capable.Add(wrapPrivilege.CapableCopyPath);
+    capable.Add(wrapped);
+    var callsBeforeWrap = runner.Calls.Count;
+    var wrappedLaunch = await wrapPrivilege.PrepareAsync(wrapped);
+    Check(wrappedLaunch.ViaPkexec && wrappedLaunch.Executable == wrapped && wrappedLaunch.PkexecPath == commands.PkexecPath, "wrapper core launches the original script via pkexec");
+    Check(!File.Exists(wrapPrivilege.CapableCopyPath) && !File.Exists(wrapPrivilege.HashSidecarPath), "false capable copy and hash are removed");
+    Check(!File.Exists(Path.Combine(Path.GetDirectoryName(wrapPrivilege.CapableCopyPath)!, "libcronet.so")), "stale companion next to the capable copy is removed");
+    Check(runner.Calls.Skip(callsBeforeWrap).All(call => call.Arguments.Count == 0 || call.Arguments[0] != commands.SetcapPath), "wrapper core is not setcap'd");
+    Check(!probed, "wrapper core does not trust a version probe of the capable copy");
+
+    commands.PkexecPath = null;
+    await File.WriteAllTextAsync(wrapPrivilege.CapableCopyPath, await File.ReadAllTextAsync(wrapped));
+    await File.WriteAllTextAsync(wrapPrivilege.HashSidecarPath, Sha256File(wrapped));
+    var wrapperMissingPkexec = false;
+    try
+    {
+        await wrapPrivilege.PrepareAsync(wrapped);
+    }
+    catch (TunAuthorizationException exception)
+    {
+        wrapperMissingPkexec = !exception.Cancelled && exception.Message == TunAuthorizationException.PkexecMissingMessage;
+    }
+    Check(wrapperMissingPkexec, "wrapper without pkexec keeps the missing pkexec message");
+    Check(!File.Exists(wrapPrivilege.CapableCopyPath), "missing pkexec still drops the false capable copy");
+
+    commands.PlainPkexec = true;
+    var wrapperMissingSetuid = false;
+    try
+    {
+        await wrapPrivilege.PrepareAsync(wrapped);
+    }
+    catch (TunAuthorizationException exception)
+    {
+        wrapperMissingSetuid = exception.SetuidWrapperMissing
+            && exception.Message.Contains("security.polkit.enablePkexecWrapper = true;", StringComparison.Ordinal);
+    }
+    Check(wrapperMissingSetuid, "wrapper without setuid pkexec keeps the NixOS wrapper message");
+    commands.PkexecPath = "/usr/bin/pkexec";
+    commands.PlainPkexec = false;
+
+    var elf = Path.Combine(authRoot, "elf-version");
+    WriteElfExecutable(elf, "runs-or-not");
+    var versionData = Path.Combine(authRoot, "version-data");
+    var versionPrivilege = new LinuxTunPrivilege(versionData, runner, commands, new FakeXattr(), new HonoringFilesystem(),
+        canRun: (_, _) => Task.FromResult(false));
+    Directory.CreateDirectory(Path.GetDirectoryName(versionPrivilege.CapableCopyPath)!);
+    File.Copy(elf, versionPrivilege.CapableCopyPath, overwrite: true);
+    await File.WriteAllTextAsync(versionPrivilege.HashSidecarPath, Sha256File(elf));
+    capable.Add(versionPrivilege.CapableCopyPath);
+    var versionLaunch = await versionPrivilege.PrepareAsync(elf);
+    Check(versionLaunch.ViaPkexec && versionLaunch.Executable == elf && versionLaunch.PkexecPath == commands.PkexecPath, "capable copy that cannot run falls back to pkexec");
+    Check(!File.Exists(versionPrivilege.CapableCopyPath) && !File.Exists(versionPrivilege.HashSidecarPath), "broken capable copy is invalidated after version fails");
     Console.WriteLine("PASS linux tun authorization");
 }
 finally
 {
     Directory.Delete(authRoot, recursive: true);
+}
+
+var formatRoot = Directory.CreateTempSubdirectory("na-elf").FullName;
+try
+{
+    var present = Path.Combine(formatRoot, "ld-linux");
+    await File.WriteAllTextAsync(present, "loader");
+    var withLoader = Path.Combine(formatRoot, "dynamic");
+    await File.WriteAllBytesAsync(withLoader, ElfWithInterpreter(present));
+    Check(LinuxExecutableFormat.ReadInterpreter(withLoader) == present, "PT_INTERP path is read from the ELF");
+    Check(LinuxExecutableFormat.MissingInterpreter(withLoader) is null, "present interpreter is not reported missing");
+    File.Delete(present);
+    Check(LinuxExecutableFormat.MissingInterpreter(withLoader) == present, "absent interpreter is reported");
+    var staticElf = Path.Combine(formatRoot, "static");
+    var staticBytes = new byte[64];
+    staticBytes[0] = 0x7F; staticBytes[1] = (byte)'E'; staticBytes[2] = (byte)'L'; staticBytes[3] = (byte)'F';
+    staticBytes[4] = 2; staticBytes[5] = 1; staticBytes[6] = 1;
+    BinaryPrimitives.WriteUInt16LittleEndian(staticBytes.AsSpan(16), 2);
+    await File.WriteAllBytesAsync(staticElf, staticBytes);
+    Check(LinuxExecutableFormat.ReadInterpreter(staticElf) is null && LinuxExecutableFormat.MissingInterpreter(staticElf) is null, "static ELF has no interpreter");
+    var script = Path.Combine(formatRoot, "script");
+    await File.WriteAllTextAsync(script, "#!/bin/sh\nexec /nix/store/xx/ld-linux \"$DIR/sing-box.bin\" \"$@\"\n");
+    Check(LinuxExecutableFormat.MissingInterpreter(script) is null, "a shell wrapper is not a missing PT_INTERP");
+}
+finally
+{
+    Directory.Delete(formatRoot, recursive: true);
+}
+
+var archiveRoot = Directory.CreateTempSubdirectory("na-archive").FullName;
+try
+{
+    var archive = Path.Combine(archiveRoot, "sing-box.tar.gz");
+    await using (var file = File.Create(archive))
+    await using (var gzip = new GZipStream(file, CompressionLevel.SmallestSize, leaveOpen: true))
+    await using (var tar = new TarWriter(gzip, TarEntryFormat.Pax, leaveOpen: true))
+    {
+        await WriteTarAsync(tar, "sing-box-1.13.12-linux-amd64/LICENSE", "license"u8.ToArray());
+        await WriteTarAsync(tar, "sing-box-1.13.12-linux-amd64/sing-box", "core-bytes"u8.ToArray());
+        await WriteTarAsync(tar, "sing-box-1.13.12-linux-amd64/libcronet.so", "cronet-bytes"u8.ToArray());
+    }
+
+    var extracted = Path.Combine(archiveRoot, "out");
+    await SingBoxCoreLayout.ExtractAsync(archive, extracted, "sing-box", CancellationToken.None);
+    Check(File.ReadAllText(Path.Combine(extracted, "sing-box")) == "core-bytes", "linux archive extracts sing-box");
+    Check(File.ReadAllText(Path.Combine(extracted, "libcronet.so")) == "cronet-bytes", "linux archive keeps libcronet.so");
+    Check(!File.Exists(Path.Combine(extracted, "LICENSE")), "archive license is not installed as a core file");
+
+    var muslArchive = Path.Combine(archiveRoot, "musl.tar.gz");
+    await using (var file = File.Create(muslArchive))
+    await using (var gzip = new GZipStream(file, CompressionLevel.SmallestSize, leaveOpen: true))
+    await using (var tar = new TarWriter(gzip, TarEntryFormat.Pax, leaveOpen: true))
+        await WriteTarAsync(tar, "sing-box-1.13.12-linux-amd64-musl/sing-box", "static-core"u8.ToArray());
+    var muslOut = Path.Combine(archiveRoot, "musl");
+    await SingBoxCoreLayout.ExtractAsync(muslArchive, muslOut, "sing-box", CancellationToken.None);
+    Check(File.ReadAllText(Path.Combine(muslOut, "sing-box")) == "static-core", "musl archive extracts the static executable");
+    Check(!File.Exists(Path.Combine(muslOut, "libcronet.so")), "musl archive has no companion library");
+
+    var zip = Path.Combine(archiveRoot, "windows.zip");
+    using (var zipArchive = ZipFile.Open(zip, ZipArchiveMode.Create))
+    {
+        WriteZip(zipArchive, "sing-box-1.13.12-windows-amd64/sing-box.exe", "win-core"u8.ToArray());
+        WriteZip(zipArchive, "sing-box-1.13.12-windows-amd64/libcronet.dll", "win-cronet"u8.ToArray());
+        WriteZip(zipArchive, "sing-box-1.13.12-windows-amd64/LICENSE", "license"u8.ToArray());
+    }
+
+    var zipOut = Path.Combine(archiveRoot, "zip");
+    await SingBoxCoreLayout.ExtractAsync(zip, zipOut, "sing-box.exe", CancellationToken.None);
+    Check(File.ReadAllText(Path.Combine(zipOut, "sing-box.exe")) == "win-core", "windows archive extracts sing-box.exe");
+    Check(File.ReadAllText(Path.Combine(zipOut, "libcronet.dll")) == "win-cronet", "windows archive keeps libcronet.dll");
+    Check(!File.Exists(Path.Combine(zipOut, "LICENSE")), "windows archive license is not installed");
+}
+finally
+{
+    Directory.Delete(archiveRoot, recursive: true);
 }
 
 var feedback = new RecordingFeedback();
@@ -513,6 +753,71 @@ finally
 }
 
 Console.WriteLine($"PASS network accelerator dashboard checks ({passed})");
+
+static void WriteElfExecutable(string path, string payload)
+{
+    var body = Encoding.UTF8.GetBytes(payload);
+    var bytes = new byte[64 + body.Length];
+    bytes[0] = 0x7F;
+    bytes[1] = (byte)'E';
+    bytes[2] = (byte)'L';
+    bytes[3] = (byte)'F';
+    bytes[4] = 2;
+    bytes[5] = 1;
+    bytes[6] = 1;
+    BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(16), 2);
+    body.CopyTo(bytes, 64);
+    File.WriteAllBytes(path, bytes);
+}
+
+static byte[] ElfWithInterpreter(string interpreter)
+{
+    var interp = Encoding.UTF8.GetBytes(interpreter + "\0");
+    const int offset = 128;
+    var bytes = new byte[offset + interp.Length];
+    bytes[0] = 0x7F;
+    bytes[1] = (byte)'E';
+    bytes[2] = (byte)'L';
+    bytes[3] = (byte)'F';
+    bytes[4] = 2;
+    bytes[5] = 1;
+    bytes[6] = 1;
+    BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(16), 2);
+    BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(18), 62);
+    BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(20), 1);
+    BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(32), 64);
+    BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(52), 64);
+    BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(54), 56);
+    BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(56), 1);
+    BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(64), 3);
+    BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(68), 4);
+    BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(72), offset);
+    BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(96), (ulong)interp.Length);
+    interp.CopyTo(bytes, offset);
+    return bytes;
+}
+
+static string Sha256File(string path)
+{
+    using var stream = File.OpenRead(path);
+    return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+}
+
+static void WriteZip(ZipArchive archive, string name, byte[] payload)
+{
+    var entry = archive.CreateEntry(name);
+    using var output = entry.Open();
+    output.Write(payload);
+}
+
+static async Task WriteTarAsync(TarWriter tar, string name, byte[] payload)
+{
+    var entry = new PaxTarEntry(TarEntryType.RegularFile, name)
+    {
+        DataStream = new MemoryStream(payload)
+    };
+    await tar.WriteEntryAsync(entry);
+}
 
 static void Pump(Task task, int milliseconds = 5000)
 {

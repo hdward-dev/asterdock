@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 
 namespace NetworkAccelerator.Core.Services;
@@ -16,19 +17,22 @@ public sealed class LinuxTunPrivilege
     private readonly ILinuxCommandResolver _commands;
     private readonly ICapabilityXattrReader _xattr;
     private readonly IFileCapabilityPolicy _filesystem;
+    private readonly Func<string, CancellationToken, Task<bool>>? _canRun;
 
     public LinuxTunPrivilege(
         string dataDirectory,
         IProcessRunner processRunner,
         ILinuxCommandResolver commands,
         ICapabilityXattrReader xattr,
-        IFileCapabilityPolicy? filesystem = null)
+        IFileCapabilityPolicy? filesystem = null,
+        Func<string, CancellationToken, Task<bool>>? canRun = null)
     {
         _dataDirectory = dataDirectory;
         _runner = processRunner;
         _commands = commands;
         _xattr = xattr;
         _filesystem = filesystem ?? new LinuxMountCapabilityPolicy();
+        _canRun = canRun;
     }
 
     public Func<IDisposable?>? BeginAuthorization { get; set; }
@@ -39,6 +43,10 @@ public sealed class LinuxTunPrivilege
 
     public async Task<LinuxTunLaunch> PrepareAsync(string sourceExecutable, CancellationToken cancellationToken = default)
     {
+        var canHold = LinuxExecutableFormat.CanHoldFileCapabilities(sourceExecutable);
+        if (!canHold)
+            RemoveCapableCopy();
+
         var sourceHash = await HashFileAsync(sourceExecutable, cancellationToken).ConfigureAwait(false);
         var copyPath = CapableCopyPath;
         var copyExists = File.Exists(copyPath);
@@ -56,11 +64,19 @@ public sealed class LinuxTunPrivilege
             setcap is not null,
             pkexec is not null,
             _filesystem.HonorsFileCapabilities(copyPath),
-            pkexec is null && _commands.HasPlainPkexec()));
+            pkexec is null && _commands.HasPlainPkexec(),
+            canHold));
 
         switch (decision)
         {
             case LinuxTunDecision.UseCapableCopy:
+                if (!await CanRunAsync(copyPath, cancellationToken).ConfigureAwait(false))
+                {
+                    RemoveCapableCopy();
+                    return PkexecOrThrow(sourceExecutable, pkexec);
+                }
+
+                SyncCompanionLibraries(sourceExecutable, copyPath);
                 return LinuxTunLaunch.AsUser(copyPath);
             case LinuxTunDecision.UseSource:
                 return LinuxTunLaunch.AsUser(sourceExecutable);
@@ -83,6 +99,7 @@ public sealed class LinuxTunPrivilege
                 if (!await HasNetAdminAsync(copyPath, cancellationToken).ConfigureAwait(false))
                     throw new TunAuthorizationException(TunAuthorizationException.Failed("setcap 未生效"), cancelled: false);
                 await File.WriteAllTextAsync(HashSidecarPath, sourceHash, cancellationToken).ConfigureAwait(false);
+                SyncCompanionLibraries(sourceExecutable, copyPath);
                 return LinuxTunLaunch.AsUser(copyPath);
             default:
                 throw new InvalidOperationException("未知的 TUN 授权决定。");
@@ -91,6 +108,9 @@ public sealed class LinuxTunPrivilege
 
     public async Task<bool> HasNetAdminAsync(string path, CancellationToken cancellationToken = default)
     {
+        if (!LinuxExecutableFormat.CanHoldFileCapabilities(path))
+            return false;
+
         var getcap = _commands.FindGetcap();
         if (getcap is not null)
         {
@@ -115,6 +135,67 @@ public sealed class LinuxTunPrivilege
         {
             var detail = string.IsNullOrWhiteSpace(result.StandardError) ? result.StandardOutput : result.StandardError;
             throw new TunAuthorizationException(TunAuthorizationException.Failed(detail), cancelled: false);
+        }
+    }
+
+    private LinuxTunLaunch PkexecOrThrow(string sourceExecutable, string? pkexec)
+    {
+        if (pkexec is not null)
+            return LinuxTunLaunch.WithPkexec(sourceExecutable, pkexec);
+        if (_commands.HasPlainPkexec())
+            throw new TunAuthorizationException(TunAuthorizationException.SetuidWrapperMessage, cancelled: false, setuidWrapperMissing: true);
+        throw new TunAuthorizationException(TunAuthorizationException.PkexecMissingMessage, cancelled: false);
+    }
+
+    private Task<bool> CanRunAsync(string path, CancellationToken cancellationToken) =>
+        _canRun is not null
+            ? _canRun(path, cancellationToken)
+            : SingBoxLaunchProbe.CanRunAsync(path, cancellationToken);
+
+    private void RemoveCapableCopy()
+    {
+        TryDelete(CapableCopyPath);
+        TryDelete(HashSidecarPath);
+        TryDelete(CapableCopyPath + ".tmp");
+        var directory = Path.GetDirectoryName(CapableCopyPath);
+        if (directory is null) return;
+        foreach (var name in SingBoxCoreLayout.CompanionFileNames)
+            TryDelete(Path.Combine(directory, name));
+    }
+
+    private static void SyncCompanionLibraries(string sourceExecutable, string destinationExecutable)
+    {
+        var sourceDirectory = Path.GetDirectoryName(sourceExecutable);
+        var destinationDirectory = Path.GetDirectoryName(destinationExecutable);
+        if (sourceDirectory is null || destinationDirectory is null) return;
+        foreach (var name in SingBoxCoreLayout.CompanionFileNames)
+        {
+            var from = Path.Combine(sourceDirectory, name);
+            var to = Path.Combine(destinationDirectory, name);
+            if (!File.Exists(from))
+            {
+                TryDelete(to);
+                continue;
+            }
+
+            var sourceInfo = new FileInfo(from);
+            var destinationInfo = new FileInfo(to);
+            if (destinationInfo.Exists && destinationInfo.Length == sourceInfo.Length) continue;
+            Directory.CreateDirectory(destinationDirectory);
+            var temporary = to + ".tmp";
+            File.Copy(from, temporary, overwrite: true);
+            File.Move(temporary, to, overwrite: true);
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
         }
     }
 
@@ -161,6 +242,59 @@ public sealed class LinuxTunPrivilege
         public static readonly EmptyDisposable Instance = new();
 
         public void Dispose()
+        {
+        }
+    }
+}
+
+public static class SingBoxLaunchProbe
+{
+    public static async Task<bool> CanRunAsync(string executable, CancellationToken cancellationToken)
+    {
+        Process? process = null;
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(5));
+            var info = new ProcessStartInfo(executable)
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            info.ArgumentList.Add("version");
+            process = new Process { StartInfo = info };
+            if (!process.Start()) return false;
+            var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
+            var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
+            await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+            await Task.WhenAll(stdout, stderr).ConfigureAwait(false);
+            return process.ExitCode == 0;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            TryKill(process);
+            throw;
+        }
+        catch
+        {
+            TryKill(process);
+            return false;
+        }
+        finally
+        {
+            process?.Dispose();
+        }
+    }
+
+    private static void TryKill(Process? process)
+    {
+        try
+        {
+            if (process is { HasExited: false }) process.Kill(entireProcessTree: true);
+        }
+        catch
         {
         }
     }

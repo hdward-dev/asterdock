@@ -29,7 +29,8 @@ public readonly record struct LinuxTunFacts(
     bool SetcapAvailable,
     bool PkexecAvailable,
     bool FilesystemHonorsFileCapabilities,
-    bool PlainPkexecExists = false);
+    bool PlainPkexecExists = false,
+    bool SourceCanHoldFileCapabilities = true);
 
 public static class LinuxTunAuthorization
 {
@@ -38,13 +39,16 @@ public static class LinuxTunAuthorization
 
     public static LinuxTunDecision Decide(LinuxTunFacts facts)
     {
-        if (facts.CopyExists && facts.CopyHasNetAdmin && facts.HashMatches)
+        // getcap/xattr on a shell wrapper still report cap_net_admin after setcap, but the kernel
+        // never grants those capabilities to a shebang or ld-linux script. Ignore them.
+        var capsUsable = facts.SourceCanHoldFileCapabilities;
+        if (capsUsable && facts.CopyExists && facts.CopyHasNetAdmin && facts.HashMatches)
             return LinuxTunDecision.UseCapableCopy;
-        if (facts.SourceHasNetAdmin)
+        if (capsUsable && facts.SourceHasNetAdmin)
             return LinuxTunDecision.UseSource;
         if (!facts.PkexecAvailable)
             return facts.PlainPkexecExists ? LinuxTunDecision.SetuidWrapperMissing : LinuxTunDecision.PkexecMissing;
-        if (facts.SetcapAvailable && facts.FilesystemHonorsFileCapabilities)
+        if (capsUsable && facts.SetcapAvailable && facts.FilesystemHonorsFileCapabilities)
             return LinuxTunDecision.CopyAndSetcap;
         return LinuxTunDecision.LaunchWithPkexec;
     }
@@ -70,6 +74,9 @@ public static class LinuxTunAuthorization
 
     public static bool OutputHasNetAdmin(string? text) =>
         text?.Contains("cap_net_admin", StringComparison.Ordinal) == true;
+
+    public static bool PkexecHandedOff(string? command) =>
+        !string.IsNullOrEmpty(command) && !command.Equals("pkexec", StringComparison.Ordinal);
 
     public static bool RequiresSetuidWrapper(string? text) =>
         Contains(text ?? string.Empty, "setuid") || Contains(text ?? string.Empty, "enablePkexecWrapper");

@@ -194,7 +194,8 @@ public sealed class SingBoxEngineService : IDisposable
 
             if (TryReadComm(process.Id, out var command))
             {
-                if (command.Equals("sing-box", StringComparison.Ordinal)) return;
+                // A NixOS wrapper is exec'd as sh and then ld-linux, so comm is not "sing-box".
+                if (LinuxTunAuthorization.PkexecHandedOff(command)) return;
             }
             else if (Interlocked.CompareExchange(ref _pkexecOutputSeen, 0, 0) == 1 && !LooksLikePkexec(error))
             {

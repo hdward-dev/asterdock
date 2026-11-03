@@ -27,7 +27,8 @@ public sealed partial class URemoteView
             if (disposed) return;
             var current = globals.Where(g => g.Interface == "wl_output").Select(g => g.Name).Order().Take(5).ToArray();
             if (!outputs.Select(o => o.Id).SequenceEqual(current))
-                ReplaceScreens(current, _ => true, null);
+                ReplaceScreens(await DesktopBackend.ReadOutputsAsync(lifetime.Token), null);
+            SaveSettings();
             await RefreshLocalScreensAsync();
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }

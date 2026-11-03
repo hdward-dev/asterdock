@@ -53,7 +53,7 @@ public sealed partial class URemoteView
             if(enabled == allowAssistance) return;
             try
             {
-                System.IO.File.WriteAllText(settingsFile, System.Text.Json.JsonSerializer.Serialize(new Settings(identity.Text ?? "", appliedEncoder, enabled, hostEnabled)));
+                SaveSettings(assistanceOverride: enabled);
                 allowAssistance = enabled;
                 var device = assistanceDevice ?? DesktopHostSession.ReadIdentity(identity.Text ?? "").State.DeviceId;
                 HostAssistance.SetEnabled(device, enabled);

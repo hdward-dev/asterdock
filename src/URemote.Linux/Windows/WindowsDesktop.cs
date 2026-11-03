@@ -86,6 +86,26 @@ public static class WindowsDesktop
         }
     }
 
+    public static Task<IReadOnlyList<DesktopOutput>> ReadOutputsAsync(CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var result = new List<DesktopOutput>(); var index = 0u;
+        MonitorEnumProc callback = (nint handle, nint _, ref Rect _, nint _) =>
+        {
+            var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+            if (GetMonitorInfo(handle, ref info))
+            {
+                var mode = new DevMode { Size = (short)Marshal.SizeOf<DevMode>() };
+                var rate = EnumDisplaySettings(info.DeviceName, -1, ref mode) && mode.DisplayFrequency > 0 ? checked(mode.DisplayFrequency * 1000) : 0;
+                result.Add(new(index, "windows:" + info.DeviceName, info.DeviceName, rate));
+            }
+            index++; return true;
+        };
+        if (!EnumDisplayMonitors(0, 0, callback, 0)) throw new Win32Exception();
+        GC.KeepAlive(callback);
+        return Task.FromResult<IReadOnlyList<DesktopOutput>>(result);
+    }
+
     public static Task<IReadOnlyDictionary<uint, int>> RefreshAsync(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();

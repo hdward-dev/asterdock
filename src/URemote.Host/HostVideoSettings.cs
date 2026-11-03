@@ -17,6 +17,10 @@ internal sealed class HostVideoSettings
     private long received, lost, decoded;
     private bool haveFeedback;
     private int healthyIntervals;
+    private readonly Func<long> now;
+    private long lastDecodedProgress, stagnantPackets;
+    private int stagnantIntervals;
+    private long? lastCongestion, lastStallRefresh;
     private readonly int[] requestedBitrates;
     private readonly int[] qualities, autoQualities, customBitrates;
     public string Describe(int index)
@@ -35,25 +39,41 @@ internal sealed class HostVideoSettings
     public bool ObserveReceiver(long totalReceived, long totalLost, long totalDecoded)
     {
         if (totalReceived < 0 || totalLost < 0 || totalDecoded < 0) return false;
-        if (totalReceived < received || totalLost < lost || totalDecoded < decoded)
-        { received = totalReceived; lost = totalLost; decoded = totalDecoded; haveFeedback = true; return false; }
+        var time = now();
+        if (!haveFeedback || totalReceived < received || totalLost < lost || totalDecoded < decoded)
+        {
+            lastDecodedProgress = time; stagnantPackets = 0; stagnantIntervals = 0; lastStallRefresh = null;
+            if (haveFeedback)
+            { received = totalReceived; lost = totalLost; decoded = totalDecoded; healthyIntervals = 0; return false; }
+        }
         var packets = totalReceived - received;
         var missing = totalLost - lost;
-        var stalled = haveFeedback && packets > 100 && totalDecoded == decoded;
+        var advancing = totalDecoded > decoded;
+        if (advancing) { lastDecodedProgress = time; stagnantPackets = 0; stagnantIntervals = 0; lastStallRefresh = null; }
+        else if (haveFeedback && packets > 0) { stagnantPackets += packets; stagnantIntervals++; }
+        var stalled = packets > 0 && stagnantIntervals >= 2 && stagnantPackets > 100 && time - lastDecodedProgress >= 3000
+            && (lastStallRefresh is null || time - lastStallRefresh.Value >= 5000);
         received = totalReceived; lost = totalLost; decoded = totalDecoded; haveFeedback = true;
-        if (packets + missing < 100) return false;
-        var loss = (double)missing / (packets + missing);
-        if (stalled || loss >= 0.03)
+        var enoughPackets = packets + missing >= 100;
+        var loss = enoughPackets ? (double)missing / (packets + missing) : 0;
+        if (enoughPackets && loss >= 0.03)
         {
             healthyIntervals = 0;
-            networkCeiling = Math.Max(1000000, Math.Min(networkCeiling, profiles.Max(p => p.Bitrate)) / 2);
+            if (lastCongestion is null || time - lastCongestion.Value >= 5000)
+            {
+                lastCongestion = time;
+                networkCeiling = Math.Max(1000000, Math.Min(networkCeiling, profiles.Max(p => p.Bitrate)) / 2);
+            }
         }
-        else if (loss < 0.01 && ++healthyIntervals >= 2)
+        else if (enoughPackets && advancing && loss < 0.01 && ++healthyIntervals >= 2)
         {
             healthyIntervals = 0;
             networkCeiling = Math.Min(40000000, networkCeiling + Math.Max(500000, networkCeiling / 4));
         }
-        else { if (loss >= 0.01) healthyIntervals = 0; return false; }
+        else if (loss >= 0.01 || !advancing) healthyIntervals = 0;
+        // Decoder recovery is separate from congestion: a delayed decode counter
+        // is not evidence that the network bitrate is too high.
+        if (stalled) lastStallRefresh = time;
         // At the floor, continuing packet loss alone must not restart an otherwise advancing decoder.
         var changed = false;
         for (var i = 0; i < profiles.Length; i++)
@@ -67,9 +87,10 @@ internal sealed class HostVideoSettings
         return changed;
     }
     public int SelectedScreen => Volatile.Read(ref selectedScreen);
-    public HostVideoSettings((int Width, int Height)[] dimensions, bool singleVideoStream = false, IReadOnlyList<int>? frameRateLimits = null)
+    public HostVideoSettings((int Width, int Height)[] dimensions, bool singleVideoStream = false, IReadOnlyList<int>? frameRateLimits = null, Func<long>? clock = null)
     {
         if (frameRateLimits is not null && frameRateLimits.Count != dimensions.Length) throw new ArgumentException("Display FPS limits do not match outputs.");
+        now = clock ?? (() => Environment.TickCount64);
         this.frameRateLimits = dimensions.Select((_, i) => Math.Clamp(frameRateLimits?[i] ?? HostDisplayInfo.MaxSupportedFps, 1, HostDisplayInfo.MaxSupportedFps)).ToArray();
         SingleVideoStream = singleVideoStream;
         native = dimensions;

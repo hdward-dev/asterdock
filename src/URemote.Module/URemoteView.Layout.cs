@@ -232,15 +232,6 @@ public sealed partial class URemoteView
         foreach (var device in matches) deviceRows.Children.Add(BuildPreviewCard(device));
     }
 
-    private void ReplaceScreens(uint[] ids, Func<int, bool> isChecked, string? emptyHint)
-    {
-        outputs.Clear();
-        for (var i = 0; i < ids.Length; i++)
-            outputs.Add(new ScreenShareModel { Id = ids[i], Label = "显示屏 " + (i + 1), IsChecked = isChecked(i) });
-        if (!string.IsNullOrEmpty(emptyHint)) screenHint.Text = emptyHint;
-        screenHint.IsVisible = ids.Length == 0 && !string.IsNullOrEmpty(emptyHint);
-    }
-
     private DeviceCard BuildPreviewCard(UuDevice device)
     {
         var allowed = device.CanConnect && device.Category == "desktop";

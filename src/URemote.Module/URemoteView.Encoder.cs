@@ -73,8 +73,7 @@ public sealed partial class URemoteView
             }
             if (disposed) return;
             // Persist before publishing the new path to the background host.
-            File.WriteAllText(settingsFile, JsonSerializer.Serialize(
-                new Settings(identity.Text ?? "", candidate, allowAssistance, hostEnabled)));
+            SaveSettings(encoderOverride: candidate);
             Volatile.Write(ref appliedEncoder, candidate);
             encoder.Text = candidate;
             encoderHint.Text = "验证成功，路径已保存。新连接使用此路径，当前连接保持不变。";

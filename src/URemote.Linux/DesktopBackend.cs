@@ -523,14 +523,36 @@ public static class DesktopBackend
             return connection.Monitors(refresh: true).ToDictionary(monitor => monitor.Id, monitor => monitor.MilliHz);
         }
         // Portal node ids are not wl_output names, but the compositor still publishes the mode.
-        var outputs = await WaylandOutputRefresh.ReadOutputsAsync(ct);
         var active = Volatile.Read(ref portal);
+        IReadOnlyList<WaylandOutputMode> outputs;
+        try { outputs = await WaylandOutputRefresh.ReadOutputsAsync(ct); }
+        catch (Exception e) when (active is not null && !ct.IsCancellationRequested && e is IOException or System.Net.Sockets.SocketException or OperationCanceledException or FormatException)
+        { return PublishRefresh(active.CopyLayout(), active.ReadRefreshRates([])); }
         if (active is null)
             return outputs.Where(item => item.MilliHz > 0).ToDictionary(item => item.Name, item => item.MilliHz);
         var bound = PortalOutputRefresh.Bind(active.CopyLayout(), outputs);
         active.RememberModes(bound);
         var mapped = bound.Where(item => item.Value.RefreshMilliHz > 0).ToDictionary(item => item.Key, item => item.Value.RefreshMilliHz);
+        foreach (var item in active.ReadRefreshRates([])) mapped.TryAdd(item.Key, item.Value);
         return PublishRefresh(active.CopyLayout(), mapped);
+    }
+    public static async Task<IReadOnlyList<DesktopOutput>> ReadOutputsAsync(CancellationToken ct)
+    {
+        if (OperatingSystem.IsWindows()) return await WindowsDesktop.ReadOutputsAsync(ct);
+        if (LinuxSessionKind.UseX11())
+        {
+            ct.ThrowIfCancellationRequested();
+            using var connection = X11Connection.Open(null);
+            return connection.Monitors(refresh: true).Select(monitor => new DesktopOutput(monitor.Id, "x11:" + monitor.Name, monitor.Name, monitor.MilliHz)).OrderBy(x => x.Id).Take(5).ToArray();
+        }
+        if (OperatingSystem.IsMacOS())
+        {
+            var rates = await MacDesktop.RefreshAsync(ct);
+            return (await MacDesktop.DiscoverAsync(ct)).Select(x => new DesktopOutput(x.Name, "mac:" + x.Name, "显示器 " + x.Name, rates.GetValueOrDefault(x.Name))).ToArray();
+        }
+        if (portal is { } active) return active.DisplayDetails.OrderBy(x => x.Id).Take(5).ToArray();
+        var globals = await DiscoverAsync(ct);
+        return globals.Any(x => x.Interface == "wl_output") ? (await WaylandOutputDetails.ReadAsync(ct)).OrderBy(x => x.Id).Take(5).ToArray() : [];
     }
 
     public static void NoteRequestedFrameRate(uint output, int fps) => X11FrameRateNotes.Note(output, fps);

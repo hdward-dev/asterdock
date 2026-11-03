@@ -25,6 +25,7 @@ public sealed class AsyncCommand(Func<Task> execute) : ICommand
 
 public sealed class ScreenShareModel : CardModel
 {
+    public string Key { get; init; } = "";
     public uint Id { get; init; }
     public string Label { get; init; } = "";
     private bool? _isChecked = true;

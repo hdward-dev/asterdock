@@ -84,6 +84,7 @@ internal sealed class HostClipboard : IAsyncDisposable
     public async Task WatchAsync(CancellationToken ct)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(750));
+        var unavailableReported = false;
         while (await timer.WaitForNextTickAsync(ct))
         {
             await gate.WaitAsync(ct);
@@ -91,6 +92,7 @@ internal sealed class HostClipboard : IAsyncDisposable
             {
                 if (pendingTextId != 0 && DateTimeOffset.UtcNow >= textAckDeadline) AdvertiseFormats();
                 var text = await read(ct);
+                unavailableReported = false;
                 if (text is null || text == lastText) continue;
                 var id = (ulong)Interlocked.Increment(ref sequence);
                 var packet = HostClipboardProtocol.Change(id, text);
@@ -103,7 +105,7 @@ internal sealed class HostClipboard : IAsyncDisposable
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested) { }
             catch (Exception e) when (e is IOException or System.ComponentModel.Win32Exception or System.Text.DecoderFallbackException)
-            { report("clipboard-unavailable"); return; }
+            { if (!unavailableReported) report("clipboard-unavailable"); unavailableReported = true; }
             finally { gate.Release(); }
         }
     }

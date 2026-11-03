@@ -21,6 +21,8 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
     private bool enableInput, disposed;
     internal bool IsDisposed => disposed;
     internal bool TouchAvailable => !disposed && inputSession?.Available == true;
+    private readonly List<DesktopOutput> displayDetails = [];
+    public IReadOnlyList<DesktopOutput> DisplayDetails => displayDetails.ToArray();
     public IReadOnlyList<WaylandGlobal> Outputs { get; private set; } = [];
     internal IReadOnlyList<PortalStreamBox> Layout => layout;
     private PortalDesktopSession(PortalBus bus) => this.bus = bus;
@@ -99,6 +101,11 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
             {
                 position.Require("(ii)"); using var px = position.Child(0); using var py = position.Child(1); x = px.Int(); y = py.Int();
             }
+            using var stable = properties.Get("id");
+            using var mappingId = properties.Get("mapping_id");
+            var name = stable?.Type == "s" ? stable.Text() : mappingId?.Type == "s" ? mappingId.Text() : "";
+            var key = name.Length > 0 ? "portal:" + name : $"portal-session:{session}:{node}";
+            displayDetails.Add(new(node, key, name.Length > 0 ? name : "显示器 " + (i + 1)));
             using var mapping = properties.Get("mapping_id");
             if (mapping is not null && !string.IsNullOrWhiteSpace(mapping.Text())) touchMappings.Add(node, mapping.Text());
             // Authorization and geometry only. pipewiresrc starts when a viewer arms capture.
@@ -196,6 +203,22 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
         return ending.Length;
     }
 
+    internal IReadOnlyDictionary<uint, int> ReadRefreshRates(IReadOnlyList<DesktopOutput> native)
+    {
+        var result = new Dictionary<uint, int>();
+        foreach (var display in displayDetails)
+        {
+            var matches = native.Where(x => x.Name == display.Name).ToArray();
+            var rate = matches.Length == 1 ? matches[0].RefreshMilliHz : 0;
+            if (rate <= 0)
+            {
+                lock (streamLock)
+                    if (streams.TryGetValue(display.Id, out var slot) && slot.Video is PortalVideoStream video) rate = video.RefreshMilliHz;
+            }
+            if (rate > 0) result[display.Id] = rate;
+        }
+        return result;
+    }
     private void CheckAlive()
     {
         if (disposed || closed.IsCancellationRequested || bus is { IsClosed: true } || inputSession is { Connected: false })

@@ -125,6 +125,16 @@ foreach (var plane in new[] { (2,2,4,(nuint)0,(nuint)16), (2,2,-8,(nuint)0,(nuin
     catch (FormatException) { Check(true,"out-of-bounds video plane rejected"); }
 }
 NativeGst.Probe();
+await ClipboardOwnerChecks.RunAsync(Check);
+await using (var highRefresh = new PortalVideoStream(91,
+    "videotestsrc is-live=true pattern=red ! video/x-raw,format=BGRA,width=16,height=16,framerate=120/1 ! appsink name=frames max-buffers=1 drop=true sync=false"))
+{
+    using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(5));
+    var frame=await highRefresh.CaptureAsync(deadline.Token);Array.Clear(frame.Pixels);
+    Check(highRefresh.RefreshMilliHz==120000 && URemote.Core.HostDisplayInfo.FrameRateLimit(highRefresh.RefreshMilliHz)==120,
+        "Portal capture reports negotiated 120 Hz instead of a hard-coded 60 Hz limit");
+}
+
 for (var pass = 0; pass < 3; pass++)
 {
     await using var stream = new PortalVideoStream(7,

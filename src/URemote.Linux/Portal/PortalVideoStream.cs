@@ -24,6 +24,7 @@ internal static class NativeGst
     [DllImport(Gst)] internal static extern nint gst_sample_get_caps(nint sample);
     [DllImport(Gst)] internal static extern nint gst_sample_get_buffer(nint sample);
     [DllImport(Gst)] internal static extern nint gst_caps_get_structure(nint caps, uint index);
+    [DllImport(Gst)] internal static extern int gst_structure_get_fraction(nint structure, string name, out int numerator, out int denominator);
     [DllImport(Gst)] internal static extern nint gst_structure_get_string(nint structure, string name);
     [DllImport(Gst)] internal static extern nuint gst_buffer_get_size(nint buffer);
     [DllImport(Gst)] internal static extern nuint gst_buffer_extract(nint buffer, nuint offset, byte[] destination, nuint size);
@@ -89,6 +90,8 @@ internal sealed class PortalVideoStream : IPortalPipe
     // picture: replay it instead of failing the peer. Pacing, not this cache, decides the rate.
     internal static bool ReuseCachedFrame(TimeSpan age) => age >= TimeSpan.Zero;
     private bool disposed;
+    private int refreshMilliHz;
+    internal int RefreshMilliHz => Volatile.Read(ref refreshMilliHz);
     internal PortalVideoStream(uint output, int fd) : this(output, fd,
         $"pipewiresrc fd={fd} path={output} do-timestamp=true always-copy=true ! videoconvert ! video/x-raw,format=BGRA ! appsink name=frames max-buffers=1 drop=true sync=false") { }
     // Internal overload allows tests to use videotestsrc without a screen or Portal authorization.
@@ -186,6 +189,9 @@ internal sealed class PortalVideoStream : IPortalPipe
                 info = Marshal.PtrToStructure<NativeGst.VideoInfo>(infoPtr);
             }
             finally { NativeGst.gst_video_info_free(infoPtr); }
+            var fpsN = info.FpsN; var fpsD = info.FpsD;
+            if (fpsN <= 0 || fpsD <= 0) NativeGst.gst_structure_get_fraction(structure, "max-framerate", out fpsN, out fpsD);
+            if (fpsN > 0 && fpsD > 0) Volatile.Write(ref refreshMilliHz, (int)Math.Clamp(Math.Round(fpsN * 1000.0 / fpsD), 1, 1_000_000));
             var stride = info.Stride0; var offset = info.Offset0;
             var metaPtr = NativeGst.gst_buffer_get_video_meta(buffer);
             if (metaPtr != 0)

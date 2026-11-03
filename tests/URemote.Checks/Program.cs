@@ -4,6 +4,12 @@ using URemote.Linux;
 using System.Diagnostics;
 using System.Text;
 
+if (args.Contains("--host-recovery-checks"))
+{
+    HostRecoveryChecks.Run((ok, label) => { if (!ok) throw new Exception(label); Console.WriteLine("PASS: " + label); });
+    return;
+}
+
 if (args.Contains("--desktop-environment"))
 {
     static DesktopEnvironmentInfo Detect(params (string Key, string Value)[] values)
@@ -165,6 +171,12 @@ if (args.Contains("--video-quality-checks") || args.Contains("--video-144-checks
     await QualityChecks.RunAsync(args.Last(), args.Contains("--video-144-checks") ? 144 : 60);
     return;
 }
+if (args.Contains("--display-identities"))
+{
+    foreach (var output in await WaylandOutputRefresh.ReadDetailsAsync())
+        Console.WriteLine($"output={output.Id};key={output.Key};name={output.Name};refresh-millihz={output.RefreshMilliHz}");
+    return;
+}
 if (args.Contains("--display-refresh-checks"))
 {
     foreach (var item in await URemote.Linux.WaylandOutputRefresh.ReadAsync())
@@ -224,18 +236,20 @@ var highRate = new HostVideoSettings([(1920,1080)]);
 Check(highRate.Apply(new(0,1920,1080,144,5,0,0,null)) && highRate.Get(0).Fps == 144, "144 FPS request reaches video profile without a 60 FPS clamp");
 Check(highRate.Apply(new(0,1920,1080,120,5,0,0,null)) && highRate.Get(0).Fps == 120, "explicit 120 FPS remains supported");
 Check(highRate.Apply(new(0,1920,1080,240,5,0,0,null)) && highRate.Get(0).Fps == 144, "requests above supported range are bounded");
-var congested = new HostVideoSettings([(1920, 1080)]);
+long feedbackTime=0;
+var congested = new HostVideoSettings([(1920, 1080)],clock:()=>feedbackTime);
 var beforeLoss = congested.Get(0);
 Check(congested.ObserveReceiver(15079, 1325, 19), "receiver packet loss triggers recovery");
 Check(congested.Get(0).Bitrate < beforeLoss.Bitrate && congested.Get(0).Recovery == 1, "recovery lowers bitrate and restarts encoder for an IDR");
 var afterLoss = congested.Get(0);
 Check(!congested.ObserveReceiver(15079, 1325, 19) && congested.Get(0) == afterLoss, "duplicate receiver counters do not trigger recovery");
+feedbackTime+=5000;
 Check(congested.ObserveReceiver(29938, 3606, 19), "stalled decoder with arriving packets triggers recovery");
 Check(!congested.ObserveReceiver(10, 0, 1), "reset counters establish a new baseline");
 
-var constrained = new HostVideoSettings([(1920,1080)]);
+var constrained = new HostVideoSettings([(1920,1080)],clock:()=>feedbackTime);
 long recv=0, loss=0, frames=0;
-for (var n=0;n<8;n++) constrained.ObserveReceiver(recv+=1000,loss+=100,frames+=10);
+for (var n=0;n<8;n++) { feedbackTime+=5000; constrained.ObserveReceiver(recv+=1000,loss+=100,frames+=10); }
 var floor = constrained.Get(0);
 Check(floor.Bitrate==1000000 && !constrained.ObserveReceiver(recv+=1000,loss+=100,frames+=10)
     && constrained.Get(0)==floor, "loss at floor does not restart advancing decoder");

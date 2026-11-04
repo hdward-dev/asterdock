@@ -30,10 +30,9 @@ internal static class UInputPointerMap
 
     internal static ScreenRect Resolve(IReadOnlyList<ScreenRect> screens, uint output, uint width, uint height)
     {
-        var mapped = DesktopBackend.ResolveOutput(output);
         foreach (var screen in screens)
             if (screen.Width > 0 && screen.Height > 0
-                && (screen.Output == output || screen.Output == mapped || DesktopBackend.ResolveOutput(screen.Output) == mapped))
+                && screen.Output == output)
                 return screen;
         if (screens.Count == 1 && screens[0].Width > 0 && screens[0].Height > 0) return screens[0];
         if (width is 0 or > 131072 || height is 0 or > 131072) throw new ArgumentException("Invalid pointer screen.");

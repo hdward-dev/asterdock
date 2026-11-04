@@ -4,7 +4,7 @@ using SIPSorcery.Net;
 
 internal static class QualityChecks
 {
-    public static async Task RunAsync(string ffmpeg, int fps = 60, int width = 1920, int height = 1080, int frameCount = 720)
+    public static async Task RunAsync(string ffmpeg, int fps = 60, int width = 1920, int height = 1080, int frameCount = 720, bool requireNvenc = false, int outputWidth = 0, int outputHeight = 0)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
         var start = new ProcessStartInfo(ffmpeg) { RedirectStandardOutput = true, RedirectStandardError = true };
@@ -16,7 +16,10 @@ internal static class QualityChecks
         await source.WaitForExitAsync(timeout.Token); await errors;
         if (source.ExitCode != 0 || raw.Length != width * height * 4) throw new Exception("Synthetic source failed");
         var pixels = raw.ToArray();
-        await using var encoder = new StreamingH264Encoder(ffmpeg, width, height, false, 0, fps, width, height, 5000000);
+        if (outputWidth <= 0) outputWidth = width;
+        if (outputHeight <= 0) outputHeight = height;
+        await using var encoder = await StreamingH264Encoder.CreateAsync(ffmpeg, width, height, false, 0, fps, outputWidth, outputHeight, 5000000, stopToken: timeout.Token);
+        if (requireNvenc && encoder.Codec != "h264_nvenc") throw new Exception("NVENC was required but hardware selection fell back to software.");
         var producer = Task.Run(async () =>
         {
             try { for (var n = 0; n < frameCount; n++) await encoder.WriteAsync(pixels, width * 4, timeout.Token); }
@@ -40,6 +43,6 @@ internal static class QualityChecks
         if (frames != frameCount || idrs != 1) throw new Exception($"Expected {frameCount} frames and one starting IDR; got {frames}/{idrs}");
         var diagnostic = await decodeErrors;
         if (decoder.ExitCode != 0 || !string.IsNullOrWhiteSpace(diagnostic)) throw new Exception("Decoder rejected synthetic desktop stream: " + diagnostic);
-        Console.WriteLine($"PASS: production encoder configured at {width}x{height}/{fps} FPS produces {frameCount} decodable frames with a starting IDR and no periodic quality resets");
+        Console.WriteLine($"PASS: production {encoder.Codec} encoder configured at {width}x{height}->{outputWidth}x{outputHeight}/{fps} FPS produces {frameCount} decodable frames with a starting IDR and no periodic quality resets");
     }
 }

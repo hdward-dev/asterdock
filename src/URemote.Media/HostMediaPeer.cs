@@ -34,7 +34,7 @@ public sealed class HostMediaPeer : IDisposable
     private long lastReceiverLog;
     private int nackCount, keyFrameRequests;
     private readonly bool[] pathReported = new bool[5];
-    private readonly uint?[] pacedTimestamps = new uint?[5];
+    private readonly VideoRtpClock?[] pacedClocks = new VideoRtpClock?[5];
     private readonly TaskCompletionSource gatheringComplete = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly bool enableAudio;
     private int disposed;
@@ -333,7 +333,9 @@ public sealed class HostMediaPeer : IDisposable
         }
         var format = stream.GetSendingFormat().ToVideoFormat();
         if (format.Codec != VideoCodecsEnum.H264) throw new InvalidOperationException("Expected negotiated H264.");
-        var timestamp = pacedTimestamps[streamIndex] ?? stream.LocalTrack.Timestamp;
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        var clock = pacedClocks[streamIndex] ??= new VideoRtpClock(stream.LocalTrack.Timestamp, now, System.Diagnostics.Stopwatch.Frequency);
+        var timestamp = clock.Stamp(now);
         var watch = System.Diagnostics.Stopwatch.StartNew();
         long sentBytes = 0;
         foreach (var packet in H264RtpPayloads.Create(accessUnit))
@@ -351,7 +353,6 @@ public sealed class HostMediaPeer : IDisposable
             }
             finally { Array.Clear(packet.Bytes); }
         }
-        pacedTimestamps[streamIndex] = unchecked(timestamp + durationRtpUnits);
     }
 
     public void SendH264(byte[] accessUnit, uint durationRtpUnits, int streamIndex = 0)

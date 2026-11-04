@@ -4,6 +4,12 @@ using URemote.Linux;
 using System.Diagnostics;
 using System.Text;
 
+if (args.Contains("--video-timing-checks"))
+{
+    VideoTimingChecks.Run((ok, label) => { if (!ok) throw new Exception(label); Console.WriteLine("PASS: " + label); });
+    return;
+}
+
 if (args.Contains("--host-recovery-checks"))
 {
     HostRecoveryChecks.Run((ok, label) => { if (!ok) throw new Exception(label); Console.WriteLine("PASS: " + label); });
@@ -161,6 +167,17 @@ if (args.Contains("--pty-only"))
 }
 
 void Check(bool value, string name) { if (!value) throw new Exception(name); Console.WriteLine("PASS: " + name); }
+if (args.Contains("--video-nvenc-resize-checks"))
+{
+    await QualityChecks.RunAsync(args.Last(), 60, 3840, 2160, 120, requireNvenc: true, outputWidth: 1920, outputHeight: 1080);
+    return;
+}
+if (args.Contains("--video-nvenc-checks") || args.Contains("--video-nvenc4k-checks"))
+{
+    var highResolution = args.Contains("--video-nvenc4k-checks");
+    await QualityChecks.RunAsync(args.Last(), 60, highResolution ? 3840 : 1920, highResolution ? 2160 : 1080, 240, requireNvenc: true);
+    return;
+}
 if (args.Contains("--video-4k-checks"))
 {
     await QualityChecks.RunAsync(args.Last(), 30, 3840, 2160, 60);
@@ -309,17 +326,17 @@ Check(config is { Screen: 1, Width: 1920, Height: 1080, Fps: 30, Quality: 3, Seq
 var paced = new HostVideoSettings([(2560, 1440), (3840, 2160)], frameRateLimits: [60, 60]);
 Check(paced.Get(0).Fps == 60 && paced.Get(1).Fps == 60 && paced.DisplayFps(0) == 60 && paced.DisplayFps(1) == 60,
     "session target starts at each display rate with no 30 FPS cap");
-Check(paced.OutputFps(0, true) == 60 && paced.OutputFps(1, true) == 60,
+Check(paced.OutputFps(0) == 60 && paced.OutputFps(1) == 60,
     "changing content on every screen starts at the display target");
 Check(paced.Apply(new(0, 2560, 1440, 60, 2, 1, 0, 1))
     && paced.RequestedFps(0) == 60 && paced.Get(0).Fps == 60
-    && paced.OutputFps(0, true) == 60 && paced.OutputFps(1, true) == 60,
+    && paced.OutputFps(0) == 60 && paced.OutputFps(1) == 60,
     "naming one screen does not drop another screen while its content is changing");
-Check(paced.OutputFps(0, false) == HostVideoSettings.IdleFps
-    && paced.OutputFps(1, false) == HostVideoSettings.IdleFps,
-    "static content on every screen may drop below the target");
+Check(paced.OutputFps(0) == 60
+    && paced.OutputFps(1) == 60,
+    "a static screen keeps its full target rate for low-latency interaction");
 Check(paced.Apply(new(0, 0, 0, 30, 0, 1, 0, 1)) && paced.Get(0).Fps == 30 && paced.RequestedFps(0) == 30
-    && paced.OutputFps(0, true) == 30, "a lower requested rate is the target and is not raised");
+    && paced.OutputFps(0) == 30, "a lower requested rate is the target and is not raised");
 Check(paced.Apply(new(0, 0, 0, 120, 0, 1, 0, 1)) && paced.Get(0).Fps == 60 && paced.RequestedFps(0) == 60,
     "target is min(display refresh, requested fps) and never exceeds the display");
 var placeholderSize = new HostVideoSettings([(1920, 1080)]);

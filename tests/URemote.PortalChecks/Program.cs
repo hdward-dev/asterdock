@@ -3,6 +3,22 @@ using URemote.Linux;
 
 var checks = 0;
 void Check(bool ok, string name) { if (!ok) throw new Exception(name); checks++; Console.WriteLine("PASS: " + name); }
+if (args.Contains("--login-session-live"))
+{
+    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+    await using var loginBus = await PortalBus.ConnectSystemAsync(deadline.Token);
+    _ = await SessionLock.LoginSessionPathAsync(loginBus, deadline.Token);
+    Check(true, "the current process resolves its user's local graphical login session");
+    using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+    var ready = false;
+    await DesktopBackend.WatchPortalSessionAsync(_ => { }, line =>
+    {
+        Console.WriteLine(line);
+        if (line == "session-activity-watch-ready;source=login1") ready = true;
+    }, stop.Token);
+    Check(ready, "login1 state and power-event subscriptions start for the user service");
+    return;
+}
 if (args.Contains("--desktop-actions")) { await DesktopActionChecks.RunAsync(Check); Console.WriteLine($"{checks} desktop action checks passed."); return; }
 if (args.Contains("--desktop-kde-live")) { await DesktopActionChecks.LiveKdeAsync(Check); return; }
 if (args.Contains("--touch-lifetime")) { await SharedTouchChecks.RunAsync(Check); return; }
@@ -42,6 +58,9 @@ Check(!PortalCaptureHealth.WindowIsStale(30, TimeSpan.FromSeconds(3), 1_000) && 
     "bitrate stale detection waits for two full windows");
 Check(PortalCaptureHealth.BlackStreak(30, TimeSpan.FromSeconds(4)) && !PortalCaptureHealth.BlackStreak(10, TimeSpan.FromSeconds(4)),
     "near-black content must persist for several seconds");
+Check(!PortalCaptureHealth.BlackStreak(240, TimeSpan.FromSeconds(4), true)
+    && !PortalCaptureHealth.WindowIsStale(240, TimeSpan.FromSeconds(4), 1000, true),
+    "continuous high-FPS black lock-screen frames never trigger a capture or viewer recycle");
 var black = new byte[64 * 4];
 var visible = new byte[64 * 4];
 for (var i = 0; i < visible.Length; i += 4) { visible[i] = 40; visible[i + 1] = 90; visible[i + 2] = 180; visible[i + 3] = 255; }
@@ -50,10 +69,28 @@ Check(PortalVideoStream.ReuseCachedFrame(TimeSpan.FromMilliseconds(20))
     && PortalVideoStream.ReuseCachedFrame(TimeSpan.FromSeconds(30))
     && !PortalVideoStream.ReuseCachedFrame(TimeSpan.FromMilliseconds(-1)),
     "a static screen reuses its last frame at any age instead of timing out");
-Check(CapturePace.ContentChanging(TimeSpan.FromMilliseconds(100))
-    && !CapturePace.ContentChanging(TimeSpan.FromMilliseconds(251))
-    && !CapturePace.ContentChanging(TimeSpan.FromMilliseconds(-1)),
-    "target fps holds only while new samples are still arriving");
+var framePace = new CapturePace(60, 60000, 0);
+Check(framePace.AfterFrame(600) == TimeSpan.FromSeconds(400d / 60000)
+    && framePace.AfterFrame(1650) == TimeSpan.FromSeconds(350d / 60000),
+    "frame deadlines preserve the target cadence across capture cost and timer jitter");
+Check(framePace.AfterFrame(8000) == TimeSpan.Zero
+    && framePace.AfterFrame(8500) == TimeSpan.FromSeconds(500d / 60000),
+    "a slow frame skips its missed deadlines instead of queuing a catch-up burst");
+using (var latestFrames = new LatestCaptureFrames())
+{
+    var older = new CapturedScreen(1, 1, 1, 4, 1, false, new byte[] { 1, 1, 1, 1 });
+    var newest = new CapturedScreen(1, 1, 1, 4, 1, false, new byte[] { 2, 2, 2, 2 });
+    latestFrames.Push(older); latestFrames.Push(newest);
+    Check(older.Pixels.All(value => value == 0), "an overwritten capture is erased instead of queuing stale screen content");
+    await using var reader = latestFrames.ReadAsync(CancellationToken.None).GetAsyncEnumerator();
+    Check(await reader.MoveNextAsync() && ReferenceEquals(reader.Current, newest), "a slow encoder receives the newest available frame");
+    var abandoned = new CapturedScreen(1, 1, 1, 4, 1, false, new byte[] { 3, 3, 3, 3 });
+    latestFrames.Push(abandoned); latestFrames.Dispose();
+    Check(abandoned.Pixels.All(value => value == 0) && newest.Pixels.All(value => value == 2),
+        "queue cleanup erases abandoned frames without modifying the frame an encoder still owns");
+    Check(!latestFrames.Push(abandoned), "a stopped capture queue rejects further frames");
+    Array.Clear(newest.Pixels);
+}
 var placeholder = CapturePlaceholder.Create(7, 3840, 2160);
 Check(placeholder.Pending && placeholder.Repeated && placeholder.Width == 3840 && placeholder.Height == 2160
     && placeholder.Stride == 3840 * 4 && placeholder.ShmFormat == 1 && placeholder.Pixels.Length == 3840 * 2160 * 4

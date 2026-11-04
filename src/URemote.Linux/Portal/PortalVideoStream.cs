@@ -168,7 +168,7 @@ internal sealed class PortalVideoStream : IPortalPipe
             // A queued sample always wins. The short wait only applies when one may be in flight;
             // an idle monitor must not block here until the peer times out.
             var haveCache = cached is not null && ReuseCachedFrame(Stopwatch.GetElapsedTime(cachedAt));
-            sample = NativeGst.gst_app_sink_try_pull_sample(sink, haveCache ? 5_000_000ul : 50_000_000ul);
+            sample = NativeGst.gst_app_sink_try_pull_sample(sink, haveCache ? 0ul : 50_000_000ul);
             if (sample != 0) break;
             if (NativeGst.gst_app_sink_is_eos(sink) != 0) throw new IOException("PipeWire 屏幕流已结束。");
             if (haveCache && cached is not null) return cached with { Pixels = (byte[])cached.Pixels.Clone(), Repeated = true };

@@ -103,6 +103,7 @@ public static class DesktopHostSession
                     }
                     await using var desktop = authorization;
                     report("desktop-ready");
+                    DesktopBackend.ReportPortalOutputs(report);
                     if (DesktopBackend.TakeRecycleReason() is { } recycled)
                         report("portal-session-recreated;reason=" + recycled);
                     await using var terminals = new HostTerminalManager();

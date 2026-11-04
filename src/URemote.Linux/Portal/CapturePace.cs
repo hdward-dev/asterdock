@@ -1,12 +1,15 @@
 namespace URemote.Linux;
 
-// Target rate is decided by the caller (min of refresh and the controller request).
-// A new PipeWire sample means the picture changed. Repeats stay at that target only
-// for a short hold, so a damage tick still fills the refresh interval; a quiet
-// desktop then drops. The hold is not a reason to discard a sample that already arrived.
-internal static class CapturePace
+// Absolute deadlines absorb timer jitter; a slow encoder skips missed deadlines
+// instead of queuing frames or bursting stale pictures to catch up.
+internal sealed class CapturePace(int fps, long frequency, long started)
 {
-    internal static readonly TimeSpan MotionHold = TimeSpan.FromMilliseconds(250);
-    internal static bool ContentChanging(TimeSpan sinceNewSample) =>
-        sinceNewSample >= TimeSpan.Zero && sinceNewSample <= MotionHold;
+    private readonly double period = (double)frequency / Math.Max(fps, 1);
+    private double next = started;
+    internal TimeSpan AfterFrame(long now)
+    {
+        next += period;
+        if (next < now) next = now;
+        return TimeSpan.FromSeconds((next - now) / frequency);
+    }
 }

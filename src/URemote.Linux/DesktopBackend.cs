@@ -117,22 +117,28 @@ public static class DesktopBackend
     internal static uint ResolveOutput(uint output)
     {
         lock (aliasLock)
-        {
-            var guard = 0;
-            while (outputAlias.TryGetValue(output, out var next) && next != output && guard++ < 8)
-                output = next;
-            return output;
-        }
+            return outputAlias.GetValueOrDefault(output, output);
+    }
+    // Public output ids belong to the first authorization, not to a PipeWire generation.
+    // Native ids may be reused for another screen, so never follow them as alias keys.
+    internal static uint LogicalOutput(uint node)
+    {
+        lock (aliasLock)
+            return outputAlias.FirstOrDefault(pair => pair.Value == node, new(node, node)).Key;
     }
     internal static void NoteOutputAliases(IReadOnlyDictionary<uint, uint> hop)
     {
         lock (aliasLock)
         {
-            foreach (var key in outputAlias.Keys.ToArray())
-                if (hop.TryGetValue(outputAlias[key], out var newest))
-                    outputAlias[key] = newest;
-            foreach (var pair in hop)
-                outputAlias[pair.Key] = pair.Value;
+            if (outputAlias.Count == 0)
+            {
+                foreach (var pair in hop) outputAlias.Add(pair.Key, pair.Value);
+                return;
+            }
+            var next = outputAlias.ToDictionary(pair => pair.Key,
+                pair => hop.TryGetValue(pair.Value, out var node) ? node
+                    : throw new IOException("portal refresh output mismatch"));
+            foreach (var pair in next) outputAlias[pair.Key] = pair.Value;
         }
     }
     internal static void ResetOutputAliasesForTests()
@@ -149,30 +155,17 @@ public static class DesktopBackend
             if (hz <= 0) hz = box.RefreshMilliHz;
             if (hz > 0) published[box.Node] = hz;
         }
-        CopyAliasKeys(published);
-        return published;
+        // Read native rates from an immutable snapshot: overwriting a reused native id
+        // with its logical screen's rate would corrupt the next screen's lookup.
+        lock (aliasLock)
+            return outputAlias.Count == 0 ? published : outputAlias
+                .Where(pair => published.ContainsKey(pair.Value))
+                .ToDictionary(pair => pair.Key, pair => published[pair.Value]);
     }
     internal static int StoredRefreshMilliHz(uint output)
     {
         var active = Volatile.Read(ref portal);
         return active is null ? 0 : active.RefreshOf(output);
-    }
-    private static void CopyAliasKeys(Dictionary<uint, int> rates)
-    {
-        uint[] sources;
-        lock (aliasLock) sources = outputAlias.Keys.ToArray();
-        foreach (var source in sources)
-        {
-            var id = source;
-            var guard = 0;
-            lock (aliasLock)
-            {
-                while (outputAlias.TryGetValue(id, out var next) && next != id && guard++ < 8)
-                    id = next;
-            }
-            if (id != source && rates.TryGetValue(id, out var hz) && hz > 0)
-                rates[source] = hz;
-        }
     }
     internal static async Task WaitCaptureReadyAsync(CancellationToken ct)
     {
@@ -234,7 +227,7 @@ public static class DesktopBackend
         if (Volatile.Read(ref portal) is { } active)
         {
             await active.CheckAliveAsync(ct);
-            return active.Outputs;
+            return active.Outputs.Select(item => item with { Name = LogicalOutput(item.Name) }).ToArray();
         }
         var globals = await WaylandCapabilities.DiscoverAsync(ct);
         if (HasNativeCapture(globals)) return globals;
@@ -262,6 +255,7 @@ public static class DesktopBackend
             Interlocked.Exchange(ref portalWantsInput, enableInput ? 1 : 0);
             var opened = await PortalDesktopSession.OpenAsync(enableInput, ct);
             ResetOutputAliasesForTests();
+            NoteOutputAliases(opened.CopyLayout().ToDictionary(box => box.Node, box => box.Node));
             Volatile.Write(ref portal, opened);
             return new Lease(true);
         }
@@ -331,7 +325,7 @@ public static class DesktopBackend
         if (active is null) return (0, 0);
         var node = ResolveOutput(output);
         foreach (var box in active.Layout)
-            if ((box.Node == node || box.Node == output) && box.ModeWidth >= 2 && box.ModeHeight >= 2)
+            if (box.Node == node && box.ModeWidth >= 2 && box.ModeHeight >= 2)
                 return (box.ModeWidth, box.ModeHeight);
         return (0, 0);
     }
@@ -438,10 +432,16 @@ public static class DesktopBackend
         var active = Volatile.Read(ref portal);
         if (active is null) return [];
         var list = new List<ScreenRect>(active.Layout.Count);
-        foreach (var box in active.Layout)
+        foreach (var box in active.CopyLayout())
             if (box.Width > 0 && box.Height > 0)
-                list.Add(new ScreenRect(box.Node, box.X, box.Y, box.Width, box.Height));
+                list.Add(new ScreenRect(LogicalOutput(box.Node), box.X, box.Y, box.Width, box.Height));
         return list.ToArray();
+    }
+    internal static void ReportPortalOutputs(Action<string> report)
+    {
+        if (Volatile.Read(ref portal) is not { } active) return;
+        foreach (var box in active.CopyLayout())
+            report(FormattableString.Invariant($"portal-output-map;output={LogicalOutput(box.Node)};node={box.Node};x={box.X};y={box.Y};width={box.Width};height={box.Height}"));
     }
     public static async Task<IDesktopPointer> CreatePointerAsync(uint output, CancellationToken ct, Action<string>? report = null, uint width = 0, uint height = 0)
     {
@@ -550,7 +550,7 @@ public static class DesktopBackend
             var rates = await MacDesktop.RefreshAsync(ct);
             return (await MacDesktop.DiscoverAsync(ct)).Select(x => new DesktopOutput(x.Name, "mac:" + x.Name, "显示器 " + x.Name, rates.GetValueOrDefault(x.Name))).ToArray();
         }
-        if (portal is { } active) return active.DisplayDetails.OrderBy(x => x.Id).Take(5).ToArray();
+        if (portal is { } active) return active.DisplayDetails.Select(item => item with { Id = LogicalOutput(item.Id) }).OrderBy(x => x.Id).Take(5).ToArray();
         var globals = await DiscoverAsync(ct);
         return globals.Any(x => x.Interface == "wl_output") ? (await WaylandOutputDetails.ReadAsync(ct)).OrderBy(x => x.Id).Take(5).ToArray() : [];
     }

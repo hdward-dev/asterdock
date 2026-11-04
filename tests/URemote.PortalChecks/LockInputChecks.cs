@@ -11,7 +11,9 @@ static class LockInputChecks
         Packets(check);
         await KeyboardAsync(check);
         await PointerAsync(check);
+        await PointerAfterRefreshAsync(check);
         await PendingPointerAsync(check);
+        await LoginSessionChecks.RunAsync(check);
         SessionLock.ResetForTests();
         LockInputNotices.ResetForTests();
     }
@@ -244,6 +246,27 @@ static class LockInputChecks
             "a missing /dev/uinput keeps portal pointer events and is logged once");
     }
 
+    private static async Task PointerAfterRefreshAsync(Action<bool, string> check)
+    {
+        DesktopBackend.ResetOutputAliasesForTests();
+        try
+        {
+            var screens = new[] { new ScreenRect(4, 0, 0, 1970, 1108), new ScreenRect(8, 1970, 0, 2259, 1271) };
+            FakeAbsolute? device = null;
+            await using var pointer = await LockScreenInput.CreatePointerForTests(8, new FakePointer(), 3840, 2160, screens,
+                (layout, _) => Task.FromResult<ILockPointer>(device = new FakeAbsolute(layout)),
+                new MutableLock(true), _ => { }, CancellationToken.None);
+            DesktopBackend.NoteOutputAliases(new Dictionary<uint, uint> { [4] = 9, [8] = 10 });
+            await pointer.ApplyAsync(new HostMouseMessage(MouseAction.MoveAbsolute, .5, .5), PointerCoordinates.MacNormalized, 3840, 2160);
+            DesktopBackend.NoteOutputAliases(new Dictionary<uint, uint> { [9] = 8, [10] = 4 });
+            await pointer.ApplyAsync(new HostMouseMessage(MouseAction.MoveAbsolute, .5, .5), PointerCoordinates.MacNormalized, 3840, 2160);
+            await pointer.ApplyAsync(new HostMouseMessage(MouseAction.MoveAbsolute, .5, .5), PointerCoordinates.MacNormalized, 3840, 2160);
+            check(device!.Moves.SequenceEqual(new[] { (3099, 635), (3099, 635), (3099, 635) }),
+                "lock-screen pointer stays on the same fractional-scale screen after native ids are reused");
+        }
+        finally { DesktopBackend.ResetOutputAliasesForTests(); }
+    }
+
     private static async Task PendingPointerAsync(Action<bool, string> check)
     {
         LockInputNotices.ResetForTests();
@@ -288,8 +311,8 @@ static class LockInputChecks
             "CreatePointer follows the stream id from before a refresh while the new pipeline is still pending");
         await aliased!.DisposeAsync();
         var rates = DesktopBackend.PublishRefresh(refreshed.CopyLayout(), new Dictionary<uint, int>());
-        check(rates[4] == 59951 && rates[8] == 60000 && rates[9] == 59951 && rates[10] == 60000,
-            "display refresh stays on the host output id when the portal node id changes");
+        check(rates.Count == 2 && rates[4] == 59951 && rates[8] == 60000,
+            "display refresh publishes only stable host output ids when portal node ids change");
         var mapped = DesktopBackend.PublishRefresh(refreshed.CopyLayout(), new Dictionary<uint, int> { [9] = 59951, [10] = 60000 });
         check(mapped[4] == 59951 && mapped[8] == 60000,
             "a fresh Wayland mode is published for the output id the host still uses");

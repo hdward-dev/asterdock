@@ -151,6 +151,7 @@ public static class HostPreview
                     try
                     {
                         await DesktopBackend.RefreshPortalAsync(enableInput, token);
+                        DesktopBackend.ReportPortalOutputs(report);
                         report("portal-capture-refreshed;reason=" + reason);
                     }
                     catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
@@ -301,6 +302,14 @@ public static class HostPreview
                         ApplyBoundModes(outputs, dimensions);
                         profiles = new HostVideoSettings(((int Width, int Height)[])dimensions.Clone(), mobileSingleStream, frameRateLimits);
                         BindCeilings(outputs, profiles);
+                        var decoderLimit = update.Peer.Options.DecoderCapabilities
+                            .Where(item => item.CodecType == 1 && item.ChromaFormat == 1 && item.Width is >= 2 and <= 16384 && item.Height is >= 2 and <= 16384)
+                            .MaxBy(item => (long)item.Width * item.Height);
+                        if (decoderLimit is not null)
+                        {
+                            profiles.Apply(new(-1, 0, 0, 0, 0, 0, 0, null, MaxScaleWidth: decoderLimit.Width, MaxScaleHeight: decoderLimit.Height));
+                            report($"decoder-size-limit;codec=1;width={decoderLimit.Width};height={decoderLimit.Height}");
+                        }
                         report("video-routing=" + (mobileSingleStream ? "selected-screen-on-primary-track" : "independent-screen-tracks"));
                         Volatile.Write(ref answered, false);
                         active = id;
@@ -405,7 +414,9 @@ public static class HostPreview
                             TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
                         _ = video.ContinueWith(PeerFailed, CancellationToken.None,
                             TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-                        await signal.SendEventAsync("forward_setting", Capability(id, dimensions, frameRateLimits), ct: token);
+                        var encoderImplementation = dataOnly ? -1 : await StreamingH264Encoder.ImplementationAsync(ffmpeg, token);
+                        report("encoder-codec-capability;codec=1;size=3840x2160;implementation=" + encoderImplementation);
+                        await signal.SendEventAsync("forward_setting", Capability(id, dimensions, frameRateLimits, encoderImplementation), ct: token);
                         await signal.SendEventAsync("forward_setting", new JsonObject
                         {
                             ["client_id"] = id.ClientId,
@@ -588,22 +599,46 @@ public static class HostPreview
         else foreign = 0;
         if (!first.Pending) profiles.AdoptSourceSize(index, (int)first.Width, (int)first.Height);
         profile = profiles.Get(index);
-        await using var encoder = new StreamingH264Encoder(ffmpeg, (int)first.Width, (int)first.Height, first.YInverted, first.ShmFormat, profile.Fps, profile.Width, profile.Height, profile.Bitrate, profile.Crf);
+        await using var encoder = await StreamingH264Encoder.CreateAsync(ffmpeg, (int)first.Width, (int)first.Height, first.YInverted, first.ShmFormat, profile.Fps, profile.Width, profile.Height, profile.Bitrate, profile.Crf, stopToken: ct);
+        report($"video-encoder-backend;screen={index + 1};codec={encoder.Codec};hardware={encoder.Hardware}");
         report($"video-encoder-config;screen={index + 1};width={profile.Width};height={profile.Height};fps={profile.Fps};bitrate={profile.Bitrate};crf={profile.Crf}");
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var darkness = new StrongBox<int>(-1);
+        using var frames = new LatestCaptureFrames();
+        var capturePump = Task.Run(async () =>
+        {
+            CapturedScreen? pending = first;
+            Exception? failure = null;
+            var pace = new CapturePace(profile.Fps, System.Diagnostics.Stopwatch.Frequency, System.Diagnostics.Stopwatch.GetTimestamp());
+            try
+            {
+                while (true)
+                {
+                    var accepted = frames.Push(pending!);
+                    pending = null;
+                    if (!accepted) return;
+                    var delay = pace.AfterFrame(System.Diagnostics.Stopwatch.GetTimestamp());
+                    if (delay > TimeSpan.Zero) await Task.Delay(delay, stop.Token);
+                    pending = await ProbeOutputAsync(output, stop.Token);
+                }
+            }
+            catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+            catch (Exception e) { failure = e; }
+            finally
+            {
+                if (pending is not null) Array.Clear(pending.Pixels);
+                frames.Complete(failure);
+            }
+        });
         var producer = Task.Run(async () =>
         {
-            var frame = first;
             var blackFrames = 0;
             var blackStart = 0L;
             try
             {
                 try
                 {
-                var lastSent = System.Diagnostics.Stopwatch.GetTimestamp();
-                var lastNew = lastSent;
-                while (true)
+                await foreach (var frame in frames.ReadAsync(stop.Token))
                 {
                     try
                     {
@@ -634,7 +669,7 @@ public static class HostPreview
                         {
                             if (blackFrames == 0) blackStart = System.Diagnostics.Stopwatch.GetTimestamp();
                             blackFrames++;
-                            if (PortalCaptureHealth.BlackStreak(blackFrames, System.Diagnostics.Stopwatch.GetElapsedTime(blackStart)))
+                            if (PortalCaptureHealth.BlackStreak(blackFrames, System.Diagnostics.Stopwatch.GetElapsedTime(blackStart), SessionLock.IsLocked))
                             {
                                 blackFrames = 0;
                                 report($"portal-capture-stale;reason=low-luma;screen={index + 1}");
@@ -648,25 +683,6 @@ public static class HostPreview
                     finally { Array.Clear(frame.Pixels); }
                     if (profiles.Get(index) != profile || (profiles.SingleVideoStream && profiles.SelectedScreen != index)
                         || media.ConsumeKeyFrameRequest(videoTrack ?? index)) break;
-                    // Target is min(display refresh, requested fps). A new sample, or a repeat still
-                    // inside the motion hold, is sent on that cadence and never faster.
-                    // Only a screen that stays still past the hold drops to the idle rate.
-                    var sinceNew = System.Diagnostics.Stopwatch.GetElapsedTime(lastNew);
-                    if (!frame.Repeated) lastNew = System.Diagnostics.Stopwatch.GetTimestamp();
-                    var changing = !frame.Repeated || CapturePace.ContentChanging(sinceNew);
-                    var interval = TimeSpan.FromSeconds(1.0 / profiles.OutputFps(index, changing));
-                    var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(lastSent);
-                    if (elapsed < interval)
-                        await Task.Delay(interval - elapsed, stop.Token);
-                    else { /* Encode overran this interval; do not burst to catch up. */ }
-                    lastSent = System.Diagnostics.Stopwatch.GetTimestamp();
-                    try { frame = await ProbeOutputAsync(output, stop.Token); }
-                    catch (Exception e) when (RefreshInterrupt(e, seenGeneration))
-                    {
-                        report($"portal-capture-refresh-retry;screen={index + 1}");
-                        await DesktopBackend.WaitCaptureReadyAsync(stop.Token);
-                        break;
-                    }
                 }
                 }
                 catch (Exception e) when (RefreshInterrupt(e, seenGeneration))
@@ -675,7 +691,7 @@ public static class HostPreview
                     await DesktopBackend.WaitCaptureReadyAsync(stop.Token);
                 }
             }
-            finally { Array.Clear(frame.Pixels); encoder.CompleteInput(); }
+            finally { frames.Complete(); encoder.CompleteInput(); }
         });
         var consumer = Task.Run(async () =>
         {
@@ -690,7 +706,8 @@ public static class HostPreview
             {
                 try
                 {
-                    // The encoder produces a fixed-rate stream; pipe scheduling jitter is not media time.
+                    // Nominal duration describes the selected rate; the transport clocks
+                    // RTP against actual elapsed time so slow frames cannot build playback lag.
                     var rtpDuration = (uint)(90000 / profile.Fps);
                     await media.SendH264PacedAsync(encoded, rtpDuration, videoTrack ?? index, profile.Bitrate, stop.Token);
                     sentBytes += encoded.Length;
@@ -710,7 +727,7 @@ public static class HostPreview
                     if (count == 1 || count % 150 == 0)
                         report($"video-frames-sent={count};screen={index + 1};fps={count / watch.Elapsed.TotalSeconds:F1};encoded-mbps={sentBytes * 8 / watch.Elapsed.TotalSeconds / 1000000:F2}");
                     var windowElapsed = System.Diagnostics.Stopwatch.GetElapsedTime(windowStart);
-                    if (PortalCaptureHealth.WindowIsStale(windowFrames, windowElapsed, windowBytes)) lowWindows++;
+                    if (PortalCaptureHealth.WindowIsStale(windowFrames, windowElapsed, windowBytes, SessionLock.IsLocked)) lowWindows++;
                     else if (windowFrames >= 120 && windowElapsed >= TimeSpan.FromSeconds(2)) lowWindows = 0;
                     if (windowFrames >= 120 && windowElapsed >= TimeSpan.FromSeconds(2))
                     {
@@ -732,7 +749,7 @@ public static class HostPreview
             {
                 report($"peer-video-transport-reset;screen={index + 1}");
                 DesktopBackend.ArmPipelineQuiet(TimeSpan.FromSeconds(2));
-                if (Volatile.Read(ref darkness.Value) != 0 || lowWindows > 0)
+                if (SessionLock.IsLocked != true && Volatile.Read(ref darkness.Value) != 0)
                     recyclePortal?.Invoke("low-bitrate");
             }
         });
@@ -740,9 +757,16 @@ public static class HostPreview
         {
             var completed = await Task.WhenAny(producer, consumer);
             if (completed.IsFaulted || completed.IsCanceled || completed == consumer) stop.Cancel();
-            await Task.WhenAll(producer, consumer);
+            try { await Task.WhenAll(producer, consumer, capturePump); }
+            catch
+            {
+                // Preserve an encoder/transport failure instead of replacing it
+                // with the sibling task's cancellation during cleanup.
+                if (completed.IsFaulted) await completed;
+                throw;
+            }
         }
-        finally { stop.Cancel(); Array.Clear(first.Pixels); }
+        finally { stop.Cancel(); await capturePump; Array.Clear(first.Pixels); }
         rebuilds = 0;
         gaveUp = false;
         }
@@ -750,6 +774,12 @@ public static class HostPreview
         {
             var failure = Root(raw);
             if (failure is OperationCanceledException) throw;
+            if (failure is VideoEncoderException encoderFailure)
+            {
+                report($"video-encoder-failed;screen={index + 1};codec={encoderFailure.Codec}");
+                await Task.Delay(100, ct);
+                continue;
+            }
             if (DesktopBackend.CaptureRefreshActive || RefreshInterrupt(failure, seenGeneration))
             {
                 report($"portal-capture-refresh-retry;screen={index + 1}");
@@ -889,7 +919,7 @@ public static class HostPreview
         }
     }
 
-    private static JsonObject Capability(HostPeerId id, IReadOnlyList<(int Width, int Height)> dimensions, IReadOnlyList<int> frameRateLimits) => new()
+    private static JsonObject Capability(HostPeerId id, IReadOnlyList<(int Width, int Height)> dimensions, IReadOnlyList<int> frameRateLimits, int encoderImplementation) => new()
     {
         ["client_id"] = id.ClientId,
         ["data"] = new JsonObject
@@ -902,9 +932,10 @@ public static class HostPreview
                     { ["id"] = index, ["fps"] = frameRateLimits[index], ["type"] = 0, ["hdr"] = -1 }).ToArray()),
                 // This is the encoder's supported size, not the currently attached screen size.
                 // Native clients intersect it with their decoder capability to enable quality tiers.
-                // libx264 supports 4K H264 4:2:0 8-bit; no hardware, H265 or HDR is advertised.
+                // H264 4:2:0 8-bit is verified for the selected encoder. The implementation
+                // must match the probed backend; unsupported H265 or HDR is not advertised.
                 ["video_codec_capability"] = new JsonArray(new JsonObject { ["video_codec"] = 1,
-                    ["width"] = 3840, ["height"] = 2160, ["chroma_sampling"] = 1, ["bit_depth"] = 8, ["codec_impl"] = -1 })
+                    ["width"] = 3840, ["height"] = 2160, ["chroma_sampling"] = 1, ["bit_depth"] = 8, ["codec_impl"] = encoderImplementation })
             }
         }
     };

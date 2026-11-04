@@ -149,8 +149,8 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
             int width, height;
             lock (streamLock)
             {
-                var known = streams.TryGetValue(node, out var slot) || (requested != node && streams.TryGetValue(requested, out slot));
-                if (!known && FindBox(node).Node != node && FindBox(requested).Node != requested)
+                var known = streams.TryGetValue(node, out var slot);
+                if (!known && FindBox(node).Node != node)
                     continue;
                 existing = known ? slot.Video : null;
                 width = known ? slot.Width : 0;
@@ -158,7 +158,6 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
                 if (width == 0 || height == 0)
                 {
                     var box = FindBox(node);
-                    if (box.Node != node) box = FindBox(requested);
                     width = box.Width;
                     height = box.Height;
                 }
@@ -360,6 +359,8 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
     internal void ResetTouch() { if (!disposed) inputSession?.Reset(); }
     private static async Task<PortalDesktopSession> LiveAsync(PortalDesktopSession fallback, CancellationToken ct)
     {
+        if (DesktopBackend.CaptureRefreshActive)
+            await DesktopBackend.WaitCaptureReadyAsync(ct).ConfigureAwait(false);
         var live = DesktopBackend.CurrentPortal;
         if (live is { IsDisposed: false }) return live;
         if (DesktopBackend.CaptureRefreshActive || fallback.IsDisposed)
@@ -381,10 +382,9 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
         var resolved = DesktopBackend.ResolveOutput(output);
         lock (streamLock)
         {
-            if (Known(resolved)) return resolved;
-            if (Known(output)) return output;
+            if (Known(resolved)) return output;
         }
-        if (allowUnbound) return resolved;
+        if (allowUnbound) return output;
         throw new ArgumentException("所选显示器不可用。");
     }
 
@@ -455,7 +455,7 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
         lock (streamLock)
         {
             foreach (var box in layout)
-                if ((box.Node == output || box.Node == resolved) && box.RefreshMilliHz > 0)
+                if (box.Node == resolved && box.RefreshMilliHz > 0)
                     return box.RefreshMilliHz;
         }
         return 0;
@@ -493,7 +493,6 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
     public IDesktopKeyboard CreateKeyboard() => new Keyboard(this);
     private sealed class Pointer(PortalDesktopSession owner, uint output) : IDesktopPointer
     {
-        private uint stream = output;
         private readonly HashSet<int> held = [];
         public async Task ApplyAsync(HostMouseMessage message, PointerCoordinates coordinates, uint width, uint height, CancellationToken ct = default)
         {
@@ -502,8 +501,7 @@ internal sealed class PortalDesktopSession : IAsyncDisposable
             try
             {
             var live = await LiveAsync(owner, ct).ConfigureAwait(false);
-            var id = DesktopBackend.ResolveOutput(stream);
-            if (id != stream) stream = id;
+            var id = DesktopBackend.ResolveOutput(output);
             if (message.Action == MouseAction.MoveAbsolute)
             {
                 WaylandVirtualPointer.AbsolutePayload(0, message.X, message.Y, coordinates, width, height);

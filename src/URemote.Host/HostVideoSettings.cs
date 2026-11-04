@@ -1,5 +1,5 @@
 using URemote.Core;
-internal sealed record VideoProfile(int Width, int Height, int Fps, int Bitrate, int Crf = 18, int Recovery = 0);
+internal sealed record VideoProfile(int Width, int Height, int Fps, int Bitrate, int Crf = 18, int Recovery = 0, int ChromaFormat = 1);
 internal sealed class HostVideoSettings
 {
     private readonly object changes = new();
@@ -10,6 +10,8 @@ internal sealed class HostVideoSettings
     private readonly int[] frameRateLimits;
     private readonly int[] requestedFps;
     private readonly bool[] sizeLocked;
+    private readonly Dictionary<int, (int Width, int Height)> decoderLimits;
+    private bool supportsTrueColor;
     public bool SingleVideoStream { get; }
     private int selectedScreen;
     // A session starts without evidence of congestion. Do not force every quality tier
@@ -27,7 +29,7 @@ internal sealed class HostVideoSettings
     public string Describe(int index)
     {
         var p = Get(index);
-        return $"quality={qualities[index]};auto-quality={autoQualities[index]};requested-bitrate={requestedBitrates[index]};effective-bitrate={p.Bitrate};network-ceiling={networkCeiling};crf={p.Crf};output={p.Width}x{p.Height};max-scale={maxScale[index].Width}x{maxScale[index].Height}";
+        return $"quality={qualities[index]};auto-quality={autoQualities[index]};requested-bitrate={requestedBitrates[index]};effective-bitrate={p.Bitrate};network-ceiling={networkCeiling};crf={p.Crf};chroma={p.ChromaFormat};output={p.Width}x{p.Height};max-scale={maxScale[index].Width}x{maxScale[index].Height}";
     }
     private static (int Bitrate, int Crf) Tier(int quality) => quality switch
     {
@@ -92,12 +94,17 @@ internal sealed class HostVideoSettings
         return changed;
     }
     public int SelectedScreen => Volatile.Read(ref selectedScreen);
-    public HostVideoSettings((int Width, int Height)[] dimensions, bool singleVideoStream = false, IReadOnlyList<int>? frameRateLimits = null, Func<long>? clock = null)
+    public HostVideoSettings((int Width, int Height)[] dimensions, bool singleVideoStream = false, IReadOnlyList<int>? frameRateLimits = null, Func<long>? clock = null,
+        bool supportsTrueColor = false, IReadOnlyList<DecoderCapability>? decoderCapabilities = null)
     {
         if (frameRateLimits is not null && frameRateLimits.Count != dimensions.Length) throw new ArgumentException("Display FPS limits do not match outputs.");
         now = clock ?? (() => Environment.TickCount64);
         this.frameRateLimits = dimensions.Select((_, i) => Math.Clamp(frameRateLimits?[i] ?? HostDisplayInfo.MaxSupportedFps, 1, HostDisplayInfo.MaxSupportedFps)).ToArray();
         SingleVideoStream = singleVideoStream;
+        this.supportsTrueColor = supportsTrueColor;
+        decoderLimits = (decoderCapabilities ?? []).Where(c => c.CodecType == 1 && c.ChromaFormat is 1 or 3
+            && c.Width is >= 2 and <= 16384 && c.Height is >= 2 and <= 16384).GroupBy(c => c.ChromaFormat)
+            .ToDictionary(g => g.Key, g => { var c = g.MaxBy(c => (long)c.Width * c.Height)!; return (c.Width, c.Height); });
         native = dimensions;
         requestedBitrates = dimensions.Select(_ => 8000000).ToArray();
         qualities = dimensions.Select(_ => 5).ToArray();
@@ -108,8 +115,10 @@ internal sealed class HostVideoSettings
         sizeLocked = new bool[dimensions.Length];
         ceiling = new (int Width, int Height)[dimensions.Length];
         maxScale = new (int Width, int Height)[dimensions.Length];
-        profiles = dimensions.Select((d, i) => new VideoProfile(d.Width, d.Height,
-            this.frameRateLimits[i], Math.Min(8000000, networkCeiling), 23)).ToArray();
+        profiles = dimensions.Select((d, i) => {
+            var size = Fit(i, d.Width, d.Height, 1);
+            return new VideoProfile(size.Width, size.Height, this.frameRateLimits[i], Math.Min(8000000, networkCeiling), 23);
+        }).ToArray();
     }
     public int DisplayFps(int index) => frameRateLimits[index];
     public int RequestedFps(int index) => Volatile.Read(ref requestedFps[index]);
@@ -132,7 +141,7 @@ internal sealed class HostVideoSettings
         native[index] = (width, height);
         var current = Get(index);
         if (sizeLocked[index] && current.Width <= width && current.Height <= height) return;
-        (width, height) = Fit(index, width, height);
+        (width, height) = Fit(index, width, height, current.ChromaFormat);
         if (current.Width == width && current.Height == height) return;
         Volatile.Write(ref profiles[index], current with { Width = width, Height = height, Recovery = current.Recovery + 1 });
     }
@@ -165,7 +174,7 @@ internal sealed class HostVideoSettings
         // Keep the hardware mode when a smaller logical-size buffer arrives. The controller
         // can still request a smaller encode; that path sets sizeLocked.
         if (cap.Width > 0 && cap.Height > 0) (width, height) = cap;
-        (width, height) = Fit(index, width, height);
+        (width, height) = Fit(index, width, height, current.ChromaFormat);
         if (current.Width == width && current.Height == height) return;
         Volatile.Write(ref profiles[index], current with { Width = width, Height = height, Recovery = current.Recovery + 1 });
     }
@@ -181,11 +190,14 @@ internal sealed class HostVideoSettings
             || update.Width > 7680 || update.Height > 4320 || update.Quality is < 0 or > 6
             || update.CustomBitrate < 0 || (update.Quality == 6 && update.CustomBitrate > 40000000)
             || update.MaxScaleWidth is < -1 or > 16384 || update.MaxScaleHeight is < -1 or > 16384
-            || update.MaxScaleWidth == 1 || update.MaxScaleHeight == 1) return false;
+            || update.MaxScaleWidth == 1 || update.MaxScaleHeight == 1
+            || update.ChromaFormat is not (0 or 1 or 3) || (update.ChromaFormat == 3 && !supportsTrueColor)
+            || update.EnableHdr) return false;
         for (int i = 0; i < profiles.Length; i++)
         {
             if (update.Screen >= 0 && update.Screen != i) continue;
             var p = Get(i);
+            var chroma = update.ChromaFormat == 0 ? p.ChromaFormat : update.ChromaFormat;
             var limit = maxScale[i];
             if (update.MaxScaleWidth > 0) limit.Width = update.MaxScaleWidth;
             if (update.MaxScaleHeight > 0) limit.Height = update.MaxScaleHeight;
@@ -193,7 +205,7 @@ internal sealed class HostVideoSettings
             var width = update.Width > 0 ? Math.Clamp(update.Width, 320, native[i].Width) & ~1 : sizeLocked[i] ? p.Width : native[i].Width;
             var height = update.Height > 0 ? Math.Clamp(update.Height, 240, native[i].Height) & ~1 : sizeLocked[i] ? p.Height : native[i].Height;
             if (update.Width > 0 || update.Height > 0) sizeLocked[i] = true;
-            (width, height) = Fit(i, width, height);
+            (width, height) = Fit(i, width, height, chroma);
             var fps = update.Fps > 0 ? Math.Clamp(update.Fps, Math.Min(15, frameRateLimits[i]), frameRateLimits[i]) : p.Fps;
             if (update.Fps > 0) Volatile.Write(ref requestedFps[i], fps);
             if (update.Quality != 0) qualities[i] = update.Quality;
@@ -203,14 +215,39 @@ internal sealed class HostVideoSettings
             var (bitrate, crf) = qualities[i] == 6 ? (customBitrates[i], 18)
                 : Tier(qualities[i] == 5 ? autoQualities[i] : qualities[i]);
             requestedBitrates[i] = bitrate;
-            Volatile.Write(ref profiles[i], new(width, height, fps, Math.Min(bitrate, networkCeiling), crf, p.Recovery));
+            Volatile.Write(ref profiles[i], new(width, height, fps, Math.Min(bitrate, networkCeiling), crf, p.Recovery, chroma));
         }
         if (SingleVideoStream && update.Screen >= 0) Volatile.Write(ref selectedScreen, update.Screen);
         return true;
     }
-    private (int Width, int Height) Fit(int index, int width, int height)
+    public void DisableTrueColor()
+    {
+        lock (changes)
+        {
+            supportsTrueColor = false;
+            ApplyLocked(new(-1, 0, 0, 0, 0, 0, 0, null, ChromaFormat: 1));
+        }
+    }
+    public byte[] Sync(ulong sequence)
+    {
+        lock (changes)
+        {
+            var index = SelectedScreen;
+            var p = Get(index);
+            return HostCaptureProtocol.Sync(sequence, (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds(), p.Fps,
+                qualities[index], p.ChromaFormat, qualities[index] == 6 ? customBitrates[index] : 0, p.Width, p.Height);
+        }
+    }
+    private (int Width, int Height) Fit(int index, int width, int height, int chroma)
     {
         var limit = maxScale[index];
+        // Decoder sizes can differ for 4:2:0 and 4:4:4. Switching chroma must
+        // never leave the stream above that format's reported decoder ceiling.
+        if (decoderLimits.TryGetValue(chroma, out var decoder))
+        {
+            limit.Width = limit.Width > 0 ? Math.Min(limit.Width, decoder.Width) : decoder.Width;
+            limit.Height = limit.Height > 0 ? Math.Min(limit.Height, decoder.Height) : decoder.Height;
+        }
         var scale = Math.Min(1, Math.Min(limit.Width > 0 ? (double)limit.Width / width : 1,
             limit.Height > 0 ? (double)limit.Height / height : 1));
         return (Math.Max(2, (int)(width * scale) & ~1), Math.Max(2, (int)(height * scale) & ~1));

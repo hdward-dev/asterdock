@@ -4,9 +4,17 @@ using URemote.Linux;
 using System.Diagnostics;
 using System.Text;
 
+if (args.Contains("--video-latency-checks"))
+{
+    await EncoderLatencyChecks.RunAsync(args.Last(), args.Contains("--throughput"));
+    return;
+}
+
 if (args.Contains("--video-timing-checks"))
 {
     VideoTimingChecks.Run((ok, label) => { if (!ok) throw new Exception(label); Console.WriteLine("PASS: " + label); });
+    VideoPacerChecks.Run((ok, label) => { if (!ok) throw new Exception(label); Console.WriteLine("PASS: " + label); });
+    TrueColorChecks.Run((ok, label) => { if (!ok) throw new Exception(label); Console.WriteLine("PASS: " + label); });
     return;
 }
 
@@ -172,10 +180,12 @@ if (args.Contains("--video-nvenc-resize-checks"))
     await QualityChecks.RunAsync(args.Last(), 60, 3840, 2160, 120, requireNvenc: true, outputWidth: 1920, outputHeight: 1080);
     return;
 }
-if (args.Contains("--video-nvenc-checks") || args.Contains("--video-nvenc4k-checks"))
+if (args.Contains("--video-nvenc-checks") || args.Contains("--video-nvenc4k-checks") || args.Contains("--video-true-color-checks"))
 {
     var highResolution = args.Contains("--video-nvenc4k-checks");
-    await QualityChecks.RunAsync(args.Last(), 60, highResolution ? 3840 : 1920, highResolution ? 2160 : 1080, 240, requireNvenc: true);
+    var trueColor = args.Contains("--video-true-color-checks");
+    await QualityChecks.RunAsync(args.Last(), 60, highResolution ? 3840 : 1920, highResolution ? 2160 : 1080, 240, requireNvenc: true,
+        chromaFormat: trueColor ? 3 : 1, outputWidth: args.Contains("--resize") ? 1280 : 0, outputHeight: args.Contains("--resize") ? 720 : 0);
     return;
 }
 if (args.Contains("--video-4k-checks"))

@@ -61,10 +61,11 @@ internal static class HostInput
                 if (category == "control" && !message.IsText && HostTouchProtocol.ReplyMetrics(message.Bytes, ++sequence, touch?.Available == true) is { } metricsReply)
                 { media.SendControl(metricsReply); continue; }
                 if (category == "control" && !message.IsText && HostControlEcho.Reply(message.Bytes, ++sequence,
-                    (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds(), enableInput, enableClipboard, enableFiles) is { } reply)
+                    (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds(), enableInput, enableClipboard, enableFiles, captureSettingVersion: profiles is null ? 0 : 4) is { } reply)
                 {
                     if (media.SendControl(reply) && observed.Add("echo")) {
                         report("control-echo-replied");
+                        if (profiles is not null && outputs.Count > 0) media.SendControl(profiles.Sync(++sequence));
                         if (enableFiles) media.SendControl(FileTransferProtocol.Join(FileTransferProtocol.Int(1, ++sequence),
                             FileTransferProtocol.Blob(26, FileTransferProtocol.Text(1, "/"))));
                     }
@@ -76,12 +77,13 @@ internal static class HostInput
                     var accepted = profiles.Apply(update);
                     if (accepted && previousScreen != profiles.SelectedScreen) touch?.Reset();
                     report("capture-values=" + HostCaptureProtocol.DescribeSettings(message.Bytes));
-                    report($"capture-request;screen={update.Screen};width={update.Width};height={update.Height};fps={update.Fps};quality={update.Quality};accepted={accepted}");
+                    report($"capture-request;screen={update.Screen};width={update.Width};height={update.Height};fps={update.Fps};quality={update.Quality};chroma={update.ChromaFormat};hdr={update.EnableHdr};accepted={accepted}");
                     if (accepted)
                         for (var screen = 0; screen < outputs.Count; screen++)
                             if (update.Screen < 0 || update.Screen == screen)
                                 report($"video-quality-applied;screen={screen + 1};" + profiles.Describe(screen));
                     media.SendData(message.ChannelLabel, HostCaptureProtocol.Reply(update, accepted));
+                    if (outputs.Count > 0) media.SendControl(profiles.Sync(++sequence));
                     report(accepted ? "capture-settings-applied" : "capture-settings-rejected");
                     continue;
                 }

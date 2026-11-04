@@ -284,6 +284,9 @@ public static class HostPreview
                         var terminal = update.Peer.Options.CaptureType == 8;
                         var fileOnly = update.Peer.Options.CaptureType == 5;
                         var dataOnly = terminal || fileOnly;
+                        var sessionEncoder = encoderPath?.Invoke() ?? ffmpeg;
+                        var encoderImplementation = dataOnly ? -1 : await StreamingH264Encoder.ImplementationAsync(sessionEncoder, token);
+                        var trueColor = !dataOnly && await StreamingH264Encoder.SupportsTrueColorAsync(sessionEncoder, token);
                         if (!dataOnly && outputs.Count > 0)
                         {
                             // Open pipelines now, in parallel with ICE and SDP. The log is synchronous.
@@ -300,16 +303,13 @@ public static class HostPreview
                         var mobileSingleStream = !dataOnly && (update.Peer.Options.ClientType == 1 || platformCode is 2 or 3);
                         frameRateLimits = await ReadFrameRateLimitsAsync(outputs, report, token);
                         ApplyBoundModes(outputs, dimensions);
-                        profiles = new HostVideoSettings(((int Width, int Height)[])dimensions.Clone(), mobileSingleStream, frameRateLimits);
+                        profiles = new HostVideoSettings(((int Width, int Height)[])dimensions.Clone(), mobileSingleStream, frameRateLimits,
+                            supportsTrueColor: trueColor, decoderCapabilities: update.Peer.Options.DecoderCapabilities);
                         BindCeilings(outputs, profiles);
-                        var decoderLimit = update.Peer.Options.DecoderCapabilities
-                            .Where(item => item.CodecType == 1 && item.ChromaFormat == 1 && item.Width is >= 2 and <= 16384 && item.Height is >= 2 and <= 16384)
-                            .MaxBy(item => (long)item.Width * item.Height);
-                        if (decoderLimit is not null)
-                        {
-                            profiles.Apply(new(-1, 0, 0, 0, 0, 0, 0, null, MaxScaleWidth: decoderLimit.Width, MaxScaleHeight: decoderLimit.Height));
-                            report($"decoder-size-limit;codec=1;width={decoderLimit.Width};height={decoderLimit.Height}");
-                        }
+                        if (trueColor && update.Peer.Options.Capture?.ChromaFormat == 3)
+                            profiles.Apply(new(-1, 0, 0, 0, 0, 0, 0, null, ChromaFormat: 3));
+                        foreach (var decoderLimit in update.Peer.Options.DecoderCapabilities.Where(c => c.CodecType == 1 && c.Width > 0 && c.Height > 0).Take(16))
+                            report($"decoder-size-limit;codec=1;chroma={decoderLimit.ChromaFormat};width={decoderLimit.Width};height={decoderLimit.Height}");
                         report("video-routing=" + (mobileSingleStream ? "selected-screen-on-primary-track" : "independent-screen-tracks"));
                         Volatile.Write(ref answered, false);
                         active = id;
@@ -361,7 +361,7 @@ public static class HostPreview
                                 try { mediaLifetime.Cancel(); } catch (ObjectDisposedException) { }
                         };
                         var peerToken = peerStop.Token;
-                        video = StreamAsync(media, encoderPath?.Invoke() ?? ffmpeg, dataOnly ? Array.Empty<uint>() : outputs, peerToken, enableInput, async () =>
+                        video = StreamAsync(media, sessionEncoder, dataOnly ? Array.Empty<uint>() : outputs, peerToken, enableInput, async () =>
                         {
                             await signal.SendEventAsync("ice_finished_log", new JsonObject
                             { ["app_control_id"] = id.AppControlId, ["ice_id"] = id.IceId }, ct: peerToken);
@@ -414,9 +414,8 @@ public static class HostPreview
                             TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
                         _ = video.ContinueWith(PeerFailed, CancellationToken.None,
                             TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-                        var encoderImplementation = dataOnly ? -1 : await StreamingH264Encoder.ImplementationAsync(ffmpeg, token);
-                        report("encoder-codec-capability;codec=1;size=3840x2160;implementation=" + encoderImplementation);
-                        await signal.SendEventAsync("forward_setting", Capability(id, dimensions, frameRateLimits, encoderImplementation), ct: token);
+                        report($"encoder-codec-capability;codec=1;size=3840x2160;implementation={encoderImplementation};true-color={trueColor}");
+                        await signal.SendEventAsync("forward_setting", Capability(id, dimensions, frameRateLimits, encoderImplementation, trueColor), ct: token);
                         await signal.SendEventAsync("forward_setting", new JsonObject
                         {
                             ["client_id"] = id.ClientId,
@@ -599,9 +598,9 @@ public static class HostPreview
         else foreign = 0;
         if (!first.Pending) profiles.AdoptSourceSize(index, (int)first.Width, (int)first.Height);
         profile = profiles.Get(index);
-        await using var encoder = await StreamingH264Encoder.CreateAsync(ffmpeg, (int)first.Width, (int)first.Height, first.YInverted, first.ShmFormat, profile.Fps, profile.Width, profile.Height, profile.Bitrate, profile.Crf, stopToken: ct);
-        report($"video-encoder-backend;screen={index + 1};codec={encoder.Codec};hardware={encoder.Hardware}");
-        report($"video-encoder-config;screen={index + 1};width={profile.Width};height={profile.Height};fps={profile.Fps};bitrate={profile.Bitrate};crf={profile.Crf}");
+        await using var encoder = await StreamingH264Encoder.CreateAsync(ffmpeg, (int)first.Width, (int)first.Height, first.YInverted, first.ShmFormat, profile.Fps, profile.Width, profile.Height, profile.Bitrate, profile.Crf, stopToken: ct, chromaFormat: profile.ChromaFormat);
+        report($"video-encoder-backend;screen={index + 1};codec={encoder.Codec};hardware={encoder.Hardware};inflight-limit={encoder.MaxInFlightFrames};input-pipe-bytes={encoder.InputPipeBytes}");
+        report($"video-encoder-config;screen={index + 1};width={profile.Width};height={profile.Height};fps={profile.Fps};bitrate={profile.Bitrate};crf={profile.Crf};chroma={encoder.ChromaFormat};depth=8;hdr=false");
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var darkness = new StrongBox<int>(-1);
         using var frames = new LatestCaptureFrames();
@@ -638,8 +637,12 @@ public static class HostPreview
             {
                 try
                 {
-                await foreach (var frame in frames.ReadAsync(stop.Token))
+                await using var latest = frames.ReadAsync(stop.Token).GetAsyncEnumerator();
+                while (true)
                 {
+                    await encoder.WaitForCapacityAsync(stop.Token);
+                    if (!await latest.MoveNextAsync()) break;
+                    var frame = latest.Current;
                     try
                     {
                         tracker.Observe(index, frame.Pending, DesktopBackend.PortalGeneration, report);
@@ -700,6 +703,7 @@ public static class HostPreview
             var windowBytes = 0L; var windowFrames = 0; var lowWindows = 0;
             var windowStart = System.Diagnostics.Stopwatch.GetTimestamp();
             var fpsWindowStart = windowStart; var fpsWindowFrames = 0;
+            double maxEncoderDelay = 0, maxSendDelay = 0;
             try
             {
             await foreach (var encoded in encoder.ReadAsync(stop.Token))
@@ -709,7 +713,10 @@ public static class HostPreview
                     // Nominal duration describes the selected rate; the transport clocks
                     // RTP against actual elapsed time so slow frames cannot build playback lag.
                     var rtpDuration = (uint)(90000 / profile.Fps);
+                    maxEncoderDelay = Math.Max(maxEncoderDelay, encoder.FrameDelayMilliseconds);
+                    var sendStarted = System.Diagnostics.Stopwatch.GetTimestamp();
                     await media.SendH264PacedAsync(encoded, rtpDuration, videoTrack ?? index, profile.Bitrate, stop.Token);
+                    maxSendDelay = Math.Max(maxSendDelay, System.Diagnostics.Stopwatch.GetElapsedTime(sendStarted).TotalMilliseconds);
                     sentBytes += encoded.Length;
                     windowBytes += encoded.Length;
                     count++;
@@ -721,6 +728,8 @@ public static class HostPreview
                         var current = profiles.Get(index);
                         var actual = fpsWindowFrames / fpsElapsed.TotalSeconds;
                         report($"video-fps;screen={index + 1};display-hz={profiles.DisplayFps(index)};requested={profiles.RequestedFps(index)};target={current.Fps};actual={actual.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}");
+                        report($"video-pipeline-delay;screen={index + 1};chroma={profile.ChromaFormat};encode-queue-max-ms={maxEncoderDelay.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)};send-max-ms={maxSendDelay.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}");
+                        maxEncoderDelay = 0; maxSendDelay = 0;
                         fpsWindowStart = System.Diagnostics.Stopwatch.GetTimestamp();
                         fpsWindowFrames = 0;
                     }
@@ -777,6 +786,14 @@ public static class HostPreview
             if (failure is VideoEncoderException encoderFailure)
             {
                 report($"video-encoder-failed;screen={index + 1};codec={encoderFailure.Codec}");
+                if (encoderFailure.ChromaFormat == 3)
+                {
+                    // A failed 4:4:4 session must not disable working 4:2:0 NVENC
+                    // or tear down the portal. Resume compatible SDR immediately.
+                    profiles.DisableTrueColor();
+                    media.SendControl(profiles.Sync(0));
+                    report("video-true-color-fallback;chroma=1;reason=encoder-failed");
+                }
                 await Task.Delay(100, ct);
                 continue;
             }
@@ -919,7 +936,7 @@ public static class HostPreview
         }
     }
 
-    private static JsonObject Capability(HostPeerId id, IReadOnlyList<(int Width, int Height)> dimensions, IReadOnlyList<int> frameRateLimits, int encoderImplementation) => new()
+    private static JsonObject Capability(HostPeerId id, IReadOnlyList<(int Width, int Height)> dimensions, IReadOnlyList<int> frameRateLimits, int encoderImplementation, bool trueColor) => new()
     {
         ["client_id"] = id.ClientId,
         ["data"] = new JsonObject
@@ -932,10 +949,11 @@ public static class HostPreview
                     { ["id"] = index, ["fps"] = frameRateLimits[index], ["type"] = 0, ["hdr"] = -1 }).ToArray()),
                 // This is the encoder's supported size, not the currently attached screen size.
                 // Native clients intersect it with their decoder capability to enable quality tiers.
-                // H264 4:2:0 8-bit is verified for the selected encoder. The implementation
-                // must match the probed backend; unsupported H265 or HDR is not advertised.
-                ["video_codec_capability"] = new JsonArray(new JsonObject { ["video_codec"] = 1,
-                    ["width"] = 3840, ["height"] = 2160, ["chroma_sampling"] = 1, ["bit_depth"] = 8, ["codec_impl"] = encoderImplementation })
+                // Each chroma format is probed independently. 4:4:4 is SDR true
+                // color; the 8-bit capture path does not promise HDR or HEVC.
+                ["video_codec_capability"] = new JsonArray((trueColor ? new[] { 1, 3 } : new[] { 1 }).Select(chroma => (JsonNode)new JsonObject
+                    { ["video_codec"] = 1, ["width"] = 3840, ["height"] = 2160, ["chroma_sampling"] = chroma,
+                        ["bit_depth"] = 8, ["codec_impl"] = encoderImplementation }).ToArray())
             }
         }
     };

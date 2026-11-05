@@ -115,6 +115,7 @@ jobs:
           dotnet run --project tests/URemote.Checks --configuration Release -- --host-recovery-checks
           dotnet run --project tests/URemote.Checks --configuration Release --no-build -- --video-loss-checks
           dotnet run --project tests/URemote.Checks --configuration Release --no-build -- --video-timing-checks
+          dotnet run --project tests/URemote.Checks --configuration Release --no-build -- --privacy-checks
       - name: Check file and clipboard failure recovery
         run: |
           dotnet run --project tests/URemote.Media.Tests --configuration Release -- --files-only
